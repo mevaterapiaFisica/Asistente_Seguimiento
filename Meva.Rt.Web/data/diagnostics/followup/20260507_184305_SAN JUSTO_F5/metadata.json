@@ -1,0 +1,11 @@
+{
+  "TimestampUtc": "2026-05-07T18:43:07.5411721Z",
+  "Center": "SAN JUSTO",
+  "StageCode": "F5",
+  "StageMicroStatus": "marking",
+  "SearchAction": "button:has-text(\u0027Buscar seguimientos\u0027)",
+  "SelectedCenterValue": "0d288871-fa46-487c-a5b5-87238fe53407",
+  "SelectedMicroStatusValue": "marking",
+  "FinalUrl": "https://sitramed.mevaterapia.com.ar/follow_up_search?filters[attention_center_id]=0d288871-fa46-487c-a5b5-87238fe53407\u0026filters[from_date]=\u0026filters[medical_history_id]=\u0026filters[micro_status]=marking\u0026filters[mode]=search\u0026filters[report_type]=by_status\u0026filters[treatment_type]=\u0026filters[until_date]=\u0026micro_status=marking",
+  "PageTitle": "Mevaterapia"
+}

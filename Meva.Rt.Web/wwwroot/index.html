@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meva RT</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <p class="eyebrow">Radioterapia</p>
+      <h1>Meva RT</h1>
+      <p class="subtitle">Seguimiento de proceso, agenda de equipos e integracion con ARIA.</p>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-button active" data-tab="followup" type="button">Seguimiento</button>
+      <button class="tab-button" data-tab="agenda" type="button">Agenda</button>
+      <button class="tab-button" data-tab="config" type="button">Configuracion</button>
+      <button type="button" class="ghost-button" id="refreshDashboard" title="Scraping agenda + seguimiento + ARIA + guarda snapshot">Actualizar datos</button>
+      <button type="button" class="ghost-button" id="refreshDashboardNoAria" title="Scraping agenda + seguimiento sin consultar ARIA">Sin ARIA</button>
+      <button type="button" class="ghost-button" id="importAria" title="Importa aria_results_*.json desde la carpeta data/ del servidor">Importar ARIA</button>
+      <span id="importAriaStatus" class="import-result"></span>
+      <span id="generatedAt" class="generated-at"></span>
+    </nav>
+
+    <main>
+
+      <!-- ── Seguimiento ─────────────────────────────────────────────────── -->
+      <section id="tab-followup" class="tab-panel active">
+        <div class="filter-bar filter-bar-stacked">
+          <div class="filter-row">
+            <span class="filter-label">Centro:</span>
+            <div id="centerFilterPills" class="pill-row"></div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Etapa:</span>
+            <div id="stageFilterPills" class="pill-row"></div>
+          </div>
+        </div>
+        <div class="two-col-layout">
+          <!-- Center cards -->
+          <div class="left-col" id="centerCards"></div>
+          <!-- Detail / search panel -->
+          <div class="right-col">
+            <div class="search-wrap">
+              <input id="patientSearch" type="search" class="search-input"
+                     placeholder="Buscar paciente en todos los centros...">
+            </div>
+            <div id="followupDetail" class="detail-inner"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Agenda ──────────────────────────────────────────────────────── -->
+      <section id="tab-agenda" class="tab-panel">
+        <div class="filter-bar">
+          <label class="filter-label">Fecha:</label>
+          <select id="agendaDateSelect" class="filter-select"></select>
+          <button id="scrapeUpcomingBtn" class="ghost-button" type="button"
+                  title="Scraping de los proximos 15 dias habiles">Scrapear 15d</button>
+          <span id="scrapeStatus" class="agenda-status"></span>
+          <div id="agendaCenterFilterPills" class="pill-row"></div>
+        </div>
+        <div class="two-col-layout">
+          <!-- Machine cards (left) -->
+          <div class="left-col" id="agendaMachineCards"></div>
+          <!-- Agenda detail (right) -->
+          <div class="right-col" id="agendaDetail">
+            <p class="detail-placeholder">Seleccione un equipo para ver su agenda.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Configuracion ──────────────────────────────────────────────── -->
+      <section id="tab-config" class="tab-panel">
+        <div class="layout config-layout">
+          <section class="panel">
+            <div class="panel-header"><h2>Etapas</h2><p>Configuracion base</p></div>
+            <div id="stageConfigList" class="config-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header"><h2>Equipos</h2><p>Mapping y capacidad</p></div>
+            <div id="machineConfigList" class="config-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>API configuracion</h2>
+              <p><code>GET /api/configuration</code> y <code>PUT /api/configuration</code>
+                 persisten <code>data/rt_configuration.json</code>.</p>
+            </div>
+          </section>
+        </div>
+        <section class="panel test-panel">
+          <div class="panel-header"><h2>Test Scraping</h2><p>Prueba login + descarga de seguimiento</p></div>
+          <div class="test-actions">
+            <button id="runScrapingTest" class="tab-button active" type="button">Probar scraping</button>
+            <div id="scrapingTestResult" class="test-result">Sin ejecutar.</div>
+          </div>
+        </section>
+        <section class="panel test-panel">
+          <div class="panel-header"><h2>Test Agenda</h2><p>Prueba login + descarga de agenda de equipos</p></div>
+          <div class="agenda-test-controls">
+            <select id="agendaTestMachine"></select>
+            <input id="agendaTestDate" type="date" />
+          </div>
+          <div class="test-actions">
+            <button id="runAgendaTest" class="tab-button active" type="button">Probar agenda</button>
+            <div id="agendaTestResult" class="test-result">Sin ejecutar.</div>
+          </div>
+        </section>
+      </section>
+
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

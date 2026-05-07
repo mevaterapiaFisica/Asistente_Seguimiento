@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Write-Host \"USER: $\\($env:MEVA_SITRAMED_USER\\)\" ; Write-Host \"PASS set: $\\(-not [string]::IsNullOrEmpty\\($env:MEVA_SITRAMED_PASSWORD\\)\\)\")",
+      "PowerShell(Out-Null *)",
+      "PowerShell(Invoke-RestMethod -Method POST -Uri \"http://localhost:5000/api/scraping/test\" -ContentType \"application/json\" -TimeoutSec 90 | ConvertTo-Json -Depth 5)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Invoke-RestMethod -Method POST -Uri \"http://localhost:5062/api/scraping/test\" -ContentType \"application/json\" -TimeoutSec 120 | ConvertTo-Json -Depth 5)",
+      "PowerShell(netstat *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST http://localhost:5062/api/scraping/test -H \"Content-Type: application/json\" --max-time 120)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(Stop-Process *)"
+    ]
+  }
+}

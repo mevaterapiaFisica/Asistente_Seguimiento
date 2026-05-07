@@ -1,0 +1,11 @@
+{
+  "TimestampUtc": "2026-05-05T15:44:40.8663392Z",
+  "Center": "MEVA-Central",
+  "StageCode": "F3",
+  "StageMicroStatus": "ingress",
+  "SearchAction": "button:has-text(\u0027Buscar seguimientos\u0027)",
+  "SelectedCenterValue": "0bf1950e-0350-4dc3-a788-6ca9af8e93cd",
+  "SelectedMicroStatusValue": "ingress",
+  "FinalUrl": "https://sitramed.mevaterapia.com.ar/follow_up_search",
+  "PageTitle": "Mevaterapia"
+}

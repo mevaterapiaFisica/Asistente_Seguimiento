@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Meva.Rt.Core\Meva.Rt.Core.csproj" />
+    <ProjectReference Include="..\Meva.Rt.Application\Meva.Rt.Application.csproj" />
+    <ProjectReference Include="..\Meva.Rt.Infrastructure.SitraMed\Meva.Rt.Infrastructure.SitraMed.csproj" />
+    <ProjectReference Include="..\Meva.Rt.Infrastructure.Aria\Meva.Rt.Infrastructure.Aria.csproj" />
+    <ProjectReference Include="..\Meva.Rt.Infrastructure.Storage\Meva.Rt.Infrastructure.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\Insumos ARIA\mapEquiposAriaSitra.txt">
+      <Link>config\mapEquiposAriaSitra.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

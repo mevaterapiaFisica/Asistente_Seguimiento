@@ -1,0 +1,11 @@
+{
+  "TimestampUtc": "2026-05-07T18:43:23.2029303Z",
+  "Center": "RT MEDRANO",
+  "StageCode": "F3",
+  "StageMicroStatus": "ingress",
+  "SearchAction": "button:has-text(\u0027Buscar seguimientos\u0027)",
+  "SelectedCenterValue": "c9c71e95-ec17-4c36-a95c-15ef41b2d1db",
+  "SelectedMicroStatusValue": "ingress",
+  "FinalUrl": "https://sitramed.mevaterapia.com.ar/follow_up_search?filters[attention_center_id]=c9c71e95-ec17-4c36-a95c-15ef41b2d1db\u0026filters[from_date]=\u0026filters[medical_history_id]=\u0026filters[micro_status]=ingress\u0026filters[mode]=search\u0026filters[report_type]=by_status\u0026filters[treatment_type]=\u0026filters[until_date]=\u0026micro_status=ingress",
+  "PageTitle": "Mevaterapia"
+}

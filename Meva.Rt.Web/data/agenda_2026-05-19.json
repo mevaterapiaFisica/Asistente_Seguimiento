@@ -1,0 +1,4313 @@
+[
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "GONZALEZ, Javier Lujan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:15",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata y ves\u00EDculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "PARODI, Maria Fernanda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:15",
+    "EndTime": "07:30",
+    "Treatment": "Intensidad Modulada - Lecho de glioblastoma"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "BRUNI, Ruben Omar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:45",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "MORALES, Daniel Alfredo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:45",
+    "EndTime": "08:00",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "IOSCA, Jorge Ricardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "09:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FERNANDEZ, Victor",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:15",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "VALLI, Laura Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:15",
+    "EndTime": "09:30",
+    "Treatment": "Tridimensional Conformado - mi"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "SALAS, Juan Martin",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:45",
+    "Treatment": "Intensidad Modulada - cyc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "PRIETO, Jose Raul",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:45",
+    "EndTime": "10:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "CUELLO, Ruben Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:15",
+    "Treatment": "Intensidad Modulada - ojo derecho"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "PURITA, Susana Alicia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:15",
+    "EndTime": "10:30",
+    "Treatment": "Tridimensional Conformado - VMI"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "DEMPSEY, Edgardo Ronald",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:30",
+    "EndTime": "10:45",
+    "Treatment": "Intensidad Modulada - C6"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "DEMPSEY, Edgardo Ronald",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:45",
+    "EndTime": "11:00",
+    "Treatment": "Intensidad Modulada - LI"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FERNANDEZ, Patricia Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:45",
+    "EndTime": "11:00",
+    "Treatment": "Tridimensional Conformado - D9"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "LOPEZ, Valeria Jesica",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "12:00",
+    "Treatment": "Irradiaci\u00F3n Corporal Total (TBI) - TBI"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "LESMI, Maria Josefina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:15",
+    "Treatment": "Intensidad Modulada - Lecho de mucosa yugal"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "GELMAN, Sergio Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:15",
+    "EndTime": "12:30",
+    "Treatment": "Intensidad Modulada - Prostata y vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "LASSO, Ruben Francisco",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:45",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FERNANDEZ, Ramiro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:45",
+    "EndTime": "13:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "RODRIGUEZ, Noemi Aida",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Tridimensional Conformado - MAMA IZQ"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "REYMONDES, Estela Haydee",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "MAZZON, Erma",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Intensidad Modulada - PELVIS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "DAVO, Norberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:45",
+    "Treatment": "Intensidad Modulada - Prostata\u002Bvesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "BRIGNOLA, Osvaldo Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:45",
+    "EndTime": "14:00",
+    "Treatment": "Intensidad Modulada - cyc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "ORTIZ CANO, Malena",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "15:00",
+    "Treatment": "Irradiaci\u00F3n Corporal Total (TBI) - tbi"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "LAVALLE, Silvia Olga",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:15",
+    "Treatment": "Intensidad Modulada - SNC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "ORDUNA, Jorge Raul",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:15",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - snc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "CORONAS, Carlos Alfredo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:45",
+    "Treatment": "Intensidad Modulada - Prostata\u002Bvesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "BERNALDEZ, Gustavo Damian",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:45",
+    "EndTime": "16:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FISCHMAN, Eugenia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Tridimensional Conformado - t12"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "SAN JUAN, Ezequiel Pablo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - lesion mediastinal-hiliar"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "DANDREA, Nestor Jorge",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:45",
+    "Treatment": "Intensidad Modulada - Prostata y vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "COIDO, Reynaldo Fabian",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:15",
+    "Treatment": "Intensidad Modulada - vejiga mas areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "ATAGUILE, Ruben Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - Lecho Fosas Nasales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "GALVAN, Pablo Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:45",
+    "Treatment": "Intensidad Modulada - LECHO SNC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "MU\u00D1OZ, Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:45",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "HERMIDA, Raul Alejandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:15",
+    "Treatment": "Intensidad Modulada - Prostata\u002Bvesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "CIALLELLA, Roberto Santiago",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:45",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "DEL VALLE, Silvio Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:45",
+    "EndTime": "19:00",
+    "Treatment": "Intensidad Modulada - prostata"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "PALADINO, Osvaldo Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FUNES, Paula Del Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Tridimensional Conformado - VMI"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "GARCIA, Melina Anabella",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:45",
+    "Treatment": "Intensidad Modulada - lecho de reseccion snc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "FORNARI, Julio Anibal",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:45",
+    "EndTime": "20:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "MENESES, Marisa Griselda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:00",
+    "EndTime": "20:15",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 1",
+    "PatientName": "LUGO, Cristian Hernan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:15",
+    "EndTime": "21:15",
+    "Treatment": "Irradiaci\u00F3n Corporal Total (TBI) - tbi"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "DIAZ, Marcelo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:15",
+    "Treatment": "Tridimensional Conformado - pelvis -"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "AOSTRI, Paula Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:15",
+    "EndTime": "07:30",
+    "Treatment": "Tridimensional Conformado - VMI \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "TEIXEIRA MENDEZ, Oscar Fernando",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vs"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SIMOES, Liliana Del Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:40",
+    "EndTime": "07:50",
+    "Treatment": "Tridimensional Conformado - CERVIX"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CAUNEDO, Leonardo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:50",
+    "EndTime": "08:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ARIAS, Mario Carmelo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - lesion macro MID"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ACORINTI, Nancy",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:15",
+    "Treatment": "Tridimensional Conformado - MD"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "GONZALEZ, Maria Emilia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:15",
+    "EndTime": "09:30",
+    "Treatment": "Tridimensional Conformado - volumen mamario izquierdo \u002B boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "HALBZAJT, Jacqueline",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CASTIGLIONI, Maria Gabriela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CASTRO, Jorgelina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Tridimensional Conformado - MAMA IZQ"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CAPRE, Sandra Lujan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:15",
+    "Treatment": "Tridimensional Conformado - VMD \u002B boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "HERRERO, Alejandro Gabriel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:15",
+    "EndTime": "10:30",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CABRERA, Emilce Lorena",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:30",
+    "EndTime": "10:40",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "IACONO, Dora Lucia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:40",
+    "EndTime": "10:50",
+    "Treatment": "Tridimensional Conformado - pulmon"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PECORA, Silvia Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:50",
+    "EndTime": "11:00",
+    "Treatment": "Tridimensional Conformado - Canal anal"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "RUEDA, Marta Herminia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:15",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PALOMO, Maria Laura",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:15",
+    "EndTime": "11:30",
+    "Treatment": "Tridimensional Conformado - VMI \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PERRI, Stella Maris",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:45",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "NITZLNADER, Eduardo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:40",
+    "EndTime": "11:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SOTOMAYOR, Lorena Isabel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:50",
+    "EndTime": "12:00",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "AMESA, Gabriela Paula",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:15",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CALDERON, Lorena Vanina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:15",
+    "EndTime": "12:30",
+    "Treatment": "Intensidad Modulada - REGION PRE PECTORAL AXILAR Y SUPRACLAVICULAR IZQUIERDA"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "HRECZUCH, Bladimiro Nicolas",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:40",
+    "Treatment": "Intensidad Modulada - cuero cabelludo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SAYA, Jorge Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:50",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "LOPEZ, Irma Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:50",
+    "EndTime": "13:00",
+    "Treatment": "Tridimensional Conformado - pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SILVANI, Diamela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Tridimensional Conformado - MAMA"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "AGUIRRE SIMONELLI, Cintia Fernanda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "IGLESIAS, Alicia Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:40",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SUGLIA, Alicia Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:40",
+    "EndTime": "13:50",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "REGALADO, Jorge Ruben",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:50",
+    "EndTime": "14:00",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata y ves\u00EDculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MICHEL, Nelida Amanda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:15",
+    "Treatment": "Tridimensional Conformado - VMD"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PRESA, Graciela Liliana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:15",
+    "EndTime": "14:30",
+    "Treatment": "Tridimensional Conformado - VMD \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MARIANI, Jorge Osvaldo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:15",
+    "EndTime": "14:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MIZRAHI, Andrea Gabriela Solange",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:30",
+    "EndTime": "14:40",
+    "Treatment": "Tridimensional Conformado - mama derecha \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CENTURION, Alfredo Raul",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:40",
+    "EndTime": "14:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "GUTLEIN, Alicia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:50",
+    "EndTime": "15:00",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ZURANO, Sergio Ernesto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:15",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ESPECHE, Olga",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:15",
+    "EndTime": "15:30",
+    "Treatment": "Tridimensional Conformado - pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SORANO MARTINEZ, Maria De Los Angeles",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:40",
+    "Treatment": "Tridimensional Conformado - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ALTAMIRANO, Jorge Alfredo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:40",
+    "EndTime": "15:50",
+    "Treatment": "Intensidad Modulada - Lecho prost\u00E1tico"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ZAVALLA, Norma Gloria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:50",
+    "EndTime": "16:00",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MONES RUIZ, Laura Estela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PERALTA, Mercedes Del Valle",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Tridimensional Conformado - L1"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MARTINI, Ricardo Carlos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "BERRIEL, Jorge Horacio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "CALVET, Cecilia Vanesa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:40",
+    "EndTime": "16:50",
+    "Treatment": "Tridimensional Conformado - Lumbar"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "GILES, Gerardo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:50",
+    "EndTime": "17:00",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "GANDULFO, Carlos Miguel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:10",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MOLINA, Mauricio Lorenzo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:10",
+    "EndTime": "17:20",
+    "Treatment": "Tridimensional Conformado - Sacroiliaca"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MOLINA, Mauricio Lorenzo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:20",
+    "EndTime": "17:30",
+    "Treatment": "Tridimensional Conformado - Holocraneo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "FILIPPELLI, Maria Alicia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:40",
+    "Treatment": "Tridimensional Conformado - Iliaco Izquirdo."
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MANSILLA, Miguel Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:40",
+    "EndTime": "17:50",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "TOPALIAN, Carlos Guillermo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:50",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - lecho prostatectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "LEPISKE, Claudia Ruth",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:15",
+    "Treatment": "Tridimensional Conformado - VMD \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ZAPPINO, Cayetano",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:15",
+    "EndTime": "18:30",
+    "Treatment": "Intensidad Modulada - Prostata\u002BVS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "TOLABA, Enrique Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:40",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata y ves\u00EDculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "ALANIZ, Ariel Edgardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:40",
+    "EndTime": "18:50",
+    "Treatment": "Tridimensional Conformado - Rodilla derecha"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PEREZ, Javiera Del Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:50",
+    "EndTime": "19:00",
+    "Treatment": "Tridimensional Conformado - Cervix"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "SCARZELLA, Olga Rosa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "Tridimensional Conformado - PELVIS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "FONTANA, Ricardo Carlos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Tridimensional Conformado - PANCREAS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "IARRUYE, Elias",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "MALITO, Norberto Ruben",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:40",
+    "EndTime": "19:50",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "DURAN, Romina Veronica",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:50",
+    "EndTime": "20:00",
+    "Treatment": "Tridimensional Conformado - VMD \u002B areas \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "BALSAMO, Diego Atilio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:00",
+    "EndTime": "20:15",
+    "Treatment": "Intensidad Modulada - Prostata\u002Bvesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "PROCHI, Claudia Mariela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:15",
+    "EndTime": "20:30",
+    "Treatment": "Intensidad Modulada - mama izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 2",
+    "PatientName": "AYALA, Daniel Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:30",
+    "EndTime": "20:45",
+    "Treatment": "Tridimensional Conformado - lumbosacro"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ESPER, Monica Cristina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:15",
+    "Treatment": "Intensidad Modulada - Canal anal \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MONGELOS MARTINEZ, Maria Del Pilar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:15",
+    "EndTime": "07:30",
+    "Treatment": "Tridimensional Conformado - Lecho mama"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MENA, Jose David",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:45",
+    "Treatment": "Intensidad Modulada - Lecho inguinal izquierdo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "PIRE, Gustavo Marcelo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:45",
+    "EndTime": "08:00",
+    "Treatment": "Intensidad Modulada - Cervical-SCV derecho"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "IBRAHIM, Alicia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:30",
+    "Treatment": "Intensidad Modulada - recto"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "FLORES SANSUSTE, Walter Zacarias",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:45",
+    "EndTime": "09:00",
+    "Treatment": "Intensidad Modulada - cavum \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "SANTERO, Enrique Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:15",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "COSTA, Hector Juan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas \u002B ganglios"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ORELLANA GARCIA, Maria Luz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Utero \u002B areas \u002B Lao"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "DE PIETRO, Fernando",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Intensidad Modulada - Vejiga \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "BUCCINNA, Roque",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:15",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "DIAZ, Erika Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:15",
+    "EndTime": "10:30",
+    "Treatment": "Intensidad Modulada - VMI \u002B boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "CARRUBBA, Mabel Cristina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:30",
+    "EndTime": "10:40",
+    "Treatment": "Intensidad Modulada - ESQUEMA NIGRO"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "LUCHESI, Belkis Margarita",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:40",
+    "EndTime": "10:50",
+    "Treatment": "Tridimensional Conformado - MAMA IZQ"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "WOLMAN BLEIER, Nicole",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:50",
+    "EndTime": "11:00",
+    "Treatment": "Intensidad Modulada - Utero \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GRANDZ, Silvia Cristina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:15",
+    "EndTime": "11:30",
+    "Treatment": "Intensidad Modulada - SNC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "LOPEZ, Ricardo Nicanor",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "STIEGLITZ, Gustavo Eduardo Augusto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:50",
+    "EndTime": "12:00",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "STAGNO, Miguel Francisco",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:15",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ESPER OBEID, Juan Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:15",
+    "EndTime": "12:30",
+    "Treatment": "IGRT - lecho de prostatectomia \u002B ganglios"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "RAHAL, Jorge Guillermo Domingo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:45",
+    "Treatment": "Intensidad Modulada - Sarcoma de muslo izquierdo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GONZALEZ, Mariano Ezequiel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:50",
+    "Treatment": "Intensidad Modulada - Vejiga \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "DEL LANTONIA, Oscar Federico",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:50",
+    "Treatment": "Intensidad Modulada - Recto"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GRA\u00D1A, Gerardo Abel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:50",
+    "EndTime": "13:00",
+    "Treatment": "Intensidad Modulada - Tumor pelviano"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "D ASTI, Victor Horacio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Tridimensional Conformado - lesion region pectoral izquierda"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GALLO DARTAYET, Susana Guillermina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Tridimensional Conformado - mama \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MALDONADO RAMOS, Rosa Yrene",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Tridimensional Conformado - VMD \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GALEANO, Laura Analia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:40",
+    "Treatment": "Intensidad Modulada - Pelvis \u002B retroperitoneo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "TORRES, Fernando Benito",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:40",
+    "EndTime": "13:50",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GIACHETTI, Angela Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:15",
+    "Treatment": "Intensidad Modulada - axila der"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "BELOQUI, Ricardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:15",
+    "EndTime": "14:30",
+    "Treatment": "Intensidad Modulada - cyc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "LIZZA, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:30",
+    "EndTime": "14:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "SCARPATI, Norberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:40",
+    "EndTime": "14:50",
+    "Treatment": "Intensidad Modulada - TORAX"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ALLARIO, Miguel Leandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:50",
+    "EndTime": "15:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MENDOZA TORRES, Miriam Rosario",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:15",
+    "Treatment": "Tridimensional Conformado - Volumen Mamario Izquierdo \u002B Boost \u002B Areas Ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "COSTA, Luis Alberto Jesus",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:15",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - Lecho prostatectomia \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "LORIA, Mirta Liliana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:45",
+    "Treatment": "Tridimensional Conformado - mama derecha \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MAMANI ATORA, Richard",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:40",
+    "EndTime": "15:50",
+    "Treatment": "Intensidad Modulada - snc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MOROS, Marcelo Adrian",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:50",
+    "EndTime": "16:00",
+    "Treatment": "Intensidad Modulada - Tiroides \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "STRADELLA, Lillian Yoli",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Tridimensional Conformado - MAMA DER"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GIMENEZ, Elena Raquel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - AMIGDALA\u002BAREAS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GATTUSO, Romina Noelia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:45",
+    "Treatment": "Intensidad Modulada - utero \u002B ganglios pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "VIEYRA, Matias Hernan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:45",
+    "EndTime": "17:00",
+    "Treatment": "Intensidad Modulada - snc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "CICCOLA, Hector Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:15",
+    "Treatment": "Intensidad Modulada - cyc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "RAMIREZ, Miguel Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "BENITES DELGADO, Edith Esther",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:40",
+    "Treatment": "Tridimensional Conformado - mama"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MANSILLA, Silvia Ernestina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:40",
+    "EndTime": "17:50",
+    "Treatment": "Tridimensional Conformado - volumen mamario derecho \u002B boost \u002B \u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MALEK, Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:50",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - vejiga \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "LAI\u00D1O, Maria Adela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:15",
+    "Treatment": "Intensidad Modulada - Recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ARG\u00DCELLO, Carla Del Valle",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:15",
+    "EndTime": "18:30",
+    "Treatment": "Intensidad Modulada - Pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "DEMICHELIS, Miguel Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:45",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas \u002B ganglios"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "BENITEZ, Juan Domingo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "Intensidad Modulada - Amigdala izquierda \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ESPINOZA LOPEZ, Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Intensidad Modulada - Lesion muslo derecho"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GOMEZ, Claudio Enrique",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:40",
+    "Treatment": "Intensidad Modulada - Lesion timica."
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "VILA, Alice Ivonne",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:40",
+    "EndTime": "19:50",
+    "Treatment": "Tridimensional Conformado - lecho izq \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GULLO, Alberto Miguel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:50",
+    "EndTime": "20:00",
+    "Treatment": "Intensidad Modulada - lecho tiroides mas reas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "TORRES, Miguel Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:00",
+    "EndTime": "20:15",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia \u002B ganglios"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "DOMINGUEZ VALDEZ, Modesta Concepcion",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:15",
+    "EndTime": "20:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia izquierda \u002B \u00E1reas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "NOVOA, Florencia Valeria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:30",
+    "EndTime": "20:40",
+    "Treatment": "Tridimensional Conformado - utero \u002B ganglios pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "IRIGOYTIA, Natalia Maribel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:40",
+    "EndTime": "20:50",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecho \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "GIOVANNITTI, Walter Javier",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:50",
+    "EndTime": "21:00",
+    "Treatment": "Intensidad Modulada - cyc"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "MARTIN, Roxana Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:00",
+    "EndTime": "21:15",
+    "Treatment": "Intensidad Modulada - LESION PULMON"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "ALZAMENDI, Roxana Elizabeth",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:15",
+    "EndTime": "21:30",
+    "Treatment": "Tridimensional Conformado - recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 3",
+    "PatientName": "PALERMO, Andrea Veronica",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:30",
+    "EndTime": "22:00",
+    "Treatment": "Tridimensional Conformado - VMD \u002B Boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "BISSO, Hugo Norberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:15",
+    "Treatment": "Intensidad Modulada - Recto \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "RODRIGUEZ, Ana Lia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:15",
+    "EndTime": "07:30",
+    "Treatment": "Intensidad Modulada - Lesion LSD \u002B hiliar"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "CAPANO, Eduardo Hugo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:45",
+    "Treatment": "IGRT - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GHIRARDI MANEIRO, Estefania",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:15",
+    "Treatment": "Intensidad Modulada - utero \u002B ganglios pelvis \u002B retroperitoneo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "ZORRILLA, Maria Esther",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:15",
+    "EndTime": "08:45",
+    "Treatment": "SBRT - Lesion pulmonar"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GUERRIERI, Carmen Sofia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:45",
+    "EndTime": "09:15",
+    "Treatment": "SBRT - Nodulo pulmonar LSI"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "OYARZO, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:15",
+    "EndTime": "09:30",
+    "Treatment": "Intensidad Modulada - lesion Tiroidea/laringea \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "MORENO, Marianela Belen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:45",
+    "Treatment": "Intensidad Modulada - hombro izquierdo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "SANCHEZ, Renata",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - TIBIA"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "MADAMA, Daniel Ernesto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas \u002B areas \u002B isquion"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "ROMEO, Rodolfo Ernesto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:15",
+    "Treatment": "Intensidad Modulada - torax"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "VILLANO, Jose Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:15",
+    "EndTime": "12:30",
+    "Treatment": "Intensidad Modulada - UGE"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "BARROS, Julio Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:45",
+    "Treatment": "Intensidad Modulada - amigdala izquierda \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GALLO, Daniel Osvaldo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:45",
+    "EndTime": "13:00",
+    "Treatment": "Intensidad Modulada - Muslo izquierdo"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "JIMENEZ, Graciela Pilar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Intensidad Modulada - Silla turca- Meningioma"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GONZALEZ, Ricardo Augusto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "FLORES, Hilda Ines",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:45",
+    "Treatment": "Intensidad Modulada - Lecho AHT \u002B Areas \u002B RTP"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "BONE, Cesar Adrian",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:45",
+    "EndTime": "14:00",
+    "Treatment": "Intensidad Modulada - Recto/Pelvis"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "CAJAL, Karina Mariela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:20",
+    "Treatment": "Radiocirug\u00EDa -"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "VERGARA, Rosa Silvia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:20",
+    "EndTime": "14:50",
+    "Treatment": "Radiocirug\u00EDa -"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "VAZZANA, Sergio Hugo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:50",
+    "EndTime": "15:10",
+    "Treatment": "SBRT - 7mo arco costal izquierdo."
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "VAZZANA, Sergio Hugo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:20",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "ROMANO COSTA, Maia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Intensidad Modulada - LESION DE TRONCO"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "FLEITA, Esteban Leandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:45",
+    "Treatment": "Intensidad Modulada - SNC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "OBREGOSO, Facundo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:45",
+    "EndTime": "17:00",
+    "Treatment": "Tridimensional Conformado - Iliaco-ewing"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "ROES, Maria Agustina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:15",
+    "Treatment": "Intensidad Modulada - Lecho AHT \u002B Areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "REYNA, Maria Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:15",
+    "Treatment": "Intensidad Modulada - Lecho de glosectomia"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "CAPELLA, Ruben Americo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - LESION PULMON \u002B GANGLIO"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GOMEZ, Marisa Edith",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:45",
+    "Treatment": "Intensidad Modulada - Lesion SNC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "DI PAOLO, Luis Gabriel Domingo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:45",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - Esofago \u002B areas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "RIVADENEYRA, Ruben Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:15",
+    "Treatment": "Intensidad Modulada - Laringe"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "POSTERARO, Pablo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:15",
+    "EndTime": "18:30",
+    "Treatment": "Intensidad Modulada - CYC"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GRISPO, Fernando Hugo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:45",
+    "Treatment": "Intensidad Modulada - PELVIS"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "JOHANNETON, Patricia Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:45",
+    "EndTime": "19:00",
+    "Treatment": "Intensidad Modulada - parotida"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "GARBARZ GALANTE, Sergio Abel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "IGRT - prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "CARRE\u00D1O RODRIGUEZ, Nirma Del Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Intensidad Modulada - recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "ESPOSITO, Carolina Paola",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:45",
+    "Treatment": "Intensidad Modulada - Pelvis ginacologica"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "CARRASCO, Liliana Noemi",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:45",
+    "EndTime": "20:00",
+    "Treatment": "Intensidad Modulada - cabeza y cuello"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "PERIGA, Dario Cesar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:00",
+    "EndTime": "20:15",
+    "Treatment": "IGRT - lecho prostatectomia \u002B areas pelviana \u002B boost"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "FERNANDEZ, Victor Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:15",
+    "EndTime": "20:30",
+    "Treatment": "IGRT - Prostata"
+  },
+  {
+    "CenterName": "MEVA-Central",
+    "MachineName": "MEVA-Central - Equipo 4",
+    "PatientName": "FARKAS, Ana Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:30",
+    "EndTime": "20:45",
+    "Treatment": "Intensidad Modulada - pulmon \u002B mediastino"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "ROZADILLA, Susana Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:10",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "TINEO DELGADO, Angelica Carolina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:10",
+    "EndTime": "07:20",
+    "Treatment": "Tridimensional Conformado - Pelvis ginecologica"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "ROSALES, Silvana Elizabeth",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:20",
+    "EndTime": "07:30",
+    "Treatment": "Intensidad Modulada - Volumen mamario izquierdo"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "FUNES, Virginia Raquel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:40",
+    "Treatment": "Intensidad Modulada - supra e infraclaviculares"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "ESPINOZA FERNANDEZ, William Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:40",
+    "EndTime": "07:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VVSS \u002B gg pelvis"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "CORSO, Jaimen Felix",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:50",
+    "EndTime": "08:00",
+    "Treatment": "Intensidad Modulada - Recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "SURIANO, Claudio Salvador",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:10",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia \u002B ganglios pelvis"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "RIZZI, Alejandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:10",
+    "EndTime": "08:20",
+    "Treatment": "Intensidad Modulada - Amigdala izquierdo \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "VAZQUEZ VILLALBA, Mariela Elizabeth",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:20",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - Pelvis ginecologica \u002B LAO"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "TACCA, Monica Alicia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "08:45",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo \u002B boost"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "MENDOZA, Vilma Elisabet",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:45",
+    "EndTime": "08:55",
+    "Treatment": "Tridimensional Conformado - Pelvis ginecologica"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "MATTAR, Daniel Hector",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:55",
+    "EndTime": "09:05",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia \u002B ganglios pelvis"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "ORLANDO, Ver\u00F3nica Marta",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:05",
+    "EndTime": "09:15",
+    "Treatment": "Tridimensional Conformado - lecho de mastectomia derecha \u002B areas"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "PADIN, Miguel Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:15",
+    "EndTime": "09:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "LEMES MENDEZ, Maria Valeria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho \u002B boost"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "CHAVEZ, Noelia Yanel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Pelvis ginecologica"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "RENZONI, Claudio Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "SEGRETI, Mario Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:10",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "CARRIL, Fernando Diego Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:10",
+    "EndTime": "11:20",
+    "Treatment": "Tridimensional Conformado - Prostata \u002B VVSS"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "JAUREGUIZAHAR, Luis Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:20",
+    "EndTime": "11:25",
+    "Treatment": "Tridimensional Conformado - Sacro \u002B partes blandas"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "SCHILLACI, Ariel Alejandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:25",
+    "EndTime": "11:30",
+    "Treatment": "Tridimensional Conformado - Pulmon izquierdo LII"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "CASTILLO, Hugo Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Intensidad Modulada - pulmon derecho \u002B mediastino"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "SANCHEZ, Angel Mario",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:40",
+    "EndTime": "11:55",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "KONYA, Cristina Violeta",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:55",
+    "EndTime": "12:05",
+    "Treatment": "Tridimensional Conformado - Mama Izq"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "BOURGEOIS, Claudia Adriana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:10",
+    "EndTime": "12:20",
+    "Treatment": "Tridimensional Conformado - Mama Izq"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "BUSTOS, Ivana Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:20",
+    "EndTime": "12:30",
+    "Treatment": "Tridimensional Conformado - Pelvis ginecologica"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "RAMOS MEJIA, Claudia Mar\u00EDa Gabriela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:45",
+    "Treatment": "Intensidad Modulada - Esofago \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "GRION, Livia Antonia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:45",
+    "EndTime": "12:55",
+    "Treatment": "Tridimensional Conformado - Mama Izq"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "MARTINEZ ESTIGARRIBIA, Margarita",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:55",
+    "EndTime": "13:10",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo \u002B boost \u002B areas"
+  },
+  {
+    "CenterName": "CETRO",
+    "MachineName": "CETRO - Cetro",
+    "PatientName": "SANCHEZ, Maria Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:10",
+    "EndTime": "13:20",
+    "Treatment": "Tridimensional Conformado - Vl mamario derecho \u002B boost integrado RA"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "AGRABE, Cristian Horacio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:10",
+    "EndTime": "07:20",
+    "Treatment": "Tridimensional Conformado - Retroperitoneo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "LOPEZ, Domingo Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:20",
+    "EndTime": "07:30",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "LOPEZ, Domingo Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:20",
+    "EndTime": "07:25",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "VALDEZ, Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:40",
+    "Treatment": "Intensidad Modulada - Recto \u002B \u00C1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "SALOMON, Dante Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:10",
+    "Treatment": "Intensidad Modulada - Recto \u002B \u00C1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DE LA CRUZ SANCHEZ, Carmelo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:10",
+    "EndTime": "08:20",
+    "Treatment": "Tridimensional Conformado - Recto \u002B \u00C1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MACHUCA, Valeria Laura",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:20",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - Mama derecha"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ACEVEDO, Barbara Cecilia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "08:40",
+    "Treatment": "Tridimensional Conformado - Cervix\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "FRIAS MENESES, Julio Alejandro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:40",
+    "EndTime": "08:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vs \u002B region isquiopubiana izq"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "AGUIRRE, Analia De Los Angeles",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:40",
+    "EndTime": "08:50",
+    "Treatment": "Tridimensional Conformado - Cervix\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "OYHENARD, Lydia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:50",
+    "EndTime": "08:55",
+    "Treatment": "Intensidad Modulada - Lesion de mucosa yugal \u002B areas"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "OYHENARD, Lydia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:50",
+    "EndTime": "09:00",
+    "Treatment": "Intensidad Modulada - Lesion de mucosa yugal \u002B areas"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ACEVEDO, Mirtha Arazeli",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:10",
+    "Treatment": "Tridimensional Conformado - VMD\u002BBoost"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "SARTELLI, Alberto Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:10",
+    "EndTime": "09:20",
+    "Treatment": "Intensidad Modulada - Prostata y vs"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ORTIZ, Noemi Virginia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:20",
+    "EndTime": "09:30",
+    "Treatment": "Intensidad Modulada - Esofago medio\u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "VALENZISI, Daniela Guillermina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MADDALONI, Rosa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Lesion trigono retromolar derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "BANEGAS, Enrique Ovidio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Tridimensional Conformado - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "CORBALAN, Marta Santos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:20",
+    "Treatment": "Intensidad Modulada - Volumen mamario Derecho y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DIAS, Ramon Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:10",
+    "Treatment": "Tridimensional Conformado - Lesion de recto \u002B Areas ganglionares."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MICUCCI, Ricardo Pascual",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:10",
+    "EndTime": "11:20",
+    "Treatment": "Intensidad Modulada - Lecho de Prostatectomia."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MEDLICOTT, Lorena Vanesa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:20",
+    "EndTime": "11:30",
+    "Treatment": "Tridimensional Conformado - Mama izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MAIDANA, Silvia Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Tridimensional Conformado - Pelvis \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "CORTAVE, Isabel Julia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:40",
+    "EndTime": "11:50",
+    "Treatment": "Tridimensional Conformado - holocraneo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "COLQUE, Maria Antonia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:50",
+    "EndTime": "12:00",
+    "Treatment": "Intensidad Modulada - Pelvis \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MAFFEI, Mario Amilcar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:10",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Ves\u00EDculas seminales."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "CASCALLARES, Miguel Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:10",
+    "EndTime": "12:20",
+    "Treatment": "Tridimensional Conformado - recto \u002B areas ganglionares."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ROMERO, Norberto Hernan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:20",
+    "EndTime": "12:30",
+    "Treatment": "Tridimensional Conformado - vejiga"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "AQUILI, Liliana Leonor",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:35",
+    "Treatment": "Intensidad Modulada - Lecho Quirurgico SNC"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "AQUILI, Liliana Leonor",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:40",
+    "Treatment": "Intensidad Modulada - Lecho Quirurgico SNC"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "BENITEZ CRISTALDO, Francisco Solano",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "FIORDELINO, Emilia Mirtha",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:50",
+    "EndTime": "13:00",
+    "Treatment": "Tridimensional Conformado - Utero\u002B\u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ALVAREZ, Carlos Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:10",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ROMAN, Flavia Sabrina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:10",
+    "EndTime": "13:20",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DURATBEGOVIC, Erica Sabrina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:40",
+    "Treatment": "Tridimensional Conformado - Mama izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "RIVERO, Juan Carlos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:10",
+    "Treatment": "Intensidad Modulada - Region cervico/SCV derecha"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "SANDOVAL, Mario Marcelino",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:20",
+    "EndTime": "14:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B VS"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DIAZ, Noelia Florencia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:50",
+    "EndTime": "15:00",
+    "Treatment": "Tridimensional Conformado - Pelvis \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "VILLACORTA, Jorge Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:10",
+    "Treatment": "Tridimensional Conformado - HOLOCRANEO"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DONATO, Hugo Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:10",
+    "EndTime": "15:20",
+    "Treatment": "Intensidad Modulada - Region nasal \u002B maxilar izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "CORBALAN, Marta Santos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:20",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - Volumen mamario Derecho y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ALVAREZ, Alicia Noemi",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:40",
+    "Treatment": "Intensidad Modulada - Vagina\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ALVAREZ, Alicia Noemi",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:35",
+    "Treatment": "Intensidad Modulada - Vagina\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "AVILA, Raquel Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:40",
+    "EndTime": "15:50",
+    "Treatment": "Intensidad Modulada - Lecho quirurgico Cervical Derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ROMERO, Juan Carlos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:10",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MOLINE, Antonio Jaime",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:20",
+    "EndTime": "16:25",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "MOLINE, Antonio Jaime",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:20",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "FERRARI, Liliana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:40",
+    "Treatment": "Tridimensional Conformado - VMD\u002Bboost"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "FERRARI, Liliana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:35",
+    "Treatment": "Tridimensional Conformado - VMD\u002Bboost"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ARGA\u00D1ARAZ, Manuel Francisco",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:10",
+    "Treatment": "Intensidad Modulada - Prostata y vs"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ORLANDO, Camila Mailen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:10",
+    "EndTime": "17:15",
+    "Treatment": "Tridimensional Conformado - Volumen mamario Izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ORLANDO, Camila Mailen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:10",
+    "EndTime": "17:20",
+    "Treatment": "Tridimensional Conformado - Volumen mamario Izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "CADEZ, Carlos Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:20",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "DE LIGUORI, Marcelo Angel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:20",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 1",
+    "PatientName": "ROJAS, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:40",
+    "Treatment": "Intensidad Modulada - Prostata\u002BVSS"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SANTILLAN, Miriam Susana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:10",
+    "Treatment": "Intensidad Modulada - Cervix/areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "FREIJOMIL, Jose Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:10",
+    "EndTime": "07:20",
+    "Treatment": "Tridimensional Conformado - Mediastino/hilio derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "GARCIA, Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:30",
+    "EndTime": "07:40",
+    "Treatment": "Intensidad Modulada - Laringe"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SALLOUM, Jorge Omar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:40",
+    "EndTime": "07:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "MASSEO, Antonino",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:10",
+    "Treatment": "Intensidad Modulada - Pulmon/mediastino"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CAYO, Azul Milena",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "08:40",
+    "Treatment": "Intensidad Modulada - Utero\u002B\u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "HERNANDEZ, Paola Maura",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:40",
+    "EndTime": "08:50",
+    "Treatment": "Intensidad Modulada - Recto \u002B \u00C1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "MUJICA RAMIREZ, Candida Rosa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:50",
+    "EndTime": "09:00",
+    "Treatment": "Intensidad Modulada - Cervix/pelvis"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CAYO, Azul Milena",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:10",
+    "Treatment": "Intensidad Modulada - Utero\u002B\u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "VIDAL, Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:20",
+    "EndTime": "09:30",
+    "Treatment": "Intensidad Modulada - Laringe \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SANTANDER DIAZ, German",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Tridimensional Conformado - lesion hemitoracica derecha"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SILVA, Nelida Ramona",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:45",
+    "Treatment": "Intensidad Modulada - Laringe y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SILVA, Nelida Ramona",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Laringe y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "LENCINA, Francisco",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Intensidad Modulada - Es\u00F3fago superior \u002B \u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "LOPEZ, Celia Lidia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:10",
+    "Treatment": "Tridimensional Conformado - VMI\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "FREIJOMIL, Jose Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:10",
+    "EndTime": "10:20",
+    "Treatment": "Tridimensional Conformado - Mediastino/hilio derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SOTO, Lidia Justina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:30",
+    "EndTime": "10:40",
+    "Treatment": "Intensidad Modulada - Lesion pulmon izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "STINGA, Mario Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:10",
+    "Treatment": "Intensidad Modulada - Base de lengua y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "BENITEZ, Isabel Ramona",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:10",
+    "EndTime": "11:20",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CASTRO LOPEZ, Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:20",
+    "EndTime": "11:30",
+    "Treatment": "Intensidad Modulada - Pulmon derecho y mediastino"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "LERDA, Victor Omar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Intensidad Modulada - Prostata y vs/areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "NIRENBERG, Carlos Jorge",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:40",
+    "EndTime": "11:50",
+    "Treatment": "Intensidad Modulada - Lecho de reseccion en muslo izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SANCHEZ, Sandra Elizabeth",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:10",
+    "Treatment": "Tridimensional Conformado - Volumen mamario Izquierdo \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SOZA, Irma Cecilia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:10",
+    "EndTime": "12:20",
+    "Treatment": "Intensidad Modulada - Lesion rectal \u002B areas ganglionares."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SUNSI, Silvia Susana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:50",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia izquierda y areas"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "ROMERO, Norma Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:50",
+    "EndTime": "13:00",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "VERON, Veronica Noelia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:10",
+    "Treatment": "Intensidad Modulada - Vulva \u002B Areas"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "INSAURRALDE, Brian Ezequiel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:10",
+    "EndTime": "13:20",
+    "Treatment": "Intensidad Modulada - Miembro inferior derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "VARGAS, Leandro Ezequiel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:20",
+    "EndTime": "13:25",
+    "Treatment": "Intensidad Modulada - Cavidad orbitaria izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "VARGAS, Leandro Ezequiel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:20",
+    "EndTime": "13:30",
+    "Treatment": "Intensidad Modulada - Cavidad orbitaria izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "LLANO, Ruben Urbano",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:40",
+    "EndTime": "13:50",
+    "Treatment": "Intensidad Modulada - Masa pulmonar izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "MORE, Patricia Monica",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:50",
+    "EndTime": "14:00",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CAPPARELLI, Aurora Juana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:10",
+    "Treatment": "Tridimensional Conformado - mama derecha"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "KANAKARIS, Vera",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:10",
+    "EndTime": "15:20",
+    "Treatment": "Tridimensional Conformado - VMI"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "SCHASCHIN, Pablo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:20",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - Prostata/vs y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "ARGA\u00D1ARAZ, Bella Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:40",
+    "Treatment": "Tridimensional Conformado - Mama derecha y areas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "FIORE, Stella Maris",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:40",
+    "EndTime": "15:50",
+    "Treatment": "Intensidad Modulada - Lesion pulmonar \u002B mediastino"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CHAMORRO BENITEZ, Jose Domingo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:50",
+    "EndTime": "16:00",
+    "Treatment": "Intensidad Modulada - Pulmon izquierdo \u002B mediastino"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "ROTTA, Julian Mauricio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:10",
+    "Treatment": "Tridimensional Conformado - Lecho quirurgico dorso supra escapular derecho"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "HOYOS, Mirtha Rosalia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:20",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - Pelvis"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "DEVEIKIS, Jorge Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Ves\u00EDculas seminales."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CACERES, Juan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:40",
+    "EndTime": "16:50",
+    "Treatment": "Intensidad Modulada - Lecho quirurgico temporal izquierdo"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "MOSCHINI, Roxana Sandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:50",
+    "EndTime": "17:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho\u002Bareas ganglionares"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "CHIROLIA, Diego Rene",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:10",
+    "Treatment": "Intensidad Modulada - Lesion en Recto y Areas Ganglionares."
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "VALLES, Valentin Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:10",
+    "EndTime": "17:20",
+    "Treatment": "Tridimensional Conformado - Region inguinal izquierda"
+  },
+  {
+    "CenterName": "QUILMES",
+    "MachineName": "QUILMES - Equipo 2",
+    "PatientName": "BALDEZ, Braian Alen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:20",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - Lesion pelviana"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 1",
+    "PatientName": "San Justo - Equipo 1",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "San Justo - Equipo 1",
+    "Treatment": "San Justo - Equipo 1"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "VERA DOMINGUEZ, Janna Valentina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:00",
+    "EndTime": "07:45",
+    "Treatment": "Intensidad Modulada - EPENDIMOMA"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MUSSO, Carina De Jesus",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "07:45",
+    "EndTime": "08:00",
+    "Treatment": "Tridimensional Conformado - Lecho de AHT \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GONZALEZ, Maria Del Carmen",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:15",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "San Justo - Equipo 2",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "",
+    "Treatment": "Actividad - PLACAS VERIFICADORAS"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "RODRIGUEZ, Ana Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:15",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - Pelvis extendida hasta L2-3"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ESTEVES, Maria Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "08:45",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ESTEVES, Maria Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:45",
+    "EndTime": "09:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "DUVEAUX, Edith Amalia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:15",
+    "Treatment": "Intensidad Modulada - Es\u00F3fago medio inferior y ganglios regionales"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "LIPARELLI, Olga Alcira",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:15",
+    "EndTime": "09:30",
+    "Treatment": "Tridimensional Conformado - Mama izquierda y v\u00E9rtice axilar izquierdo"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "CORVALAN, Maria Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:45",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SANABRIA, Maria Ester",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:45",
+    "EndTime": "10:00",
+    "Treatment": "Tridimensional Conformado - Lecho mamario izquierdo y areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GODOY, Andrea Veronica",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Tridimensional Conformado - Flash Hemost\u00E1tico Cervix"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "BLANCO, Griselda Mabel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:15",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "LEIVA, Analia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:15",
+    "EndTime": "10:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MOLEDO, Alicia Silvia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:30",
+    "EndTime": "10:45",
+    "Treatment": "Intensidad Modulada - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SOTOMAYOR, Yolanda Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:45",
+    "EndTime": "11:00",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MILONE, Hector Pedro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:15",
+    "Treatment": "Tridimensional Conformado - Regi\u00F3n nasogeniana"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GRASSO, Domingo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:15",
+    "EndTime": "11:30",
+    "Treatment": "Tridimensional Conformado - Lecho \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MONZON, Patricio Javier",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:45",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MOREIRAS, Walter Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:45",
+    "EndTime": "12:00",
+    "Treatment": "Intensidad Modulada - Amigdala \u002B Cervicales"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GALLO ALBAS, Nelson Eduardo David",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:15",
+    "Treatment": "Intensidad Modulada - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "PAREDES, Pedro",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:15",
+    "EndTime": "12:30",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata y ves\u00EDculas"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MONZON, Ana Paola",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:45",
+    "Treatment": "Tridimensional Conformado - Mama izquierda y \u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "FORTI, Christian Edgardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:45",
+    "EndTime": "13:00",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "RUFFO, Angela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Intensidad Modulada - Lengua \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "NATALI, Nestor Julio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:10",
+    "EndTime": "13:25",
+    "Treatment": "Intensidad Modulada - Lesion pulmonar derecha"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "BALBUENA, Hector Manuel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Intensidad Modulada - Base de lengua y piso de boca \u002B \u00E1reas"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GIMENEZ, Juana Ramona",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:45",
+    "Treatment": "Intensidad Modulada - Orofaringe izquierda"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "RUGGERI, Norberto Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:45",
+    "EndTime": "14:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GALLEGO, Alicia Dolores",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:15",
+    "Treatment": "Tridimensional Conformado - Lesion frontal derecha"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "San Justo - Equipo 2",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "",
+    "Treatment": "Actividad - PLACAS VERIFICADORAS"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "RAVINALE, Luciano Francisco",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:15",
+    "EndTime": "14:30",
+    "Treatment": "Intensidad Modulada - SNC"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "VINCENTI, Eduardo Jorge",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:30",
+    "EndTime": "14:45",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SILVA, Maria Alejandra",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:45",
+    "EndTime": "15:00",
+    "Treatment": "Intensidad Modulada - Vulva \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SCONFIANZA, Daniel Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:15",
+    "Treatment": "Tridimensional Conformado - Sacroiliaco izquierdo"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "OLEINIK, Norma Noemi",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:15",
+    "EndTime": "15:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mama izq \u002B axilo-SCV izq"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "PAPINI, Selva Daniela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:45",
+    "Treatment": "Tridimensional Conformado - Utero \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "FRIAZ, Romina Gisela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:45",
+    "EndTime": "16:00",
+    "Treatment": "Intensidad Modulada - Lengua \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "DI GIOVANNI, Cristian David",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Intensidad Modulada - Amigdala derecha \u002B cervicales bilateral \u002B SCV bilateral"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "RIBEIRO DIAS, Alicia Maria",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Tridimensional Conformado - Canal anal \u002B extension a recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SCOTTI, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:45",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectom\u00EDa \u002B \u00E1reas ganglionares y eventual Boost"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GOMEZ, Pedro Eduardo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:45",
+    "EndTime": "17:00",
+    "Treatment": "Intensidad Modulada - Prostata"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "CERABONA, Alejandra Rosa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:45",
+    "EndTime": "17:00",
+    "Treatment": "Intensidad Modulada - Recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GONZALEZ GONZALEZ, Guillermo Eladio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:00",
+    "EndTime": "17:15",
+    "Treatment": "Tridimensional Conformado - Inguinal bilateral \u002B boost ingle izq"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "SINNOTT, Liliana Ines",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "17:30",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GAUNA RAMOS, Claudia Karina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:45",
+    "Treatment": "Tridimensional Conformado - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "LOPEZ, Vilma Mari",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:45",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - Laringe supraglotica \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ROMANI, Norberto Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:15",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "TRAPANI, Karina Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:15",
+    "EndTime": "18:30",
+    "Treatment": "Intensidad Modulada - Lecho quir\u00FArgico de maxilectomia izquierda y ganglios regionales"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "JARA ACOSTA, Mirna Elisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:20",
+    "EndTime": "18:30",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo \u002B Boost"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ESPOSITO, Vanesa Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:35",
+    "Treatment": "Intensidad Modulada - Ano m\u00E1s areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GUY, Noemi Julia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:45",
+    "Treatment": "Tridimensional Conformado - Pelvis"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ESPOSITO, Vanesa Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:40",
+    "EndTime": "18:55",
+    "Treatment": "Intensidad Modulada - Ano m\u00E1s areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "GATTA, Graciela Susana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:45",
+    "EndTime": "19:00",
+    "Treatment": "Tridimensional Conformado - Mama izquierda"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ORTEGA MENDOZA, Francisco Solano",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata y ves\u00EDculas"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "LEAL, Sandra Beatriz",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Intensidad Modulada - canal anal \u002B areas ganglionares \u002B Ingles"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "PORTILLO CACERES, Celia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:45",
+    "Treatment": "Tridimensional Conformado - VMI \u002B Boost"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ESPOSITO, Vanesa Andrea",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:45",
+    "EndTime": "20:00",
+    "Treatment": "Intensidad Modulada - Ano m\u00E1s areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "CISTERNA, Maria Luisa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:00",
+    "EndTime": "20:15",
+    "Treatment": "Tridimensional Conformado - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "AGUIRRE, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:15",
+    "EndTime": "20:30",
+    "Treatment": "Intensidad Modulada - Pr\u00F3stata \u002B VS"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "BIAGGIO, Natalia Soledad",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:30",
+    "EndTime": "20:45",
+    "Treatment": "Tridimensional Conformado - Lecho mastectomia izquierda"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "DA COSTA LOURO, Manuel Joaquin",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "20:45",
+    "EndTime": "21:00",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "ALMADA, Maria Fernanda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:00",
+    "EndTime": "21:15",
+    "Treatment": "Tridimensional Conformado - Pelvis extendida hasta L2-3"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "CORONEL, Maria Fernanda",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:15",
+    "EndTime": "21:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectom\u00EDa izq \u002B Axilo-scv \u002B CMI"
+  },
+  {
+    "CenterName": "SAN JUSTO",
+    "MachineName": "SAN JUSTO - Equipo 2",
+    "PatientName": "MOLAS, Carlos Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "21:30",
+    "EndTime": "21:45",
+    "Treatment": "Intensidad Modulada - Lecho prost\u00E1tico"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ROMEO, Antonio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:00",
+    "EndTime": "08:15",
+    "Treatment": "Tridimensional Conformado - Vejiga \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ELGUE QUIAN, Graciela Jeannette",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:15",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho \u002B boost \u002B Areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "DEL CARLO, Clarissa Rita",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:15",
+    "EndTime": "08:30",
+    "Treatment": "Tridimensional Conformado - Volumen Mamario Izquierdo \u002B Boost"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SOLLA, Juan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:30",
+    "EndTime": "08:40",
+    "Treatment": "Tridimensional Conformado - lesion frontoparietal izquierda de cuero cabelludo"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "JASPE, Mariana Soledad",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:40",
+    "EndTime": "08:50",
+    "Treatment": "Tridimensional Conformado - Utero \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "LEDESMA DUARTE, Eva Rosa",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "08:50",
+    "EndTime": "09:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo \u002B boost \u002B axilo\u002Bscv"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SALAMANCA, Luis Rolando",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:00",
+    "EndTime": "09:15",
+    "Treatment": "Intensidad Modulada - Recto \u002B \u00E1reas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "PIHUALA, Juan Vicente",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:30",
+    "EndTime": "09:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "CARBAJALES, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas."
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "CONCEPCION GALARRETA, Gustavo Clemente",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:40",
+    "EndTime": "09:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002BVesiculas Seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "COVIELLO, Ana",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "09:50",
+    "EndTime": "10:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "BENITEZ, Oscar Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:00",
+    "EndTime": "10:20",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ALBORNOZ, Delmiro Nicasio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:20",
+    "EndTime": "10:40",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GALLO, Carlos Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "10:40",
+    "EndTime": "11:00",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia \u002B area sganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "YBA\u00D1EZ, Irene Rebeca",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:00",
+    "EndTime": "11:15",
+    "Treatment": "Tridimensional Conformado - lecho de mastectomia izquierdo \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GALMES, Oscar Osvaldo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:15",
+    "EndTime": "11:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GARAGARZA, Cora Marcela",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "REMBADO, Alberto Jorge",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:30",
+    "EndTime": "11:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "DIAP, Gabriel Anibal",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:40",
+    "EndTime": "11:50",
+    "Treatment": "Tridimensional Conformado - Recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "BRITOS, Fabiana Giselle",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "11:50",
+    "EndTime": "12:00",
+    "Treatment": "Tridimensional Conformado - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ASIUTTO, Fabian Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:00",
+    "EndTime": "12:10",
+    "Treatment": "Intensidad Modulada - Mediastino y region cervical derecha"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "LENTO, Javier",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:10",
+    "EndTime": "12:20",
+    "Treatment": "Intensidad Modulada - Recto \u002B \u00C1reas Ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:20",
+    "EndTime": "12:25",
+    "Treatment": "Tridimensional Conformado - Nuca"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:25",
+    "EndTime": "12:30",
+    "Treatment": "Tridimensional Conformado - Dorso"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:30",
+    "EndTime": "12:35",
+    "Treatment": "Tridimensional Conformado - Cara interna Brazo derecho"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:35",
+    "EndTime": "12:40",
+    "Treatment": "Tridimensional Conformado - Tibia anterior derecha (tatoo)"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:40",
+    "EndTime": "12:45",
+    "Treatment": "Tridimensional Conformado - Ingle derecha"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:45",
+    "EndTime": "12:50",
+    "Treatment": "Tridimensional Conformado - Cara anterior de rodilla izquierda"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:50",
+    "EndTime": "12:55",
+    "Treatment": "Tridimensional Conformado - cara interna de rodilla izquierda"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GONZALEZ, David Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "12:55",
+    "EndTime": "13:00",
+    "Treatment": "Tridimensional Conformado - cara anterior del empeine izquierdo"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SARUBBI, Jose Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:00",
+    "EndTime": "13:15",
+    "Treatment": "Intensidad Modulada - Laringe \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "AGUILAR, Gisela Lujan",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:15",
+    "EndTime": "13:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia derecha \u002B areas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "PEREZ, Luis Alberto",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:30",
+    "EndTime": "13:40",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "CORNACCHIA, Marta Delia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:50",
+    "EndTime": "14:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario izquierdo \u002B boost"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "DIZ, Anibal",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "13:50",
+    "EndTime": "14:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SALABERRY, Gustavo Horacio",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:00",
+    "EndTime": "14:15",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "DURAN DE CARDENAS, Nury Eloina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:15",
+    "EndTime": "14:30",
+    "Treatment": "Tridimensional Conformado - Lecho de mastectomia izquierda \u002B areas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GOMEZ, Olimpia Odolia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "14:45",
+    "EndTime": "15:00",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho \u002B boost \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SILVEIRA RANGEL, Mayuskany",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:00",
+    "EndTime": "15:15",
+    "Treatment": "Intensidad Modulada - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "MICHELE, Nelson Omar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:15",
+    "EndTime": "15:30",
+    "Treatment": "Intensidad Modulada - lecho de prostatectomia"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "AGUIRRE, Jorge Rolando",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:30",
+    "EndTime": "15:40",
+    "Treatment": "Tridimensional Conformado - Vertebra T11"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "CARDILLO, Jose Luis",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "15:40",
+    "EndTime": "15:50",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ALEJO CHIRINO, Rosmery",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:00",
+    "EndTime": "16:15",
+    "Treatment": "Intensidad Modulada - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "OLMEDO, Alejandro Daniel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:15",
+    "EndTime": "16:30",
+    "Treatment": "Intensidad Modulada - Fosa nasal \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "JUNCO SILVA, Arturo Martin",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:30",
+    "EndTime": "16:40",
+    "Treatment": "Tridimensional Conformado - Recto y areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "SUAREZ, Ruben Oscar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:40",
+    "EndTime": "16:50",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "GODOY, Laura Yamila",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "16:50",
+    "EndTime": "17:00",
+    "Treatment": "Tridimensional Conformado - Recto \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "PORTO, Carlos Jose",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "17:30",
+    "Treatment": "Intensidad Modulada - Prostata \u002B vesiculas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "RT Medrano",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:15",
+    "EndTime": "",
+    "Treatment": "Actividad - TURNO RESERVADO PARA P1 DE DRA GIGLIO"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "VERGARA, Ermelinda Del Pilar",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:30",
+    "EndTime": "17:45",
+    "Treatment": "Intensidad Modulada - Es\u00F3fago"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "PESCE, Patricia Cristina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "17:45",
+    "EndTime": "18:00",
+    "Treatment": "Intensidad Modulada - Cervix \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "MILICIC, Rosario Antonia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:00",
+    "EndTime": "18:10",
+    "Treatment": "Tridimensional Conformado - VMD"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "MILICIC, Rosario Antonia",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:10",
+    "EndTime": "18:15",
+    "Treatment": "Tridimensional Conformado - VMI"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "VISEDO, Stella Maris",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:30",
+    "EndTime": "18:40",
+    "Treatment": "Intensidad Modulada - pierna izquierda."
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "ROCHA KAPUS, Mariano Exequiel",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:40",
+    "EndTime": "18:50",
+    "Treatment": "Intensidad Modulada - Lecho de prostatectomia \u002B areas"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "CEJAS, Juan Carlos",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "18:50",
+    "EndTime": "19:00",
+    "Treatment": "Intensidad Modulada - Prostata \u002B Vesiculas seminales"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "PEREZ, Mirta Ester",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:00",
+    "EndTime": "19:15",
+    "Treatment": "Tridimensional Conformado - Volumen mamario derecho \u002B boost"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "TORRES GARRIDO, Adolfo",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:15",
+    "EndTime": "19:30",
+    "Treatment": "Intensidad Modulada - Laringe \u002B areas ganglionares"
+  },
+  {
+    "CenterName": "RT MEDRANO",
+    "MachineName": "RT MEDRANO - RT Medrano",
+    "PatientName": "RIOS, Gladys Marina",
+    "AgendaDate": "2026-05-19",
+    "StartTime": "19:30",
+    "EndTime": "19:45",
+    "Treatment": "Tridimensional Conformado - Vejiga \u002B areas"
+  }
+]

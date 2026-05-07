@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Meva.Rt.Core\Meva.Rt.Core.csproj" />
+    <ProjectReference Include="..\Meva.Rt.Application\Meva.Rt.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="AriaQ">
+      <HintPath>..\..\Insumos ARIA\AriaQ.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

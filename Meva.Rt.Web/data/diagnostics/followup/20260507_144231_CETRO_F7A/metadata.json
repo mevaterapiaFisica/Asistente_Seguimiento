@@ -1,0 +1,11 @@
+{
+  "TimestampUtc": "2026-05-07T14:42:32.3521396Z",
+  "Center": "CETRO",
+  "StageCode": "F7A",
+  "StageMicroStatus": "physicist_approval",
+  "SearchAction": "button:has-text(\u0027Buscar seguimientos\u0027)",
+  "SelectedCenterValue": "92461d14-abc3-4dc7-8583-432b5d49b32a",
+  "SelectedMicroStatusValue": "physicist_approval",
+  "FinalUrl": "https://sitramed.mevaterapia.com.ar/follow_up_search?filters[attention_center_id]=92461d14-abc3-4dc7-8583-432b5d49b32a\u0026filters[from_date]=\u0026filters[medical_history_id]=\u0026filters[micro_status]=physicist_approval\u0026filters[mode]=search\u0026filters[report_type]=by_status\u0026filters[treatment_type]=\u0026filters[until_date]=\u0026micro_status=physicist_approval",
+  "PageTitle": "Mevaterapia"
+}

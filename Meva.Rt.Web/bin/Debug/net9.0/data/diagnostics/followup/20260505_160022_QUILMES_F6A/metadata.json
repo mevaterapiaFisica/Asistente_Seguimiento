@@ -1,0 +1,11 @@
+{
+  "TimestampUtc": "2026-05-05T16:00:23.2315079Z",
+  "Center": "QUILMES",
+  "StageCode": "F6A",
+  "StageMicroStatus": "planification_assign",
+  "SearchAction": "button:has-text(\u0027Buscar seguimientos\u0027)",
+  "SelectedCenterValue": "753e14c4-61fc-498c-870c-b614573964ee",
+  "SelectedMicroStatusValue": "planification_assign",
+  "FinalUrl": "https://sitramed.mevaterapia.com.ar/follow_up_search?filters[attention_center_id]=753e14c4-61fc-498c-870c-b614573964ee\u0026filters[from_date]=\u0026filters[medical_history_id]=\u0026filters[micro_status]=planification_assign\u0026filters[mode]=search\u0026filters[report_type]=by_status\u0026filters[treatment_type]=\u0026filters[until_date]=\u0026micro_status=planification_assign",
+  "PageTitle": "Mevaterapia"
+}

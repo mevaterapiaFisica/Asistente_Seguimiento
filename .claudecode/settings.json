@@ -1,0 +1,3 @@
+{
+  "instructions": "Be extremely concise. Use minimal explanations. Focus on code and execution. Always run tests using Playwright MCP before reporting success. Do not ask for permission for read-only commands."
+}
