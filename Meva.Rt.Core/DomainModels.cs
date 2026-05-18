@@ -4,6 +4,7 @@ public sealed class RtCenter
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public bool AriaEnabled { get; set; } = true;
 }
 
 public sealed class RtMachine
@@ -37,8 +38,11 @@ public sealed class ProcessPatientSnapshot
     public int DaysInStage { get; set; }
     public int ExpectedDaysInStage { get; set; }
     public bool IsDelayed { get; set; }
+    public bool IsLongWait { get; set; }
     public string? PlannedMachineDisplayName { get; set; }
     public string SourceCenterName { get; set; } = string.Empty;
+    public string? SitraMedGuid { get; set; }
+    public string? AssignedPhysicist { get; set; }
 }
 
 public sealed class MachineAppointmentSnapshot
@@ -88,12 +92,23 @@ public sealed class MachineCapacitySetting
     public decimal ReservedSpecialHours { get; set; }
 }
 
+public sealed class RtTomograph
+{
+    public string CenterName  { get; set; } = string.Empty;
+    public string SitraName   { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+}
+
 public sealed class RtSystemConfiguration
 {
     public List<RtCenter> Centers { get; set; } = new();
     public List<RtMachine> Machines { get; set; } = new();
+    public List<RtTomograph> Tomographs { get; set; } = new();
     public List<ProcessStageDefinition> Stages { get; set; } = new();
     public List<MachineCapacitySetting> MachineCapacities { get; set; } = new();
+    public List<MachineCapacitySetting> TomographCapacities { get; set; } = new();
+    public int LongWaitThresholdDays { get; set; } = 40;
+    public int UpcomingScrapeDays { get; set; } = 15;
 }
 
 public sealed class SitraMedRuntimeOptions

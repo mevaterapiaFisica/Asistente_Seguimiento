@@ -81,9 +81,9 @@ public sealed class AriaQuery
             // Todos los planes (excluyendo cursos de QA/Física)
             var courses = patient.Courses?
                 .Where(c => c.CourseId != null
-                    && !c.CourseId.Contains("qa", StringComparison.OrdinalIgnoreCase)
-                    && !c.CourseId.Contains("fisica", StringComparison.OrdinalIgnoreCase)
-                    && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase))
+                    && c.CourseId.IndexOf("qa", StringComparison.OrdinalIgnoreCase) < 0
+                    && c.CourseId.IndexOf("fisica", StringComparison.OrdinalIgnoreCase) < 0
+                    && c.CourseId.IndexOf("física", StringComparison.OrdinalIgnoreCase) < 0)
                 .ToList() ?? [];
 
             var allPlans = new List<PlanResult>();

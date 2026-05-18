@@ -24,6 +24,12 @@ public interface IAriaPlanResolver
     Task<IReadOnlyList<AriaPlanSnapshot>> ResolveAsync(IEnumerable<string> patientIds, CancellationToken cancellationToken);
 }
 
+public interface ITomographAgendaExtractor
+{
+    Task<IReadOnlyList<MachineAppointmentSnapshot>> ExtractForDateAsync(DateOnly date, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<MachineAppointmentSnapshot>>> ExtractForDatesAsync(IEnumerable<DateOnly> dates, CancellationToken cancellationToken);
+}
+
 public interface ISnapshotStore
 {
     Task SaveAsync<T>(string snapshotName, T data, CancellationToken cancellationToken);
@@ -67,10 +73,20 @@ public sealed class BootstrapService
         var agenda = await _agendaExtractor.ExtractAsync(cancellationToken);
         var followUp = await _followUpExtractor.ExtractAsync(cancellationToken);
 
+        var longWaitThreshold = _configurationProvider.Configuration.LongWaitThresholdDays;
+        foreach (var patient in followUp)
+            patient.IsLongWait = patient.DaysInStage > longWaitThreshold;
+
         List<AriaPlanSnapshot> aria = [];
         if (!skipAria)
         {
+            var ariaEnabledCenters = _configurationProvider.Configuration.Centers
+                .Where(c => c.AriaEnabled)
+                .Select(c => c.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var patientIds = followUp
+                .Where(x => ariaEnabledCenters.Contains(x.CenterName))
                 .Select(x => x.PatientId)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -90,13 +106,17 @@ public sealed class BootstrapService
 
         var summary = followUp
             .GroupBy(x => new { x.CenterName, x.StageGroupName, x.ExpectedDaysInStage })
-            .Select(group => new StageSummaryItem
+            .Select(group =>
             {
-                CenterName = group.Key.CenterName,
-                StageGroupName = group.Key.StageGroupName,
-                PatientCount = group.Count(),
-                AverageDaysInStage = group.Any() ? group.Average(x => x.DaysInStage) : 0,
-                ExpectedDays = group.Key.ExpectedDaysInStage
+                var countable = group.Where(x => !x.IsLongWait).ToList();
+                return new StageSummaryItem
+                {
+                    CenterName = group.Key.CenterName,
+                    StageGroupName = group.Key.StageGroupName,
+                    PatientCount = group.Count(),
+                    AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
+                    ExpectedDays = group.Key.ExpectedDaysInStage
+                };
             })
             .OrderBy(x => x.CenterName)
             .ThenBy(x => x.StageGroupName)

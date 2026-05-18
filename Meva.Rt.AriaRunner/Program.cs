@@ -7,20 +7,22 @@ class Program
     static int Main(string[] args)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var outputDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)!;
+        var exeDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)!;
+        var outputDir = ResolveOutputDir(args, exeDir);
 
-        var logPath = Path.Combine(outputDir, $"aria_runner_{timestamp}.log");
+        var logPath = Path.Combine(exeDir, $"aria_runner_{timestamp}.log");
         var resultsPath = Path.Combine(outputDir, $"aria_results_{timestamp}.json");
 
         using var log = new RunnerLogger(logPath);
 
         log.Info("=== Meva.Rt AriaRunner iniciado ===");
-        log.Info($"Directorio:  {outputDir}");
+        log.Info($"Exe dir:     {exeDir}");
+        log.Info($"Output dir:  {outputDir}");
         log.Info($"Log:         {logPath}");
         log.Info($"Resultados:  {resultsPath}");
 
         // ─── 1. Archivo de entrada ────────────────────────────────────────────────
-        var inputPath = ResolveInputPath(args, outputDir, log);
+        var inputPath = ResolveInputPath(args, exeDir, log);
         if (!File.Exists(inputPath))
         {
             log.Error($"Archivo de entrada no encontrado: {inputPath}");
@@ -97,13 +99,13 @@ class Program
         return 0;
     }
 
-    private static string ResolveInputPath(string[] args, string outputDir, RunnerLogger log)
+    private static string ResolveInputPath(string[] args, string exeDir, RunnerLogger log)
     {
         foreach (var arg in args)
         {
             if (arg.StartsWith("--input=", StringComparison.OrdinalIgnoreCase))
             {
-                var path = arg["--input=".Length..].Trim('"', '\'');
+                var path = arg.Substring("--input=".Length).Trim('"', '\'');
                 if (!string.IsNullOrWhiteSpace(path))
                 {
                     log.Info($"Archivo de entrada: argumento --input ({path})");
@@ -112,8 +114,22 @@ class Program
             }
         }
 
-        var defaultPath = Path.Combine(outputDir, "pacientes.json");
+        var defaultPath = Path.Combine(exeDir, "pacientes.json");
         log.Info($"Archivo de entrada: por defecto ({defaultPath})");
         return defaultPath;
+    }
+
+    private static string ResolveOutputDir(string[] args, string exeDir)
+    {
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("--output-dir=", StringComparison.OrdinalIgnoreCase))
+            {
+                var path = arg.Substring("--output-dir=".Length).Trim('"', '\'');
+                if (!string.IsNullOrWhiteSpace(path))
+                    return path;
+            }
+        }
+        return exeDir;
     }
 }
