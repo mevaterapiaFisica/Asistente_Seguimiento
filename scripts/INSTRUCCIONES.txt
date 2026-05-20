@@ -1,0 +1,90 @@
+================================================================
+  MEVA RT - INSTRUCCIONES DE CONFIGURACION Y USO (Win10)
+================================================================
+
+REQUISITOS
+----------
+- PC con Windows 10 con acceso de red a ARIAMEVADB-SVR (puerto 1433)
+- .NET 9 Runtime instalado (https://dotnet.microsoft.com/download/dotnet/9.0)
+- El servidor Meva RT corriendo en http://localhost:5062
+- Contrasena del usuario "varian" de la PC ECL-FISICA2
+
+
+CONFIGURACION INICIAL (hacer una sola vez)
+------------------------------------------
+
+1. COMPILAR AriaRunner
+   Abrir una consola en C:\Pablo\Meva.Rt y ejecutar:
+
+     dotnet publish Meva.Rt.AriaRunner -f net9.0-windows -c Release -o Meva.Rt.AriaRunner\bin\Release\net9.0-windows
+
+2. CONFIGURAR LA CONTRASENA DE ARIA
+   Editar el archivo scripts\refresh.bat y reemplazar en la linea:
+
+     set ARIA_VARIAN_PASSWORD=CAMBIAR_POR_PASSWORD_REAL
+
+   por la contrasena real del usuario "varian" en ECL-FISICA2.
+
+3. VERIFICAR RUTAS en scripts\refresh.bat
+   Confirmar que estas variables apunten a las rutas correctas:
+
+     DATA_DIR   → carpeta data\ dentro de Meva.Rt.Web
+     RUNNER_EXE → AriaRunner.exe compilado en el paso 1
+
+
+EJECUCION MANUAL
+----------------
+Doble click en scripts\refresh.bat
+  o bien desde consola:
+    scripts\refresh.bat
+
+El script ejecuta los 6 pasos en orden y muestra el resultado
+de cada uno. Si algun paso falla, el proceso se detiene.
+
+Los logs de AriaRunner quedan en:
+  Meva.Rt.Web\data\aria_runner_YYYYMMDD_HHMMSS.log
+
+
+AUTOMATIZACION CON TASK SCHEDULER
+----------------------------------
+1. Abrir "Programador de tareas" (taskschd.msc)
+2. Crear tarea basica:
+   - Desencadenador: Diariamente a la hora deseada (ej: 06:00)
+   - Accion: Iniciar programa
+       Programa:  cmd.exe
+       Argumentos: /c "C:\Pablo\Meva.Rt\scripts\refresh.bat"
+3. En la pestana "General":
+   - Marcar "Ejecutar tanto si el usuario inicia sesion como si no"
+   - Marcar "Ejecutar con los privilegios mas altos"
+4. En "Condiciones": desmarcar "Iniciar la tarea solo si el
+   equipo esta conectado a la corriente"
+
+
+ARQUITECTURA (como funciona la conexion a ARIA)
+------------------------------------------------
+El programa corre completamente en esta PC (Win10).
+Para conectarse a la base de datos de ARIA en ARIAMEVADB-SVR,
+AriaRunner usa impersonacion de Windows con el usuario
+ECL-FISICA2\varian mediante la tecnica "runas /netonly":
+el proceso corre como tu usuario local, pero las conexiones
+de red usan las credenciales de ECL-FISICA2\varian.
+Esto funciona sin necesidad de que ese usuario exista en Win10.
+
+
+SOLUCION DE PROBLEMAS
+---------------------
+"Falló el test de conexion"
+  → Verificar contrasena en ARIA_VARIAN_PASSWORD (refresh.bat)
+  → Verificar conectividad: desde PowerShell ejecutar
+      Test-NetConnection -ComputerName ARIAMEVADB-SVR -Port 1433
+  → Verificar que el firewall de ARIAMEVADB-SVR permita el puerto
+
+"Error Win32: 1326" en el log de AriaRunner
+  → Contrasena incorrecta para ECL-FISICA2\varian
+
+"HTTP 000" en algun curl
+  → El servidor Meva RT no esta corriendo en el puerto 5062
+
+"Archivo de entrada no encontrado"
+  → El servidor no pudo exportar los IDs (revisar paso 1)
+================================================================

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net48;net9.0</TargetFrameworks>
+    <TargetFrameworks>net48;net9.0-windows</TargetFrameworks>
     <RootNamespace>Meva.Rt.AriaRunner</RootNamespace>
     <AssemblyName>AriaRunner</AssemblyName>
     <Nullable>enable</Nullable>

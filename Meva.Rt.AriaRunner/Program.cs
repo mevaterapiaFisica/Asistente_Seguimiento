@@ -1,16 +1,27 @@
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using Newtonsoft.Json;
 
 namespace Meva.Rt.AriaRunner;
 
 class Program
 {
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool LogonUser(string lpszUsername, string lpszDomain, string lpszPassword,
+        int dwLogonType, int dwLogonProvider, out IntPtr phToken);
+
+    // Usa credenciales solo para conexiones de red (equivale a runas /netonly)
+    const int LOGON32_LOGON_NEW_CREDENTIALS = 9;
+    const int LOGON32_PROVIDER_WINNT50 = 3;
+
     static int Main(string[] args)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var exeDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)!;
         var outputDir = ResolveOutputDir(args, exeDir);
 
-        var logPath = Path.Combine(exeDir, $"aria_runner_{timestamp}.log");
+        var logPath = Path.Combine(outputDir, $"aria_runner_{timestamp}.log");
         var resultsPath = Path.Combine(outputDir, $"aria_results_{timestamp}.json");
 
         using var log = new RunnerLogger(logPath);
@@ -26,7 +37,6 @@ class Program
         if (!File.Exists(inputPath))
         {
             log.Error($"Archivo de entrada no encontrado: {inputPath}");
-            log.Error("Creá un archivo 'pacientes.json' en la misma carpeta con el formato:");
             log.Error("  { \"patientIds\": [\"1-117505-0\", \"1-118031-0\"] }");
             return 1;
         }
@@ -50,17 +60,46 @@ class Program
             return 0;
         }
 
-        // ─── 2. Test de conexión ──────────────────────────────────────────────────
+        // ─── 2. Impersonación para conectar a ARIAMEVADB-SVR ──────────────────────
+        var ariaPassword = Environment.GetEnvironmentVariable("ARIA_VARIAN_PASSWORD")
+                        ?? ResolveArgValue(args, "--aria-password");
+
+        if (!string.IsNullOrEmpty(ariaPassword))
+        {
+            log.Info("Impersonando ECL-FISICA2\\varian para conexión a ARIAMEVADB-SVR...");
+            bool ok = LogonUser("varian", "ECL-FISICA2", ariaPassword,
+                LOGON32_LOGON_NEW_CREDENTIALS, LOGON32_PROVIDER_WINNT50, out IntPtr tokenHandle);
+
+            if (!ok)
+            {
+                log.Error($"No se pudo crear el token de impersonación. Error Win32: {Marshal.GetLastWin32Error()}");
+                log.Error("Verificá que la contraseña en ARIA_VARIAN_PASSWORD sea correcta.");
+                return 1;
+            }
+
+            log.Info("Impersonación activa — las conexiones de red usarán ECL-FISICA2\\varian.");
+            using var safeHandle = new SafeAccessTokenHandle(tokenHandle);
+            return WindowsIdentity.RunImpersonated(safeHandle,
+                () => RunQueries(input, resultsPath, log));
+        }
+
+        log.Warn("ARIA_VARIAN_PASSWORD no definida — conectando con usuario de Windows actual.");
+        return RunQueries(input, resultsPath, log);
+    }
+
+    static int RunQueries(RunnerInput input, string resultsPath, RunnerLogger log)
+    {
+        // ─── Test de conexión ─────────────────────────────────────────────────────
         log.Info(new string('-', 60));
         log.Info("Probando conexión a ARIA...");
         var query = new AriaQuery(log);
         if (!query.TestConnection())
         {
-            log.Error("Falló el test de conexión. Revisá el log y la configuración en AriaRunner.exe.config.");
+            log.Error("Falló el test de conexión. Revisá ARIA_VARIAN_PASSWORD y conectividad a ARIAMEVADB-SVR.");
             return 1;
         }
 
-        // ─── 3. Búsqueda por paciente ──────────────────────────────────────────
+        // ─── Búsqueda por paciente ────────────────────────────────────────────────
         var output = new RunnerOutput { TotalRequested = input.PatientIds.Count };
 
         log.Info(new string('-', 60));
@@ -76,17 +115,17 @@ class Program
             }
 
             log.Info($"[{i + 1}/{input.PatientIds.Count}] {id}");
-            var result = query.QueryPatient(id);
-            output.Patients.Add(result);
+            output.Patients.Add(query.QueryPatient(id));
         }
 
         output.TotalFound = output.Patients.Count(p => p.Found && p.Error == null);
         output.TotalNotFound = output.Patients.Count(p => !p.Found);
         output.TotalErrors = output.Patients.Count(p => p.Error != null);
 
-        // ─── 4. Guardar resultados ─────────────────────────────────────────────
-        var resultJson = JsonConvert.SerializeObject(output, Formatting.Indented);
-        File.WriteAllText(resultsPath, resultJson, System.Text.Encoding.UTF8);
+        // ─── Guardar resultados ───────────────────────────────────────────────────
+        File.WriteAllText(resultsPath,
+            JsonConvert.SerializeObject(output, Formatting.Indented),
+            System.Text.Encoding.UTF8);
 
         log.Info(new string('=', 60));
         log.Info("Completado:");
@@ -99,37 +138,33 @@ class Program
         return 0;
     }
 
-    private static string ResolveInputPath(string[] args, string exeDir, RunnerLogger log)
+    static string ResolveInputPath(string[] args, string exeDir, RunnerLogger log)
     {
-        foreach (var arg in args)
+        var fromArg = ResolveArgValue(args, "--input");
+        if (!string.IsNullOrWhiteSpace(fromArg))
         {
-            if (arg.StartsWith("--input=", StringComparison.OrdinalIgnoreCase))
-            {
-                var path = arg.Substring("--input=".Length).Trim('"', '\'');
-                if (!string.IsNullOrWhiteSpace(path))
-                {
-                    log.Info($"Archivo de entrada: argumento --input ({path})");
-                    return path;
-                }
-            }
+            log.Info($"Archivo de entrada: --input ({fromArg})");
+            return fromArg;
         }
-
         var defaultPath = Path.Combine(exeDir, "pacientes.json");
         log.Info($"Archivo de entrada: por defecto ({defaultPath})");
         return defaultPath;
     }
 
-    private static string ResolveOutputDir(string[] args, string exeDir)
+    static string ResolveOutputDir(string[] args, string exeDir)
     {
+        var fromArg = ResolveArgValue(args, "--output-dir");
+        return !string.IsNullOrWhiteSpace(fromArg) ? fromArg : exeDir;
+    }
+
+    static string? ResolveArgValue(string[] args, string name)
+    {
+        var prefix = $"{name}=";
         foreach (var arg in args)
         {
-            if (arg.StartsWith("--output-dir=", StringComparison.OrdinalIgnoreCase))
-            {
-                var path = arg.Substring("--output-dir=".Length).Trim('"', '\'');
-                if (!string.IsNullOrWhiteSpace(path))
-                    return path;
-            }
+            if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return arg[prefix.Length..].Trim('"', '\'');
         }
-        return exeDir;
+        return null;
     }
 }

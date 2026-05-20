@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Meva.Rt.Application;
 using Meva.Rt.Core;
 using Meva.Rt.Infrastructure.Aria;
@@ -8,7 +10,8 @@ using Meva.Rt.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var snapshotsDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
+var snapshotsDirectory = Environment.GetEnvironmentVariable("MEVA_DATA_DIR")
+    ?? Path.Combine(builder.Environment.ContentRootPath, "data");
 var configurationHolder = new RtConfigurationHolder(builder.Environment.ContentRootPath);
 
 var sitraMedOptions = new SitraMedRuntimeOptions
@@ -42,6 +45,7 @@ var feriadosPath = Environment.GetEnvironmentVariable("MEVA_FERIADOS_PATH")
     ?? Path.Combine(builder.Environment.ContentRootPath, "data", "feriados.txt");
 var businessDayCalc = BusinessDayCalculator.FromFile(feriadosPath);
 
+builder.Services.AddWindowsService(options => options.ServiceName = "MevaRT");
 builder.Services.AddSingleton(configurationHolder);
 builder.Services.AddSingleton<IRtSystemConfigurationProvider>(_ => configurationHolder);
 builder.Services.AddSingleton(sitraMedOptions);
@@ -51,6 +55,7 @@ builder.Services.AddSingleton(businessDayCalc);
 builder.Services.AddSingleton<ISnapshotStore>(_ => new JsonSnapshotStore(snapshotsDirectory));
 builder.Services.AddSingleton<PlaywrightSitraMedClient>();
 builder.Services.AddSingleton<IAgendaExtractor, SitraMedAgendaExtractor>();
+builder.Services.AddSingleton<ITomographAgendaExtractor, SitraMedTomographExtractor>();
 builder.Services.AddSingleton<IFollowUpExtractor, SitraMedFollowUpExtractor>();
 builder.Services.AddSingleton<IAriaPatientRootProvider, NullAriaPatientRootProvider>();
 builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
@@ -97,9 +102,20 @@ app.MapPost("/api/home/refresh", async Task<IResult> (
 app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
         BootstrapService bootstrapService,
         IRtSystemConfigurationProvider configurationProvider,
+        ISnapshotStore snapshotStore,
         CancellationToken cancellationToken) =>
 {
     var data = await bootstrapService.BuildAsync(cancellationToken, skipAria: true);
+
+    // Escribe pacientes.json para que AriaRunner lo use directamente sin HTTP adicional
+    var ids = data.FollowUpPatients
+        .Select(p => p.PatientId)
+        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(id => id)
+        .ToList();
+    await snapshotStore.SaveAsync("pacientes", new { patientIds = ids }, cancellationToken);
+
     return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
 
@@ -159,6 +175,30 @@ app.MapPost("/api/scraping/test-agenda", async Task<IResult> (
     }
 });
 
+app.MapPost("/api/scraping/test-tomograph", async Task<IResult> (
+        PlaywrightSitraMedClient client,
+        RtConfigurationHolder holder,
+        string? centerName,
+        DateOnly? date,
+        CancellationToken cancellationToken) =>
+{
+    var tomograph = string.IsNullOrWhiteSpace(centerName)
+        ? holder.Configuration.Tomographs.FirstOrDefault()
+        : holder.Configuration.Tomographs.FirstOrDefault(t =>
+            string.Equals(t.CenterName, centerName, StringComparison.OrdinalIgnoreCase));
+    if (tomograph == null)
+        return TypedResults.BadRequest(new ScrapingTestResult { Success = false, Message = "Centro o tomografo no encontrado. Centros disponibles: " + string.Join(", ", holder.Configuration.Tomographs.Select(t => t.CenterName)) });
+
+    try
+    {
+        return TypedResults.Ok(await client.RunTomographTestAsync(tomograph, date ?? DateOnly.FromDateTime(DateTime.Today), cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return TypedResults.Ok(new ScrapingTestResult { Success = false, Message = ex.Message });
+    }
+});
+
 app.MapPost("/api/scraping/test-followup-full", async Task<IResult> (
         PlaywrightSitraMedClient client,
         RtConfigurationHolder holder,
@@ -192,17 +232,20 @@ app.MapPost("/api/scraping/test-followup-full", async Task<IResult> (
 // ─── ARIA ─────────────────────────────────────────────────────────────────────
 
 app.MapGet("/api/aria/export-patient-ids", async Task<IResult> (
-        IFollowUpExtractor followUpExtractor,
+        ISnapshotStore snapshotStore,
         CancellationToken cancellationToken) =>
 {
-    var patients = await followUpExtractor.ExtractAsync(cancellationToken);
-    var ids = patients
+    var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
+    if (snapshot == null)
+        return TypedResults.Problem("No hay snapshot disponible. Ejecutá /api/home/refresh primero.");
+
+    var ids = snapshot.FollowUpPatients
         .Select(p => p.PatientId)
         .Where(id => !string.IsNullOrWhiteSpace(id))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(id => id)
         .ToList();
-    return TypedResults.Ok(new { patientIds = ids, count = ids.Count });
+    return TypedResults.Ok(new { patientIds = ids, count = ids.Count, snapshotAge = DateTime.UtcNow - snapshot.GeneratedAtUtc });
 });
 
 app.MapPost("/api/aria/import-results", async Task<IResult> (
@@ -290,6 +333,143 @@ app.MapPost("/api/aria/import-results", async Task<IResult> (
         withActivePlan = plans.Count,
         withMachineResolved = withMachine,
         savedTo = Path.GetFileName(mockPath)
+    });
+});
+
+// Consulta ARIA (si MEVA_ARIA_RUNNER_EXE está configurado) e importa el resultado.
+// Si el runner no está configurado, solo importa el aria_results_*.json más reciente.
+app.MapPost("/api/aria/run-query", async Task<IResult> (
+        ISnapshotStore snapshotStore,
+        IRtSystemConfigurationProvider configurationProvider,
+        AriaRuntimeOptions ariaOptions,
+        CancellationToken cancellationToken) =>
+{
+    var hcRegex = new Regex(@"^\d{1,3}-\d{4,7}-\d{1,3}$");
+
+    var runnerExe = Environment.GetEnvironmentVariable("MEVA_ARIA_RUNNER_EXE");
+    var ranQuery = false;
+
+    if (!string.IsNullOrWhiteSpace(runnerExe) && File.Exists(runnerExe))
+    {
+        var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
+        var hcIds = (snapshot?.FollowUpPatients ?? [])
+            .Select(p => p.PatientId ?? "")
+            .Where(id => hcRegex.IsMatch(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (hcIds.Count == 0)
+            return TypedResults.BadRequest(new { error = "No hay pacientes con HC válida en el snapshot para consultar ARIA." });
+
+        var inputPath = Path.Combine(snapshotsDirectory, "aria_input_tmp.json");
+        await File.WriteAllTextAsync(inputPath,
+            JsonSerializer.Serialize(new { patientIds = hcIds }),
+            cancellationToken);
+
+        var runnerDir = Path.GetDirectoryName(runnerExe)!;
+        var psi = new ProcessStartInfo(runnerExe)
+        {
+            Arguments = $"--input=\"{inputPath}\"",
+            WorkingDirectory = runnerDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromMinutes(20));
+
+        using var proc = Process.Start(psi);
+        if (proc == null)
+            return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
+
+        await proc.WaitForExitAsync(cts.Token);
+
+        if (proc.ExitCode != 0)
+        {
+            var stderr = await proc.StandardError.ReadToEndAsync(cancellationToken);
+            return TypedResults.BadRequest(new { error = $"AriaRunner salio con codigo {proc.ExitCode}.", detail = stderr.Trim() });
+        }
+
+        // Copia el resultado más reciente al directorio de snapshots
+        var resultFile = Directory.GetFiles(runnerDir, "aria_results_*.json")
+            .OrderByDescending(f => f).FirstOrDefault();
+        if (resultFile != null)
+        {
+            var dest = Path.Combine(snapshotsDirectory, Path.GetFileName(resultFile));
+            File.Copy(resultFile, dest, overwrite: true);
+        }
+
+        ranQuery = true;
+    }
+
+    // Importar el aria_results_*.json más reciente (recién generado o pre-existente)
+    var resolvedPath = Directory.GetFiles(snapshotsDirectory, "aria_results_*.json")
+        .OrderByDescending(f => f).FirstOrDefault();
+
+    if (resolvedPath == null)
+        return TypedResults.BadRequest(new { error = "No se encontro ningun archivo aria_results_*.json." });
+
+    AriaRunnerOutput? runnerOutput2;
+    try
+    {
+        var json = await File.ReadAllTextAsync(resolvedPath, cancellationToken);
+        runnerOutput2 = JsonSerializer.Deserialize<AriaRunnerOutput>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+    catch (Exception ex)
+    {
+        return TypedResults.BadRequest(new { error = $"Error leyendo {resolvedPath}: {ex.Message}" });
+    }
+
+    if (runnerOutput2?.Patients == null)
+        return TypedResults.BadRequest(new { error = "Archivo vacio o formato invalido." });
+
+    var machines2 = configurationProvider.Configuration.Machines;
+    var plans2 = new List<AriaPlanSnapshot>();
+    var withMachine2 = 0;
+
+    foreach (var patient in runnerOutput2.Patients)
+    {
+        if (!patient.Found || patient.ActivePlan == null) continue;
+
+        var snap = new AriaPlanSnapshot
+        {
+            PatientId = patient.PatientId,
+            PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
+            PlanStatus = patient.ActivePlan.Status
+        };
+
+        if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
+        {
+            var machine = machines2.FirstOrDefault(m =>
+                string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
+            snap.PlannedMachineDisplayName = machine?.DisplayName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(snap.PlannedMachineDisplayName))
+            withMachine2++;
+
+        plans2.Add(snap);
+    }
+
+    var mockPath2 = ariaOptions.MockPlansJsonPath;
+    if (string.IsNullOrWhiteSpace(mockPath2))
+        return TypedResults.Problem("MockPlansJsonPath no configurado.", statusCode: 500);
+
+    Directory.CreateDirectory(Path.GetDirectoryName(mockPath2)!);
+    await File.WriteAllTextAsync(mockPath2,
+        JsonSerializer.Serialize(plans2, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
+        cancellationToken);
+
+    return TypedResults.Ok(new
+    {
+        queriedAria = ranQuery,
+        importedFile = Path.GetFileName(resolvedPath),
+        totalInFile = runnerOutput2.Patients.Count,
+        withActivePlan = plans2.Count,
+        withMachineResolved = withMachine2
     });
 });
 
@@ -419,6 +599,82 @@ app.MapGet("/api/agenda", async Task<IResult> (
         }
     }
 
+    return TypedResults.Ok(slots);
+});
+
+// ─── Tomograph Agenda ─────────────────────────────────────────────────────────
+
+app.MapGet("/api/tomograph-agenda/available-dates", () =>
+{
+    if (!Directory.Exists(snapshotsDirectory))
+        return Results.Ok(Array.Empty<string>());
+
+    var dates = Directory.GetFiles(snapshotsDirectory, "tomograph_agenda_????-??-??.json")
+        .Select(f => Path.GetFileNameWithoutExtension(f).Replace("tomograph_agenda_", ""))
+        .Where(d => DateOnly.TryParse(d, out _))
+        .Order()
+        .ToArray();
+
+    return Results.Ok(dates);
+});
+
+app.MapPost("/api/tomograph-agenda/scrape-upcoming", async Task<IResult> (
+        ITomographAgendaExtractor tomographExtractor,
+        ISnapshotStore snapshotStore,
+        BusinessDayCalculator bdCalc,
+        int? days,
+        CancellationToken cancellationToken) =>
+{
+    var count = Math.Max(1, Math.Min(days ?? 15, 30));
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    var upcoming = bdCalc.GetUpcomingBusinessDays(today, count);
+
+    var allItems = await tomographExtractor.ExtractForDatesAsync(upcoming, cancellationToken);
+
+    var saved = new List<string>();
+    foreach (var (date, items) in allItems.OrderBy(kv => kv.Key))
+    {
+        await snapshotStore.SaveAsync($"tomograph_agenda_{date:yyyy-MM-dd}", items.ToList(), cancellationToken);
+        saved.Add(date.ToString("yyyy-MM-dd"));
+    }
+
+    return TypedResults.Ok(new { savedDates = saved, totalDays = saved.Count });
+});
+
+app.MapGet("/api/tomograph-agenda", async Task<IResult> (
+        ITomographAgendaExtractor tomographExtractor,
+        ISnapshotStore snapshotStore,
+        DateOnly? date,
+        CancellationToken cancellationToken) =>
+{
+    var targetDate = date ?? DateOnly.FromDateTime(DateTime.Today);
+    var today = DateOnly.FromDateTime(DateTime.Today);
+
+    IReadOnlyList<MachineAppointmentSnapshot> scraped;
+
+    var stored = await snapshotStore.TryLoadAsync<List<MachineAppointmentSnapshot>>($"tomograph_agenda_{targetDate:yyyy-MM-dd}", cancellationToken);
+    if (stored != null)
+    {
+        scraped = stored;
+    }
+    else if (targetDate >= today)
+    {
+        try
+        {
+            scraped = await tomographExtractor.ExtractForDateAsync(targetDate, cancellationToken);
+            await snapshotStore.SaveAsync($"tomograph_agenda_{targetDate:yyyy-MM-dd}", scraped.ToList(), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return TypedResults.Problem($"Error al obtener agenda de tomógrafos para {targetDate}: {ex.Message}", statusCode: 500);
+        }
+    }
+    else
+    {
+        scraped = [];
+    }
+
+    var slots = scraped.Select(s => new AgendaSlotDto(s)).ToList();
     return TypedResults.Ok(slots);
 });
 
