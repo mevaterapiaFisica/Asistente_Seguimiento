@@ -107,8 +107,16 @@ app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
 {
     var data = await bootstrapService.BuildAsync(cancellationToken, skipAria: true);
 
-    // Escribe pacientes.json para que AriaRunner lo use directamente sin HTTP adicional
+    // Solo incluir pacientes desde Planificacion (F6A) en adelante — los anteriores no tienen planes ARIA
+    var stageMap = configurationProvider.Configuration.Stages
+        .ToDictionary(s => s.Code, s => s.SortOrder, StringComparer.OrdinalIgnoreCase);
+    var ariaThreshold = configurationProvider.Configuration.Stages
+        .Where(s => string.Equals(s.GroupName, "Planificacion", StringComparison.OrdinalIgnoreCase))
+        .Select(s => (int?)s.SortOrder)
+        .Min() ?? 40;
+
     var ids = data.FollowUpPatients
+        .Where(p => stageMap.TryGetValue(p.StageCode, out var so) && so >= ariaThreshold)
         .Select(p => p.PatientId)
         .Where(id => !string.IsNullOrWhiteSpace(id))
         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -334,6 +342,61 @@ app.MapPost("/api/aria/import-results", async Task<IResult> (
         withMachineResolved = withMachine,
         savedTo = Path.GetFileName(mockPath)
     });
+});
+
+app.MapPost("/api/home/apply-aria", async Task<IResult> (
+        ISnapshotStore snapshotStore,
+        IAriaPlanResolver ariaPlanResolver,
+        IRtSystemConfigurationProvider configurationProvider,
+        CancellationToken cancellationToken) =>
+{
+    var data = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
+    if (data == null)
+        return TypedResults.Problem("No hay snapshot. Ejecutá refresh-no-aria primero.", statusCode: 503);
+
+    foreach (var p in data.FollowUpPatients)
+        p.PlannedMachineDisplayName = null;
+
+    var patientIds = data.FollowUpPatients
+        .Select(p => p.PatientId)
+        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    var aria = (await ariaPlanResolver.ResolveAsync(patientIds, cancellationToken)).ToList();
+    var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
+    foreach (var patient in data.FollowUpPatients)
+    {
+        if (ariaByPatient.TryGetValue(patient.PatientId, out var plan)
+            && !string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
+        {
+            patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
+        }
+    }
+
+    data.StageSummary = data.FollowUpPatients
+        .GroupBy(x => new { x.CenterName, x.StageGroupName, x.ExpectedDaysInStage })
+        .Select(group =>
+        {
+            var countable = group.Where(x => !x.IsLongWait).ToList();
+            return new StageSummaryItem
+            {
+                CenterName = group.Key.CenterName,
+                StageGroupName = group.Key.StageGroupName,
+                PatientCount = group.Count(),
+                AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
+                ExpectedDays = group.Key.ExpectedDaysInStage
+            };
+        })
+        .OrderBy(x => x.CenterName)
+        .ThenBy(x => x.StageGroupName)
+        .ToList();
+
+    data.AriaPlans = aria;
+    data.GeneratedAtUtc = DateTime.UtcNow;
+
+    await snapshotStore.SaveAsync("dashboard_bootstrap", data, cancellationToken);
+    return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
 
 // Consulta ARIA (si MEVA_ARIA_RUNNER_EXE está configurado) e importa el resultado.

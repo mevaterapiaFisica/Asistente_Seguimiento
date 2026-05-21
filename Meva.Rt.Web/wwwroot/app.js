@@ -19,7 +19,18 @@ const state = {
     activeMachine: null,
     slots: [],
     loading: false
-  }
+  },
+
+  tomographAgenda: {
+    availableDates: [],
+    selectedDate: null,
+    centerFilter: null,
+    activeTomograph: null,
+    slots: [],
+    loading: false
+  },
+
+  configData: null
 };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -30,15 +41,16 @@ function todayStr() {
 }
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function delayClass(days, expected) {
+function delayClass(days, expected, isLongWait) {
+  if (isLongWait) return 'long-wait';
   if (days < expected) return 'on-time';
   if (days === expected) return 'at-limit';
   return 'delayed';
 }
 
-function delayDot(days, expected) {
-  const cls = delayClass(days, expected);
-  const col = cls === 'on-time' ? 'dot-green' : cls === 'at-limit' ? 'dot-yellow' : 'dot-red';
+function delayDot(days, expected, isLongWait) {
+  const cls = delayClass(days, expected, isLongWait);
+  const col = cls === 'long-wait' ? 'dot-gray' : cls === 'on-time' ? 'dot-green' : cls === 'at-limit' ? 'dot-yellow' : 'dot-red';
   return `<span class="dot ${col}"></span>`;
 }
 
@@ -66,6 +78,13 @@ function makePill(label, active, onClick) {
   return btn;
 }
 
+function hcTag(patientId) {
+  const isHc = patientId && /^\d{1,3}-\d{4,7}-\d{1,3}$/.test(patientId);
+  return isHc
+    ? `<span class="hc-tag">HC ${patientId}</span>`
+    : `<span class="hc-tag muted-italic">HC: No asignada</span>`;
+}
+
 function groupByStage(patients, stageOrder) {
   const map = new Map();
   patients.forEach(p => {
@@ -87,6 +106,8 @@ function wireTabs() {
       document.querySelectorAll('.tab-panel').forEach(p =>
         p.classList.toggle('active', p.id === `tab-${state.activeTab}`));
       if (state.activeTab === 'agenda') refreshAgendaView();
+      if (state.activeTab === 'tomograph') refreshTomographAgendaView();
+      if (state.activeTab === 'config') loadConfigData();
     });
   });
 }
@@ -96,15 +117,31 @@ function wireTabs() {
 function wireActions() {
   document.getElementById('runScrapingTest').addEventListener('click', runScrapingTest);
   document.getElementById('runAgendaTest').addEventListener('click', runAgendaTest);
-  document.getElementById('refreshDashboard').addEventListener('click', refreshDashboard);
-  document.getElementById('refreshDashboardNoAria').addEventListener('click', refreshDashboardNoAria);
-  document.getElementById('importAria').addEventListener('click', importAriaResults);
-  document.getElementById('scrapeUpcomingBtn').addEventListener('click', scrapeUpcoming);
+  document.getElementById('runTomographTest').addEventListener('click', runTomographTest);
+
+  // Dropdown scrape menu
+  const menuBtn = document.getElementById('scrapMenuBtn');
+  const menu = document.getElementById('scrapMenu');
+  menuBtn.addEventListener('click', e => {
+    menu.hidden = !menu.hidden;
+    e.stopPropagation();
+  });
+  document.addEventListener('click', () => { menu.hidden = true; });
+  document.getElementById('actionUpdateSitramed').addEventListener('click', actionUpdateSitramed);
+  document.getElementById('actionUpdateAria').addEventListener('click', actionUpdateAria);
+  document.getElementById('actionUpdateAll').addEventListener('click', actionUpdateAll);
+
   document.getElementById('agendaDateSelect').addEventListener('change', e => {
     state.agenda.selectedDate = e.target.value || null;
     state.agenda.activeMachine = null;
     loadAgendaForSelectedDate();
   });
+  document.getElementById('tomographDateSelect').addEventListener('change', e => {
+    state.tomographAgenda.selectedDate = e.target.value || null;
+    state.tomographAgenda.activeTomograph = null;
+    loadTomographAgendaForSelectedDate();
+  });
+  document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
   document.getElementById('patientSearch').addEventListener('input', e => {
     state.followup.searchQuery = e.target.value.trim().toLowerCase();
     renderFollowupDetail();
@@ -139,56 +176,82 @@ async function runAgendaTest() {
   } catch (e) { t.textContent = `Error: ${e.message}`; t.classList.add('error'); }
 }
 
-async function refreshDashboard() {
-  const btn = document.getElementById('refreshDashboard');
-  btn.disabled = true;
-  document.getElementById('generatedAt').textContent = 'Actualizando...';
+async function runTomographTest() {
+  const t = document.getElementById('tomographTestResult');
+  t.textContent = 'Probando...'; t.className = 'test-result';
+  const centerName = document.getElementById('tomographTestCenter').value;
+  const date = document.getElementById('tomographTestDate').value;
   try {
-    const resp = await fetch('/api/home/refresh', { method: 'POST' });
-    if (!resp.ok) { document.getElementById('generatedAt').textContent = `Error ${resp.status}`; return; }
-    renderHome(await resp.json());
-  } finally { btn.disabled = false; }
+    const q = new URLSearchParams();
+    if (centerName) q.set('centerName', centerName);
+    if (date) q.set('date', date);
+    const r = await (await fetch(`/api/scraping/test-tomograph?${q}`, { method: 'POST' })).json();
+    const rows = (r.rawRowSamples ?? []).join('\n');
+    t.textContent = r.success
+      ? `${r.message}\nURL: ${r.url}\nHTML: ${r.htmlLength} bytes\n\nFilas crudas:\n${rows || '(ninguna)'}\n\nHtmlPreview:\n${r.htmlPreview ?? ''}`
+      : r.message;
+    t.classList.toggle('error', !r.success);
+  } catch (e) { t.textContent = `Error: ${e.message}`; t.classList.add('error'); }
 }
 
-async function refreshDashboardNoAria() {
-  const btn = document.getElementById('refreshDashboardNoAria');
+async function actionUpdateSitramed() {
+  document.getElementById('scrapMenu').hidden = true;
+  const btn = document.getElementById('scrapMenuBtn');
   btn.disabled = true;
   document.getElementById('generatedAt').textContent = 'Actualizando...';
   try {
     const resp = await fetch('/api/home/refresh-no-aria', { method: 'POST' });
     if (!resp.ok) { document.getElementById('generatedAt').textContent = `Error ${resp.status}`; return; }
     renderHome(await resp.json());
+    const days = state.configData?.upcomingScrapeDays ?? 15;
+    fetch(`/api/agenda/scrape-upcoming?days=${days}`, { method: 'POST' })
+      .then(() => loadAvailableDates()).catch(() => {});
+    fetch(`/api/tomograph-agenda/scrape-upcoming?days=${days}`, { method: 'POST' })
+      .then(() => loadAvailableTomographDates()).catch(() => {});
+  } catch (e) {
+    document.getElementById('generatedAt').textContent = `Error: ${e.message}`;
   } finally { btn.disabled = false; }
 }
 
-async function importAriaResults() {
-  const btn = document.getElementById('importAria');
-  const st = document.getElementById('importAriaStatus');
-  btn.disabled = true; st.className = 'import-result'; st.textContent = 'Importando...';
+async function actionUpdateAria() {
+  document.getElementById('scrapMenu').hidden = true;
+  const btn = document.getElementById('scrapMenuBtn');
+  btn.disabled = true;
+  document.getElementById('generatedAt').textContent = 'Consultando ARIA...';
   try {
-    const resp = await fetch('/api/aria/import-results', { method: 'POST' });
+    const resp = await fetch('/api/aria/run-query', { method: 'POST' });
     const r = await resp.json();
-    st.className = `import-result ${resp.ok ? 'ok' : 'error'}`;
-    st.textContent = resp.ok
-      ? `${r.importedFile} · ${r.withActivePlan} con plan · ${r.withMachineResolved} con equipo`
-      : (r.error ?? 'Error al importar.');
-  } catch (e) { st.className = 'import-result error'; st.textContent = `Error: ${e.message}`; }
-  finally { btn.disabled = false; }
+    if (resp.ok) {
+      const homeResp = await fetch('/api/home');
+      if (homeResp.ok) renderHome(await homeResp.json());
+      else document.getElementById('generatedAt').textContent = `ARIA: ${r.withActivePlan} con plan`;
+    } else {
+      document.getElementById('generatedAt').textContent = r.error ?? `Error ${resp.status}`;
+    }
+  } catch (e) {
+    document.getElementById('generatedAt').textContent = `Error: ${e.message}`;
+  } finally { btn.disabled = false; }
 }
 
-async function scrapeUpcoming() {
-  const btn = document.getElementById('scrapeUpcomingBtn');
-  const st = document.getElementById('scrapeStatus');
-  btn.disabled = true; st.textContent = 'Scraping 15 dias habiles...';
+async function actionUpdateAll() {
+  document.getElementById('scrapMenu').hidden = true;
+  const btn = document.getElementById('scrapMenuBtn');
+  btn.disabled = true;
+  document.getElementById('generatedAt').textContent = 'Consultando ARIA...';
   try {
-    const resp = await fetch('/api/agenda/scrape-upcoming?days=15', { method: 'POST' });
-    const r = await resp.json();
-    st.textContent = resp.ok
-      ? `Guardados: ${r.savedDates?.join(', ') ?? r.totalDays + ' dias'}`
-      : (r.detail ?? `Error ${resp.status}`);
-    if (resp.ok) await loadAvailableDates();
-  } catch (e) { st.textContent = `Error: ${e.message}`; }
-  finally { btn.disabled = false; }
+    await fetch('/api/aria/run-query', { method: 'POST' });
+    document.getElementById('generatedAt').textContent = 'Actualizando Sitramed...';
+    const resp = await fetch('/api/home/refresh', { method: 'POST' });
+    if (!resp.ok) { document.getElementById('generatedAt').textContent = `Error ${resp.status}`; return; }
+    renderHome(await resp.json());
+    const days = state.configData?.upcomingScrapeDays ?? 15;
+    fetch(`/api/agenda/scrape-upcoming?days=${days}`, { method: 'POST' })
+      .then(() => loadAvailableDates()).catch(() => {});
+    fetch(`/api/tomograph-agenda/scrape-upcoming?days=${days}`, { method: 'POST' })
+      .then(() => loadAvailableTomographDates()).catch(() => {});
+  } catch (e) {
+    document.getElementById('generatedAt').textContent = `Error: ${e.message}`;
+  } finally { btn.disabled = false; }
 }
 
 // ── Home load / render ────────────────────────────────────────────────────────
@@ -208,7 +271,6 @@ function renderHome(data) {
     new Date(data.generatedAtUtc).toLocaleString();
   buildFollowUpFilters(data);
   renderFollowUp();
-  renderConfig(data);
   populateAgendaTestControls(data);
 }
 
@@ -325,9 +387,11 @@ function buildCenterCard(centerName, patients, stageOrder) {
     (a, b) => (stageOrder[a.code] ?? 999) - (stageOrder[b.code] ?? 999));
 
   stageDefs.forEach(def => {
+    if (state.followup.stageFilter && def.code !== state.followup.stageFilter) return;
     const pats = patients.filter(p => p.stageCode === def.code);
     const isEmpty = pats.length === 0;
-    const avg = isEmpty ? 0 : pats.reduce((s, p) => s + p.daysInStage, 0) / pats.length;
+    const countable = pats.filter(p => !p.isLongWait);
+    const avg = countable.length > 0 ? countable.reduce((s, p) => s + p.daysInStage, 0) / countable.length : 0;
     const hasDelayed = pats.some(p => p.isDelayed);
     const isActive = state.followup.activeCenter === centerName && state.followup.activeStage === def.code;
     const isFiltered = state.followup.stageFilter === def.code;
@@ -347,7 +411,6 @@ function buildCenterCard(centerName, patients, stageOrder) {
       (hasDelayed ? `<span class="dot dot-red"></span>` : '');
 
     row.addEventListener('click', () => {
-      state.followup.stageFilter = null;
       if (state.followup.activeCenter === centerName && state.followup.activeStage === def.code) {
         state.followup.activeCenter = null;
         state.followup.activeStage = null;
@@ -387,14 +450,18 @@ function renderFollowupDetail() {
     }
     matches.forEach(p => {
       const def = stageDefs.find(s => s.code === p.stageCode);
-      const dc = delayClass(p.daysInStage, p.expectedDaysInStage);
+      const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
+      const nameHtml = p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        : `<strong>${p.patientName}</strong>`;
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage) +
+        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
-          `<strong>${p.patientName}</strong>` +
-          (p.patientId ? `<span class="hc-tag">HC ${p.patientId}</span>` : '') +
+          nameHtml +
+          hcTag(p.patientId) +
+          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName} · ${def?.displayName ?? p.stageCode}</span>` +
         `</div>` +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
@@ -419,13 +486,17 @@ function renderFollowupDetail() {
       return;
     }
     pats.forEach(p => {
-      const dc = delayClass(p.daysInStage, p.expectedDaysInStage);
+      const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
+      const nameHtml = p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        : `<strong>${p.patientName}</strong>`;
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage) +
-        `<strong>${p.patientName}</strong>` +
-        (p.patientId ? `<span class="hc-tag">HC ${p.patientId}</span>` : '') +
+        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
+        nameHtml +
+        hcTag(p.patientId) +
+          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
@@ -450,14 +521,18 @@ function renderFollowupDetail() {
       return;
     }
     pats.forEach(p => {
-      const dc = delayClass(p.daysInStage, p.expectedDaysInStage);
+      const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
+      const nameHtml = p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        : `<strong>${p.patientName}</strong>`;
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage) +
+        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
-          `<strong>${p.patientName}</strong>` +
-          (p.patientId ? `<span class="hc-tag">HC ${p.patientId}</span>` : '') +
+          nameHtml +
+          hcTag(p.patientId) +
+          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName}</span>` +
         `</div>` +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
@@ -471,11 +546,23 @@ function renderFollowupDetail() {
   panel.appendChild(el('p', 'detail-placeholder', 'Seleccione una etapa o busque un paciente.'));
 }
 
+function findPatientGuid(name) {
+  if (!name || !state.homeData?.patients) return null;
+  const p = state.homeData.patients.find(p =>
+    p.patientName?.toLowerCase() === name.toLowerCase());
+  return p?.sitraMedGuid ?? null;
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   e.className = cls;
   e.textContent = text;
   return e;
+}
+
+function formatDisplayDate(iso) {
+  const [y, m, d] = iso.split('-');
+  return `${d}-${m}-${y}`;
 }
 
 // ── Agenda tab ────────────────────────────────────────────────────────────────
@@ -490,26 +577,30 @@ async function loadAvailableDates() {
 
 function populateAgendaDateSelect() {
   const today = todayStr();
-  // Generate next 20 calendar days
-  const upcoming = [];
-  const d = new Date();
-  for (let i = 1; i <= 20; i++) {
+  const futureScraped = state.agenda.availableDates.filter(d => d >= today).sort();
+  const lastScraped = futureScraped.length > 0 ? futureScraped[futureScraped.length - 1] : today;
+
+  // Fechas desde hoy hasta el último día scrapeado (inclusive), todas las intermedias incluidas
+  const all = [];
+  const d = new Date(today + 'T00:00:00');
+  const last = new Date(lastScraped + 'T00:00:00');
+  while (d <= last) {
+    all.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
     d.setDate(d.getDate() + 1);
-    upcoming.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
   }
-  const all = [...new Set([today, ...state.agenda.availableDates, ...upcoming])].sort();
 
   const sel = document.getElementById('agendaDateSelect');
   const prev = sel.value;
+  const target = state.agenda.selectedDate || prev;
   sel.innerHTML = '<option value="">-- elegir fecha --</option>';
   all.forEach(date => {
     const opt = document.createElement('option');
     opt.value = date;
     const scraped = state.agenda.availableDates.includes(date);
-    opt.textContent = date === today
-      ? `${date} (hoy)`
-      : scraped ? `${date} ✓` : date;
-    if (date === prev) opt.selected = true;
+    const isToday = date === today;
+    opt.textContent = isToday ? `${formatDisplayDate(date)} (hoy)` : scraped ? `${formatDisplayDate(date)} ✓` : formatDisplayDate(date);
+    if (!scraped && !isToday) { opt.disabled = true; opt.style.color = '#aaa'; }
+    if (date === target && !opt.disabled) opt.selected = true;
     sel.appendChild(opt);
   });
 
@@ -550,6 +641,7 @@ async function loadAgendaForSelectedDate() {
 function refreshAgendaView() {
   if (!state.homeData) return;
   buildAgendaCenterFilter();
+  if (!state.agenda.selectedDate) state.agenda.selectedDate = todayStr();
   populateAgendaDateSelect();
   if (state.agenda.selectedDate) loadAgendaForSelectedDate();
   else renderAgenda();
@@ -675,8 +767,15 @@ function renderAgendaDetail() {
   all.forEach(slot => {
     const row = document.createElement('div');
     row.className = `slot-row ${slot.isEstimated ? 'estimated' : 'in-agenda'}`;
-    const displayName = slot.patientName && slot.patientName !== '~' && slot.patientName !== '-'
-      ? slot.patientName : '<em style="color:var(--muted)">(sin nombre)</em>';
+    let displayName;
+    if (!slot.patientName || slot.patientName === '~' || slot.patientName === '-') {
+      displayName = '<em style="color:var(--muted)">(sin nombre)</em>';
+    } else {
+      const guid = findPatientGuid(slot.patientName);
+      displayName = guid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
+        : slot.patientName;
+    }
     row.innerHTML =
       `<span class="slot-time">${slot.startTime || '~'}</span>` +
       `<span class="slot-patient">${displayName}</span>` +
@@ -687,27 +786,6 @@ function renderAgendaDetail() {
   });
 }
 
-// ── Config tab ────────────────────────────────────────────────────────────────
-
-function renderConfig(data) {
-  const stageList = document.getElementById('stageConfigList');
-  stageList.innerHTML = '';
-  (data.configuration?.stages ?? []).forEach(s => {
-    const row = document.createElement('article');
-    row.className = 'config-row';
-    row.innerHTML = `<strong>${s.code} - ${s.displayName}</strong><span>${s.groupName}</span><small>Referencia ${s.expectedDays} dias | microstatus ${s.sitraMicroStatus}</small>`;
-    stageList.appendChild(row);
-  });
-
-  const machList = document.getElementById('machineConfigList');
-  machList.innerHTML = '';
-  (data.configuration?.machineCapacities ?? []).forEach(c => {
-    const row = document.createElement('article');
-    row.className = 'config-row';
-    row.innerHTML = `<strong>${c.machineName}</strong><span>${c.centerName}</span><small>${c.workingHours}hs | turno ${c.standardSlotMinutes}min | reservadas ${c.reservedSpecialHours}hs</small>`;
-    machList.appendChild(row);
-  });
-}
 
 function populateAgendaTestControls(data) {
   const sel = document.getElementById('agendaTestMachine');
@@ -720,6 +798,342 @@ function populateAgendaTestControls(data) {
   });
   const di = document.getElementById('agendaTestDate');
   if (di && !di.value) di.valueAsDate = new Date();
+
+  const tsel = document.getElementById('tomographTestCenter');
+  if (tsel) {
+    tsel.innerHTML = '';
+    (data.configuration?.tomographCapacities ?? []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.centerName; opt.textContent = c.centerName;
+      tsel.appendChild(opt);
+    });
+  }
+  const tdi = document.getElementById('tomographTestDate');
+  if (tdi && !tdi.value) tdi.valueAsDate = new Date();
+}
+
+// ── Tomograph Agenda tab ──────────────────────────────────────────────────────
+
+async function loadAvailableTomographDates() {
+  try {
+    const resp = await fetch('/api/tomograph-agenda/available-dates');
+    state.tomographAgenda.availableDates = resp.ok ? await resp.json() : [];
+  } catch { state.tomographAgenda.availableDates = []; }
+  populateTomographDateSelect();
+}
+
+function populateTomographDateSelect() {
+  const today = todayStr();
+  const futureScraped = state.tomographAgenda.availableDates.filter(d => d >= today).sort();
+  const lastScraped = futureScraped.length > 0 ? futureScraped[futureScraped.length - 1] : today;
+
+  const all = [];
+  const d = new Date(today + 'T00:00:00');
+  const last = new Date(lastScraped + 'T00:00:00');
+  while (d <= last) {
+    all.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+    d.setDate(d.getDate() + 1);
+  }
+
+  const sel = document.getElementById('tomographDateSelect');
+  const prev = sel.value;
+  const target = state.tomographAgenda.selectedDate || prev;
+  sel.innerHTML = '<option value="">-- elegir fecha --</option>';
+  all.forEach(date => {
+    const opt = document.createElement('option');
+    opt.value = date;
+    const scraped = state.tomographAgenda.availableDates.includes(date);
+    const isToday = date === today;
+    opt.textContent = isToday ? `${formatDisplayDate(date)} (hoy)` : scraped ? `${formatDisplayDate(date)} ✓` : formatDisplayDate(date);
+    if (!scraped && !isToday) { opt.disabled = true; opt.style.color = '#aaa'; }
+    if (date === target && !opt.disabled) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  if (!state.tomographAgenda.selectedDate && prev) state.tomographAgenda.selectedDate = prev;
+}
+
+function refreshTomographAgendaView() {
+  if (!state.homeData) return;
+  buildTomographCenterFilter();
+  if (!state.tomographAgenda.selectedDate) state.tomographAgenda.selectedDate = todayStr();
+  populateTomographDateSelect();
+  if (state.tomographAgenda.selectedDate) loadTomographAgendaForSelectedDate();
+  else renderTomographAgenda();
+}
+
+function buildTomographCenterFilter() {
+  const centers = [...new Set(
+    (state.homeData?.configuration?.tomographCapacities ?? []).map(c => c.centerName)
+  )].sort();
+  const row = document.getElementById('tomographCenterFilterPills');
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', state.tomographAgenda.centerFilter === null, () => {
+    state.tomographAgenda.centerFilter = null; renderTomographAgenda();
+  }));
+  centers.forEach(c => row.appendChild(
+    makePill(c, state.tomographAgenda.centerFilter === c, () => {
+      state.tomographAgenda.centerFilter = c; renderTomographAgenda();
+    })
+  ));
+}
+
+async function loadTomographAgendaForSelectedDate() {
+  const date = state.tomographAgenda.selectedDate;
+  const st = document.getElementById('scrapeTomographStatus');
+  if (!date) { state.tomographAgenda.slots = []; renderTomographAgenda(); return; }
+
+  const today = todayStr();
+  const isFuture = date > today;
+  st.textContent = isFuture ? 'Scraping en tiempo real...' : 'Cargando...';
+  state.tomographAgenda.loading = true;
+
+  try {
+    const resp = await fetch(`/api/tomograph-agenda?date=${date}`);
+    if (resp.ok) {
+      state.tomographAgenda.slots = await resp.json();
+      st.textContent = `${state.tomographAgenda.slots.length} en agenda`;
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      st.textContent = err.detail ?? `Error ${resp.status}`;
+      state.tomographAgenda.slots = [];
+    }
+  } catch (e) {
+    st.textContent = `Error: ${e.message}`;
+    state.tomographAgenda.slots = [];
+  } finally {
+    state.tomographAgenda.loading = false;
+    renderTomographAgenda();
+  }
+}
+
+function renderTomographAgenda() {
+  renderTomographMachineCards();
+  renderTomographAgendaDetail();
+
+  document.querySelectorAll('#tomographCenterFilterPills .pill-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      btn.textContent === 'Todos'
+        ? state.tomographAgenda.centerFilter === null
+        : btn.textContent === state.tomographAgenda.centerFilter);
+  });
+}
+
+function renderTomographMachineCards() {
+  const container = document.getElementById('tomographMachineCards');
+  container.innerHTML = '';
+  if (!state.homeData) return;
+
+  const caps = (state.homeData.configuration?.tomographCapacities ?? [])
+    .filter(c => !state.tomographAgenda.centerFilter || c.centerName === state.tomographAgenda.centerFilter);
+
+  const centerGroups = new Map();
+  caps.forEach(c => {
+    if (!centerGroups.has(c.centerName)) centerGroups.set(c.centerName, []);
+    centerGroups.get(c.centerName).push(c);
+  });
+
+  centerGroups.forEach((tomographs, centerName) => {
+    const section = document.createElement('div');
+    section.className = 'agenda-center-section';
+    section.innerHTML = `<div class="agenda-center-label">${centerName}</div>`;
+
+    tomographs.forEach(cap => {
+      const slots = state.tomographAgenda.slots.filter(s => s.machineName === cap.machineName);
+      const scraped = slots.length;
+      const freeMin = freeMinutes(cap, scraped);
+      const totalSlots = Math.floor((Number(cap.workingHours) - Number(cap.reservedSpecialHours)) * 60 / cap.standardSlotMinutes);
+      const freeSlots = Math.floor(freeMin / cap.standardSlotMinutes);
+      const capCls = capacityClass(freeSlots, totalSlots);
+      const isActive = state.tomographAgenda.activeTomograph === cap.machineName;
+      const shortName = cap.machineName.replace(/^[^-]+ - /, '');
+
+      const card = document.createElement('div');
+      card.className = `machine-card ${capCls}${isActive ? ' active' : ''}`;
+      card.innerHTML =
+        `<div class="machine-card-name">${shortName}</div>` +
+        `<div class="machine-card-stats"><span>${scraped} pac</span></div>` +
+        `<div class="machine-card-free">${formatMinutes(freeMin)} libre · ${freeSlots} t.</div>`;
+
+      card.addEventListener('click', () => {
+        state.tomographAgenda.activeTomograph = isActive ? null : cap.machineName;
+        renderTomographAgenda();
+      });
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+  });
+}
+
+function renderTomographAgendaDetail() {
+  const panel = document.getElementById('tomographDetail');
+
+  if (!state.tomographAgenda.activeTomograph || !state.tomographAgenda.selectedDate) {
+    panel.innerHTML = '<p class="detail-placeholder">Seleccione un tomografo para ver su agenda.</p>';
+    return;
+  }
+
+  const machineSlots = state.tomographAgenda.slots.filter(s => s.machineName === state.tomographAgenda.activeTomograph);
+  panel.innerHTML = '';
+  const shortName = state.tomographAgenda.activeTomograph.replace(/^[^-]+ - /, '');
+  panel.appendChild(el('div', 'detail-title', `${shortName} · ${state.tomographAgenda.selectedDate}`));
+
+  if (state.tomographAgenda.loading) {
+    panel.appendChild(el('p', 'detail-placeholder', 'Cargando...'));
+    return;
+  }
+
+  if (machineSlots.length === 0) {
+    panel.appendChild(el('p', 'detail-placeholder', 'Sin turnos para esta fecha.'));
+    return;
+  }
+
+  machineSlots.sort((a, b) => (a.startTime || 'zzz').localeCompare(b.startTime || 'zzz'));
+  machineSlots.forEach(slot => {
+    const row = document.createElement('div');
+    row.className = 'slot-row in-agenda';
+    let displayName;
+    if (!slot.patientName || slot.patientName === '~' || slot.patientName === '-') {
+      displayName = '<em style="color:var(--muted)">(sin nombre)</em>';
+    } else {
+      const guid = findPatientGuid(slot.patientName);
+      displayName = guid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
+        : slot.patientName;
+    }
+    row.innerHTML =
+      `<span class="slot-time">${slot.startTime || '~'}</span>` +
+      `<span class="slot-patient">${displayName}</span>` +
+      `<span class="slot-badge celeste">${slot.treatment || 'en agenda'}</span>`;
+    panel.appendChild(row);
+  });
+}
+
+
+// ── Config editable ───────────────────────────────────────────────────────────
+
+async function loadConfigData() {
+  try {
+    const resp = await fetch('/api/configuration');
+    if (resp.ok) { state.configData = await resp.json(); renderConfig(); }
+  } catch { /* ignore */ }
+}
+
+function renderConfig() {
+  if (!state.configData) return;
+
+  // General
+  const gen = document.getElementById('generalConfigSection');
+  gen.innerHTML = '';
+  const genRow = document.createElement('article');
+  genRow.className = 'config-row';
+  genRow.innerHTML =
+    `<strong>Dias espera larga (Long Wait)</strong>` +
+    `<span>Pacientes con mas dias se muestran en gris</span>` +
+    `<input type="number" class="config-input-number" id="cfgLongWait" min="1" value="${state.configData.longWaitThresholdDays ?? 40}">`;
+  gen.appendChild(genRow);
+
+  const scrapeRow = document.createElement('article');
+  scrapeRow.className = 'config-row';
+  scrapeRow.innerHTML =
+    `<strong>Dias de scrap de agenda</strong>` +
+    `<span>Dias habiles proximos que se scrapearan al actualizar</span>` +
+    `<input type="number" class="config-input-number" id="cfgScrapeDays" min="1" max="60" value="${state.configData.upcomingScrapeDays ?? 15}">`;
+  gen.appendChild(scrapeRow);
+
+  // Stages
+  const stageList = document.getElementById('stageConfigList');
+  stageList.innerHTML = '';
+  (state.configData.stages ?? []).forEach(s => {
+    const row = document.createElement('article');
+    row.className = 'config-row';
+    row.innerHTML =
+      `<strong>${s.code} – ${s.displayName}</strong>` +
+      `<span>${s.groupName}</span>` +
+      `<label>Dias ref: <input type="number" class="config-input-number" id="cfgStage_${s.code}" min="1" value="${s.expectedDays}"></label>`;
+    stageList.appendChild(row);
+  });
+
+  // Machine capacities
+  renderCapacityList('machineConfigList', state.configData.machineCapacities ?? [], 'mach');
+
+  // Tomograph capacities
+  renderCapacityList('tomographConfigList', state.configData.tomographCapacities ?? [], 'tomo');
+}
+
+function renderCapacityList(containerId, capacities, prefix) {
+  const list = document.getElementById(containerId);
+  list.innerHTML = '';
+  capacities.forEach((c, i) => {
+    const row = document.createElement('article');
+    row.className = 'config-row';
+    const shortName = c.machineName.replace(/^[^-]+ - /, '');
+    row.innerHTML =
+      `<strong>${shortName}</strong>` +
+      `<span>${c.centerName}</span>` +
+      `<label>Hs: <input type="number" class="config-input-number" id="${prefix}_hs_${i}" min="1" step="0.5" value="${c.workingHours}"></label>` +
+      `<label>Min turno: <input type="number" class="config-input-number" id="${prefix}_slot_${i}" min="1" value="${c.standardSlotMinutes}"></label>` +
+      `<label>Hs reservadas: <input type="number" class="config-input-number" id="${prefix}_res_${i}" min="0" step="0.5" value="${c.reservedSpecialHours}"></label>`;
+    list.appendChild(row);
+  });
+}
+
+async function saveConfig() {
+  if (!state.configData) return;
+  const btn = document.getElementById('saveConfigBtn');
+  const st = document.getElementById('saveConfigStatus');
+  btn.disabled = true; st.textContent = 'Guardando...';
+
+  // Read general
+  const lwInput = document.getElementById('cfgLongWait');
+  if (lwInput) state.configData.longWaitThresholdDays = parseInt(lwInput.value) || state.configData.longWaitThresholdDays;
+  const sdInput = document.getElementById('cfgScrapeDays');
+  if (sdInput) state.configData.upcomingScrapeDays = parseInt(sdInput.value) || state.configData.upcomingScrapeDays;
+
+  // Read stages
+  (state.configData.stages ?? []).forEach(s => {
+    const inp = document.getElementById(`cfgStage_${s.code}`);
+    if (inp) s.expectedDays = parseInt(inp.value) || s.expectedDays;
+  });
+
+  // Read machine capacities
+  (state.configData.machineCapacities ?? []).forEach((c, i) => {
+    const hs = document.getElementById(`mach_hs_${i}`);
+    const slot = document.getElementById(`mach_slot_${i}`);
+    const res = document.getElementById(`mach_res_${i}`);
+    if (hs)   c.workingHours        = parseFloat(hs.value)   || c.workingHours;
+    if (slot) c.standardSlotMinutes = parseInt(slot.value)   || c.standardSlotMinutes;
+    if (res)  c.reservedSpecialHours = parseFloat(res.value);
+  });
+
+  // Read tomograph capacities
+  (state.configData.tomographCapacities ?? []).forEach((c, i) => {
+    const hs = document.getElementById(`tomo_hs_${i}`);
+    const slot = document.getElementById(`tomo_slot_${i}`);
+    const res = document.getElementById(`tomo_res_${i}`);
+    if (hs)   c.workingHours        = parseFloat(hs.value)   || c.workingHours;
+    if (slot) c.standardSlotMinutes = parseInt(slot.value)   || c.standardSlotMinutes;
+    if (res)  c.reservedSpecialHours = parseFloat(res.value);
+  });
+
+  try {
+    const resp = await fetch('/api/configuration', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.configData)
+    });
+    if (resp.ok) {
+      state.configData = await resp.json();
+      st.textContent = 'Guardado correctamente.';
+    } else {
+      st.textContent = `Error ${resp.status}`;
+    }
+  } catch (e) {
+    st.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -727,4 +1141,5 @@ function populateAgendaTestControls(data) {
 wireTabs();
 wireActions();
 loadAvailableDates();
+loadAvailableTomographDates();
 loadHome();

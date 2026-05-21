@@ -7,6 +7,10 @@ public static class HomeResponseMapper
 {
     public static HomeResponse Map(DashboardBootstrapData data, IRtSystemConfigurationProvider configurationProvider)
     {
+        foreach (var p in data.FollowUpPatients)
+            if (p.AssignedPhysicist != null)
+                p.AssignedPhysicist = FormatPhysicistName(p.AssignedPhysicist);
+
         var configurationModel = configurationProvider.Configuration;
         var equipments = configurationModel.MachineCapacities
             .Select(capacity => new EquipmentSummaryItem
@@ -34,9 +38,19 @@ public static class HomeResponseMapper
             {
                 Stages = configurationModel.Stages.OrderBy(x => x.SortOrder).ToList(),
                 Machines = configurationModel.Machines.OrderBy(x => x.CenterName).ThenBy(x => x.DisplayName).ToList(),
-                MachineCapacities = configurationModel.MachineCapacities.OrderBy(x => x.CenterName).ThenBy(x => x.MachineName).ToList()
+                MachineCapacities = configurationModel.MachineCapacities.OrderBy(x => x.CenterName).ThenBy(x => x.MachineName).ToList(),
+                TomographCapacities = configurationModel.TomographCapacities.OrderBy(x => x.CenterName).ThenBy(x => x.MachineName).ToList()
             }
         };
+    }
+
+    private static string FormatPhysicistName(string name)
+    {
+        var idx = name.IndexOf(", ", StringComparison.Ordinal);
+        if (idx < 0) return name;
+        var lastName = name[..idx].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name[..idx];
+        var firstName = name[(idx + 2)..].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name[(idx + 2)..];
+        return $"{lastName} {firstName}";
     }
 }
 
@@ -68,6 +82,7 @@ public sealed class ConfigurationViewModel
     public List<ProcessStageDefinition> Stages { get; set; } = new();
     public List<RtMachine> Machines { get; set; } = new();
     public List<MachineCapacitySetting> MachineCapacities { get; set; } = new();
+    public List<MachineCapacitySetting> TomographCapacities { get; set; } = new();
 }
 
 public sealed class AgendaSlotDto
