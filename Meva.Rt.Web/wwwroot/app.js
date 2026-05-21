@@ -461,7 +461,7 @@ function renderFollowupDetail() {
         `<div class="patient-main">` +
           nameHtml +
           hcTag(p.patientId) +
-          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
+          (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName} · ${def?.displayName ?? p.stageCode}</span>` +
         `</div>` +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
@@ -496,7 +496,7 @@ function renderFollowupDetail() {
         delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         nameHtml +
         hcTag(p.patientId) +
-          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
+          (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
@@ -532,7 +532,7 @@ function renderFollowupDetail() {
         `<div class="patient-main">` +
           nameHtml +
           hcTag(p.patientId) +
-          (p.assignedPhysicist && p.stageGroupName !== 'Planificacion' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
+          (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName}</span>` +
         `</div>` +
         (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +

@@ -25,8 +25,9 @@ public sealed class RunnerLogger : IDisposable
     private void Write(string level, string message)
     {
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
-        Console.WriteLine(line);
         _file.WriteLine(line);
+        if (level == "ERROR")
+            Console.WriteLine(line);
     }
 
     public void Dispose() => _file.Dispose();

@@ -1,4 +1,11 @@
 @echo off
+REM ── Iniciar minimizado (se re-lanza en ventana minimizada si es la primera ejecucion) ──
+if not "%MEVA_MINIMIZED%"=="1" (
+    set MEVA_MINIMIZED=1
+    start "Meva RT Refresh" /min cmd /c ""%~f0""
+    exit /b 0
+)
+
 REM ============================================================
 REM  Meva RT - Actualizacion completa (Win10 standalone)
 REM
@@ -6,7 +13,7 @@ REM  Secuencia:
 REM    1. Scraping SitraMed (sin ARIA) → genera snapshot + pacientes.json
 REM    2. Consultar ARIA (impersonando ECL-FISICA2\varian)
 REM    3. Importar resultados ARIA al servidor
-REM    4. Refrescar dashboard final (merge SitraMed + ARIA)
+REM    4. Aplicar datos ARIA al snapshot (sin re-scrapear)
 REM    5. Scrapear agenda equipos proximos 15 dias habiles
 REM    6. Scrapear agenda tomografos proximos 15 dias habiles
 REM

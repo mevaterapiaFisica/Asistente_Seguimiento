@@ -49,8 +49,10 @@ public static class HomeResponseMapper
         var idx = name.IndexOf(", ", StringComparison.Ordinal);
         if (idx < 0) return name;
         var lastName = name[..idx].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name[..idx];
-        var firstName = name[(idx + 2)..].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name[(idx + 2)..];
-        return $"{lastName} {firstName}";
+        var rawFirst = name[(idx + 2)..].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+        var firstName = rawFirst.Length == 0 ? rawFirst
+            : char.ToUpper(rawFirst[0]) + rawFirst[1..].ToLower();
+        return $"{lastName}, {firstName}";
     }
 }
 
