@@ -49,6 +49,7 @@ public sealed class AriaQuery
 
             var patient = ctx.Patients
                 .Include("Courses.PlanSetups.Radiations.RadiationDevice.Machine")
+                .Include("Courses.PlanSetups.Radiations.ExternalFieldCommon.EnergyMode")
                 .Include("Courses.PlanSetups.Prescription")
                 .Include("PatientDoctors.Doctor")
                 .FirstOrDefault(p => p.PatientId == patientId);
@@ -102,7 +103,8 @@ public sealed class AriaQuery
 
             _log.Info($"  [{patientId}] {result.LastName}, {result.FirstName} | " +
                       $"Plan: {result.ActivePlan?.PlanId ?? "ninguno"} ({result.ActivePlan?.Status ?? "-"}) | " +
-                      $"Equipo: {result.ActivePlan?.MachineName ?? "-"}");
+                      $"Equipo: {result.ActivePlan?.MachineAriaId ?? "-"} | " +
+                      $"Haz: {result.ActivePlan?.BeamType ?? "-"}");
         }
         catch (Exception ex)
         {
@@ -143,7 +145,38 @@ public sealed class AriaQuery
             pr.MachineName = firstRadiation.RadiationDevice.Machine.MachineName?.Trim();
         }
 
+        // EnergyMode de ExternalFieldCommon tiene RadiationType y Energy reales.
+        // Radiation.RadiationType == "BeamLinac" para todos los haces de linac — no útil para clasificar.
+        if (firstRadiation != null)
+        {
+            var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
+            var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
+            pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
+        }
+
         return pr;
+    }
+
+    // Energy en ARIA está en keV: 6000 = 6 MV (6X), 10000 = 10 MV (Alta Energia), etc.
+    // RadiationType en EnergyMode: "X" = fotones, "E" = electrones (no "PHOTON"/"ELECTRON").
+    private const int HighEnergyThresholdKev = 10_000; // 10 MV
+
+    private static string? DetermineBeamType(string? emRadiationType, int? emEnergy, string techniqueLabel)
+    {
+        if (string.Equals(emRadiationType, "E", StringComparison.OrdinalIgnoreCase))
+            return "Electrones";
+
+        if (techniqueLabel.IndexOf("SRS", StringComparison.OrdinalIgnoreCase) >= 0
+            || techniqueLabel.IndexOf("STEREO", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "SRS";
+
+        if (string.Equals(emRadiationType, "X", StringComparison.OrdinalIgnoreCase))
+            return emEnergy.HasValue && emEnergy >= HighEnergyThresholdKev ? "AltaE" : "6X";
+
+        if (emEnergy.HasValue)
+            return emEnergy >= HighEnergyThresholdKev ? "AltaE" : "6X";
+
+        return null;
     }
 
     private static PlanResult? SelectActivePlan(List<PlanResult> plans)

@@ -40,9 +40,11 @@ public sealed class ProcessPatientSnapshot
     public bool IsDelayed { get; set; }
     public bool IsLongWait { get; set; }
     public string? PlannedMachineDisplayName { get; set; }
+    public string? BeamType { get; set; }
     public string SourceCenterName { get; set; } = string.Empty;
     public string? SitraMedGuid { get; set; }
     public string? AssignedPhysicist { get; set; }
+    public string TreatmentType { get; set; } = string.Empty;
 }
 
 public sealed class MachineAppointmentSnapshot
@@ -54,6 +56,8 @@ public sealed class MachineAppointmentSnapshot
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
     public string Treatment { get; set; } = string.Empty;
+    public string? SitraMedGuid { get; set; }
+    public string? BeamType { get; set; }
 }
 
 public sealed class AriaPlanSnapshot
@@ -62,6 +66,7 @@ public sealed class AriaPlanSnapshot
     public string? PlannedMachineDisplayName { get; set; }
     public string? PlannedMachineAriaId { get; set; }
     public string? PlanStatus { get; set; }
+    public string? BeamType { get; set; }
 }
 
 public sealed class UnifiedPatientSnapshot

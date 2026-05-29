@@ -44,10 +44,25 @@ h1, h2, p { margin: 0; }
 .ghost-button:hover { background: rgba(15,108,116,0.08); }
 .ghost-button:disabled { opacity: 0.5; cursor: wait; }
 
-.generated-at { margin-left: auto; color: var(--muted); font-size: 13px; }
-.import-result { font-size: 13px; color: var(--muted); }
-.import-result.ok { color: var(--accent); }
-.import-result.error { color: var(--warn); }
+/* ── Scrape menu dropdown ─────────────────────────────────────────────────── */
+
+.scrape-menu-wrap { position: relative; margin-left: auto; }
+.scrape-menu-trigger { display: flex; align-items: center; gap: 5px; }
+#generatedAt { font-size: 12px; color: var(--muted); }
+
+.scrape-menu {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.13); z-index: 200;
+  min-width: 190px; overflow: hidden;
+}
+.scrape-menu button {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 16px; border: none; border-bottom: 1px solid var(--line);
+  background: transparent; font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.scrape-menu button:last-child { border-bottom: none; }
+.scrape-menu button:hover { background: rgba(15,108,116,0.07); }
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -87,11 +102,20 @@ h1, h2, p { margin: 0; }
   align-items: start;
 }
 
-/* Seguimiento: 70% tarjetas / 30% buscador */
-#tab-followup .two-col-layout { grid-template-columns: 7fr 3fr; }
+/* Seguimiento: 60% tarjetas / 40% buscador */
+#tab-followup .two-col-layout { grid-template-columns: 6fr 4fr; }
 
-/* Agenda: 60% equipos / 40% detalle */
-#tab-agenda .two-col-layout   { grid-template-columns: 6fr 4fr; }
+/* Agenda equipos y tomógrafos: 60% tarjetas / 40% detalle */
+#tab-agenda .two-col-layout      { grid-template-columns: 6fr 4fr; }
+#tab-tomograph .two-col-layout   { grid-template-columns: 6fr 4fr; }
+
+/* Tomógrafos: centros en 2 columnas (1 tomógrafo por centro) */
+#tomographMachineCards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
 
 .left-col {
   display: flex; flex-direction: column; gap: 10px;
@@ -169,23 +193,51 @@ h1, h2, p { margin: 0; }
   border: 1px solid var(--line); border-radius: 10px; border-left-width: 3px;
   padding: 8px 10px; background: #fff; font-size: 13px;
 }
-.patient-row.on-time  { border-left-color: #4caf50; }
-.patient-row.at-limit { border-left-color: #ff9800; }
-.patient-row.delayed  { border-left-color: var(--red); background: #fff4f1; }
+.patient-row.on-time   { border-left-color: #4caf50; }
+.patient-row.at-limit  { border-left-color: #ff9800; }
+.patient-row.delayed   { border-left-color: var(--red); background: #fff4f1; }
+.patient-row.long-wait { border-left-color: #bdbdbd; background: #f5f5f5; opacity: 0.7; }
 
 .patient-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .patient-main strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.patient-main a, .patient-row > a, .slot-patient a { color: inherit; text-decoration: none; }
+.patient-main a:hover strong, .patient-row > a:hover strong { text-decoration: underline; }
+.slot-patient a:hover { text-decoration: underline; }
 .patient-context { font-size: 11px; color: var(--muted); }
 .hc-tag { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.hc-tag.muted-italic { font-style: italic; opacity: 0.65; }
+.physicist-tag { font-size: 11px; color: var(--accent); white-space: nowrap; }
 .days-badge { font-size: 12px; font-weight: 700; margin-left: auto; flex-shrink: 0; }
-.days-badge.on-time  { color: var(--green); }
-.days-badge.at-limit { color: var(--orange); }
-.days-badge.delayed  { color: var(--red); }
+.days-badge.on-time   { color: var(--green); }
+.days-badge.at-limit  { color: var(--orange); }
+.days-badge.delayed   { color: var(--red); }
+.days-badge.long-wait { color: #9e9e9e; }
 .aria-machine {
   display: inline-flex; align-items: center;
   background: #eef6f4; color: var(--accent);
   border-radius: 6px; padding: 2px 7px; font-size: 11px; flex-shrink: 0;
 }
+.treatment-badge {
+  font-size: 10px; font-weight: 700; border-radius: 4px;
+  padding: 1px 5px; white-space: nowrap; flex-shrink: 0; letter-spacing: 0.3px;
+}
+.treatment-badge.tt-TBI   { background: #e1bee7; color: #6a1b9a; }
+.treatment-badge.tt-IMRT  { background: #bbdefb; color: #0d47a1; }
+.treatment-badge.tt-SBRT  { background: #ffcdd2; color: #b71c1c; }
+.treatment-badge.tt-3DC   { background: #b2dfdb; color: #004d40; }
+.treatment-badge.tt-IGRT  { background: #c5cae9; color: #1a237e; }
+.treatment-badge.tt-RC    { background: #ffe0b2; color: #e65100; }
+.treatment-badge.tt-BQT   { background: #fce4ec; color: #880e4f; }
+.treatment-badge.tt-IORT  { background: #c8e6c9; color: #1b5e20; }
+.beam-badge {
+  font-size: 10px; font-weight: 700; border-radius: 4px;
+  padding: 1px 5px; white-space: nowrap; flex-shrink: 0; letter-spacing: 0.3px;
+}
+.beam-badge.beam-6X           { background: #e3f2fd; color: #1565c0; }
+.beam-badge.beam-Electrones   { background: #fff8e1; color: #f57f17; }
+.beam-badge.beam-SRS          { background: #fce4ec; color: #880e4f; }
+.beam-badge.beam-AltaE,
+.beam-badge.beam-Alta-Energia { background: #e8eaf6; color: #283593; }
 
 /* ── Dots ─────────────────────────────────────────────────────────────────── */
 
@@ -196,6 +248,7 @@ h1, h2, p { margin: 0; }
 .dot-green  { background: #4caf50; }
 .dot-yellow { background: #ff9800; }
 .dot-red    { background: var(--red); }
+.dot-gray   { background: #bdbdbd; }
 
 /* ── Agenda machine cards (left) ─────────────────────────────────────────── */
 
@@ -255,8 +308,16 @@ h1, h2, p { margin: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
 .panel-header { display: flex; justify-content: space-between; align-items: end; margin-bottom: 12px; }
 .config-list { display: grid; gap: 8px; }
-.config-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; }
-.config-row span, .config-row small { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
+.config-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.config-row strong { flex: 1 1 100%; font-size: 13px; }
+.config-row span { color: var(--muted); font-size: 12px; flex: 1 1 auto; }
+.config-row label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.config-save-bar { margin-top: 14px; display: flex; align-items: center; gap: 12px; }
+.config-input-number {
+  width: 5rem; text-align: right;
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 6px; font-size: 13px; background: #fff;
+}
 .test-panel { margin-top: 14px; }
 .test-actions { display: grid; gap: 10px; }
 .test-result {
@@ -269,16 +330,46 @@ h1, h2, p { margin: 0; }
   border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; background: #fff;
 }
 
+/* ── Tab dashed (provisional) ────────────────────────────────────────────── */
+
+.tab-button-dashed { border-style: dashed; color: var(--muted); }
+.tab-button-dashed.active { border-style: solid; }
+
+/* ── Fisica tab ───────────────────────────────────────────────────────────── */
+
+#tab-fisica .two-col-layout { grid-template-columns: 320px 1fr; }
+
+.detail-subtitle {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  padding: 6px 0 4px; border-bottom: 1px solid var(--line);
+  flex-shrink: 0; margin-top: 4px;
+}
+
+.fisica-physicist-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 13px;
+  cursor: pointer;
+}
+.fisica-physicist-row:last-child { border-bottom: none; }
+.fisica-physicist-row:hover { background: rgba(15,108,116,0.05); }
+.fisica-physicist-row.active { background: #eef6f4; border-left: 3px solid var(--accent); padding-left: 9px; }
+.fisica-physicist-row.fisica-unassigned { color: var(--muted); font-style: italic; }
+.fisica-physicist-name { flex: 1; }
+.fisica-physicist-count { font-weight: 600; color: var(--accent); }
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
   .two-col-layout,
   #tab-followup .two-col-layout,
-  #tab-agenda .two-col-layout { grid-template-columns: 1fr; }
+  #tab-agenda .two-col-layout,
+  #tab-tomograph .two-col-layout,
+  #tab-fisica .two-col-layout { grid-template-columns: 1fr; }
   .left-col { max-height: none; overflow-y: visible; }
   #centerCards { grid-template-columns: 1fr; }
   .agenda-machines-grid { grid-template-columns: 1fr; }
+  #tomographMachineCards { grid-template-columns: 1fr; }
   .right-col { max-height: none; }
   .layout, .config-layout { grid-template-columns: 1fr; }
-  .generated-at { margin-left: 0; width: 100%; }
+  .scrape-menu-wrap { margin-left: 0; }
 }

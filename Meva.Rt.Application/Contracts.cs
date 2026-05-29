@@ -36,6 +36,13 @@ public interface ISnapshotStore
     Task<T?> TryLoadAsync<T>(string snapshotName, CancellationToken cancellationToken);
 }
 
+public interface IPatientHcResolver
+{
+    Task<IReadOnlyDictionary<string, string>> ResolveAsync(
+        IEnumerable<string> sitraMedGuids,
+        CancellationToken cancellationToken);
+}
+
 public sealed class DashboardBootstrapData
 {
     public DateTime GeneratedAtUtc { get; set; }
@@ -53,19 +60,22 @@ public sealed class BootstrapService
     private readonly IAriaPlanResolver _ariaPlanResolver;
     private readonly ISnapshotStore _snapshotStore;
     private readonly IRtSystemConfigurationProvider _configurationProvider;
+    private readonly IPatientHcResolver _hcResolver;
 
     public BootstrapService(
         IAgendaExtractor agendaExtractor,
         IFollowUpExtractor followUpExtractor,
         IAriaPlanResolver ariaPlanResolver,
         ISnapshotStore snapshotStore,
-        IRtSystemConfigurationProvider configurationProvider)
+        IRtSystemConfigurationProvider configurationProvider,
+        IPatientHcResolver hcResolver)
     {
         _agendaExtractor = agendaExtractor;
         _followUpExtractor = followUpExtractor;
         _ariaPlanResolver = ariaPlanResolver;
         _snapshotStore = snapshotStore;
         _configurationProvider = configurationProvider;
+        _hcResolver = hcResolver;
     }
 
     public async Task<DashboardBootstrapData> BuildAsync(CancellationToken cancellationToken, bool skipAria = false)
@@ -77,6 +87,60 @@ public sealed class BootstrapService
         foreach (var patient in followUp)
             patient.IsLongWait = patient.DaysInStage > longWaitThreshold;
 
+        // Build GUID→HC map: load previous scrape's cache, drop any GUID→GUID entries (unresolved),
+        // then enrich and prune.
+        var rawGuidHcMap = await _snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                           ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var guidHcMap = rawGuidHcMap
+            .Where(kv => !string.Equals(kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+
+        // Solo guardar en el mapa si el PatientId es un HC real (no el GUID en sí mismo).
+        // Cuando el scraper de seguimiento no puede leer la HC muestra el GUID como ID —
+        // evitar guardarlo para que esos pacientes también pasen por FetchHcForGuidsAsync.
+        foreach (var p in followUp)
+        {
+            if (!string.IsNullOrWhiteSpace(p.SitraMedGuid) && !string.IsNullOrWhiteSpace(p.PatientId)
+                && !string.Equals(p.PatientId, p.SitraMedGuid, StringComparison.OrdinalIgnoreCase))
+                guidHcMap[p.SitraMedGuid] = p.PatientId;
+        }
+
+        // GUIDs de agenda cuya HC no está resuelta todavía (ni desde seguimiento ni desde el mapa).
+        // Los pacientes de seguimiento con GUID como PatientId (etapas F1/F2 sin HC asignado)
+        // se excluyen: no tienen HC todavía y no se debe intentar resolverlos.
+        var uncachedAgendaGuids = agenda
+            .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && !guidHcMap.ContainsKey(a.SitraMedGuid!))
+            .Select(a => a.SitraMedGuid!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (uncachedAgendaGuids.Count > 0)
+        {
+            var resolved = await _hcResolver.ResolveAsync(uncachedAgendaGuids, cancellationToken);
+            foreach (var (guid, hc) in resolved)
+                guidHcMap[guid] = hc;
+        }
+
+        // Prune to only active patients — evicts finished patients automatically
+        var activeGuids = followUp.Select(p => p.SitraMedGuid)
+            .Concat(agenda.Select(a => a.SitraMedGuid))
+            .Where(g => !string.IsNullOrWhiteSpace(g))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
+        var prunedMap = guidHcMap
+            .Where(kv => activeGuids.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+        await _snapshotStore.SaveAsync("guid_hc_map", prunedMap, cancellationToken);
+
+        // HC → agenda items (one HC may have multiple slots)
+        var agendaByHc = new Dictionary<string, List<MachineAppointmentSnapshot>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in agenda)
+        {
+            if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
+            if (!prunedMap.TryGetValue(item.SitraMedGuid, out var hc)) continue;
+            if (!agendaByHc.TryGetValue(hc, out var lst)) agendaByHc[hc] = lst = [];
+            lst.Add(item);
+        }
+
         List<AriaPlanSnapshot> aria = [];
         if (!skipAria)
         {
@@ -85,22 +149,33 @@ public sealed class BootstrapService
                 .Select(c => c.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var patientIds = followUp
+            var followUpIds = followUp
                 .Where(x => ariaEnabledCenters.Contains(x.CenterName))
                 .Select(x => x.PatientId)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var allPatientIds = followUpIds
+                .Concat(agendaByHc.Keys)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            aria = (await _ariaPlanResolver.ResolveAsync(patientIds, cancellationToken)).ToList();
+            aria = (await _ariaPlanResolver.ResolveAsync(allPatientIds, cancellationToken)).ToList();
             var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
             foreach (var patient in followUp)
             {
-                if (ariaByPatient.TryGetValue(patient.PatientId, out var plan)
-                    && !string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
-                {
+                if (!ariaByPatient.TryGetValue(patient.PatientId, out var plan)) continue;
+                if (!string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
                     patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
-                }
+                if (!string.IsNullOrWhiteSpace(plan.BeamType))
+                    patient.BeamType = plan.BeamType;
+            }
+
+            foreach (var (hc, items) in agendaByHc)
+            {
+                if (!ariaByPatient.TryGetValue(hc, out var plan) || string.IsNullOrWhiteSpace(plan.BeamType)) continue;
+                foreach (var item in items)
+                    item.BeamType = plan.BeamType;
             }
         }
 

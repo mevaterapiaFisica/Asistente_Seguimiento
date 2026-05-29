@@ -19,4 +19,5 @@ internal sealed class AriaRunnerPlan
     public string? MachineAriaId { get; set; }
     public string? MachineName { get; set; }
     public string? Status { get; set; }
+    public string? BeamType { get; set; }
 }

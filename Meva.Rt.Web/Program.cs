@@ -59,6 +59,7 @@ builder.Services.AddSingleton<ITomographAgendaExtractor, SitraMedTomographExtrac
 builder.Services.AddSingleton<IFollowUpExtractor, SitraMedFollowUpExtractor>();
 builder.Services.AddSingleton<IAriaPatientRootProvider, NullAriaPatientRootProvider>();
 builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
+builder.Services.AddSingleton<IPatientHcResolver, SitraMedPatientHcFetcher>();
 builder.Services.AddSingleton<BootstrapService>();
 
 var app = builder.Build();
@@ -115,10 +116,21 @@ app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
         .Select(s => (int?)s.SortOrder)
         .Min() ?? 40;
 
-    var ids = data.FollowUpPatients
+    var guidHcMapNoAria = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                          ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    var followUpExportIds = data.FollowUpPatients
         .Where(p => stageMap.TryGetValue(p.StageCode, out var so) && so >= ariaThreshold)
         .Select(p => p.PatientId)
-        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var agendaExportIds = data.AgendaItems
+        .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapNoAria.ContainsKey(a.SitraMedGuid!))
+        .Select(a => guidHcMapNoAria[a.SitraMedGuid!])
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var ids = followUpExportIds
+        .Concat(agendaExportIds)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(id => id)
         .ToList();
@@ -247,9 +259,20 @@ app.MapGet("/api/aria/export-patient-ids", async Task<IResult> (
     if (snapshot == null)
         return TypedResults.Problem("No hay snapshot disponible. Ejecutá /api/home/refresh primero.");
 
-    var ids = snapshot.FollowUpPatients
+    var guidHcMapExport = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                          ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    var followUpExport = snapshot.FollowUpPatients
         .Select(p => p.PatientId)
-        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var agendaExport = snapshot.AgendaItems
+        .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapExport.ContainsKey(a.SitraMedGuid!))
+        .Select(a => guidHcMapExport[a.SitraMedGuid!])
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var ids = followUpExport
+        .Concat(agendaExport)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(id => id)
         .ToList();
@@ -309,7 +332,8 @@ app.MapPost("/api/aria/import-results", async Task<IResult> (
         {
             PatientId = patient.PatientId,
             PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
-            PlanStatus = patient.ActivePlan.Status
+            PlanStatus = patient.ActivePlan.Status,
+            BeamType = patient.ActivePlan.BeamType
         };
 
         if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
@@ -354,24 +378,44 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     if (data == null)
         return TypedResults.Problem("No hay snapshot. Ejecutá refresh-no-aria primero.", statusCode: 503);
 
-    foreach (var p in data.FollowUpPatients)
-        p.PlannedMachineDisplayName = null;
+    var guidHcMapApply = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                         ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    var patientIds = data.FollowUpPatients
+    foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; }
+    foreach (var a in data.AgendaItems) a.BeamType = null;
+
+    var followUpApplyIds = data.FollowUpPatients
         .Select(p => p.PatientId)
-        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var agendaApplyIds = data.AgendaItems
+        .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapApply.ContainsKey(a.SitraMedGuid!))
+        .Select(a => guidHcMapApply[a.SitraMedGuid!])
+        .Where(id => !string.IsNullOrWhiteSpace(id));
+
+    var patientIds = followUpApplyIds
+        .Concat(agendaApplyIds)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToList();
 
     var aria = (await ariaPlanResolver.ResolveAsync(patientIds, cancellationToken)).ToList();
     var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
+
     foreach (var patient in data.FollowUpPatients)
     {
-        if (ariaByPatient.TryGetValue(patient.PatientId, out var plan)
-            && !string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
-        {
+        if (!ariaByPatient.TryGetValue(patient.PatientId, out var plan)) continue;
+        if (!string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
             patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
-        }
+        if (!string.IsNullOrWhiteSpace(plan.BeamType))
+            patient.BeamType = plan.BeamType;
+    }
+
+    foreach (var item in data.AgendaItems)
+    {
+        if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
+        if (!guidHcMapApply.TryGetValue(item.SitraMedGuid, out var hc)) continue;
+        if (!ariaByPatient.TryGetValue(hc, out var plan) || string.IsNullOrWhiteSpace(plan.BeamType)) continue;
+        item.BeamType = plan.BeamType;
     }
 
     data.StageSummary = data.FollowUpPatients
@@ -415,9 +459,20 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
     if (!string.IsNullOrWhiteSpace(runnerExe) && File.Exists(runnerExe))
     {
         var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
-        var hcIds = (snapshot?.FollowUpPatients ?? [])
+        var guidHcMapQuery = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                             ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var followUpHcIds = (snapshot?.FollowUpPatients ?? [])
             .Select(p => p.PatientId ?? "")
-            .Where(id => hcRegex.IsMatch(id))
+            .Where(id => hcRegex.IsMatch(id));
+
+        var agendaHcIds = (snapshot?.AgendaItems ?? [])
+            .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapQuery.ContainsKey(a.SitraMedGuid!))
+            .Select(a => guidHcMapQuery[a.SitraMedGuid!])
+            .Where(id => hcRegex.IsMatch(id));
+
+        var hcIds = followUpHcIds
+            .Concat(agendaHcIds)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -501,7 +556,8 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
         {
             PatientId = patient.PatientId,
             PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
-            PlanStatus = patient.ActivePlan.Status
+            PlanStatus = patient.ActivePlan.Status,
+            BeamType = patient.ActivePlan.BeamType
         };
 
         if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))

@@ -96,6 +96,7 @@ public sealed class AgendaSlotDto
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
     public string Treatment { get; set; } = string.Empty;
+    public string? BeamType { get; set; }
     public bool IsEstimated { get; set; }
     public string? EstimatedFromStage { get; set; }
     public string? EstimatedPatientId { get; set; }
@@ -111,5 +112,6 @@ public sealed class AgendaSlotDto
         StartTime = src.StartTime;
         EndTime = src.EndTime;
         Treatment = src.Treatment;
+        BeamType = src.BeamType;
     }
 }

@@ -63,6 +63,21 @@ public static class MetodosParaWebScrap
         return EquipoAriaASitra(idAria, mapFilePath);
     }
 
+    public static bool requiereElectrones(PlanSetup planActivo)
+    {
+        return planActivo.Radiations.Any(r => r.ExternalFieldCommon.EnergyMode.RadiationType == "E");
+    }
+
+    public static bool requiereSRS(PlanSetup planActivo)
+    {
+        return !requiereElectrones(planActivo) && planActivo.Radiations.Any(r => r.ExternalFieldCommon.ExternalField.DoseRate == 1000);
+    }
+
+    public static bool requiereAltaEnergia(PlanSetup planActivo)
+    {
+        return !requiereElectrones(planActivo) && planActivo.Radiations.Any(r => r.ExternalFieldCommon.EnergyMode.Energy != 6000);
+    }
+
     public static string? EquipoAriaASitra(string idAria, string mapFilePath)
     {
         foreach (var line in File.ReadAllLines(mapFilePath))

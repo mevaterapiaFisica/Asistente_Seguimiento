@@ -99,4 +99,7 @@ public sealed class PlanResult
 
     [JsonProperty("machineName")]
     public string? MachineName { get; set; }
+
+    [JsonProperty("beamType")]
+    public string? BeamType { get; set; }
 }

@@ -12,6 +12,7 @@ public sealed class PlaywrightSitraMedClient
     public const string LoginUrl = "https://sitramed.mevaterapia.com.ar/session/new";
     public const string FollowUpUrl = "https://sitramed.mevaterapia.com.ar/follow_up_search";
     public const string MachineAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/machine";
+    public const string TomographAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/tomograph";
 
     private readonly SitraMedRuntimeOptions _options;
 
@@ -130,6 +131,74 @@ public sealed class PlaywrightSitraMedClient
         return results;
     }
 
+    public async Task<IReadOnlyList<TomographAgendaHtmlSnapshot>> DownloadTomographAgendaPagesAsync(
+        IReadOnlyList<RtTomograph> tomographs,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        if (!CanUseRemoteScraping() || tomographs.Count == 0)
+            return Array.Empty<TomographAgendaHtmlSnapshot>();
+
+        await using var page = await CreateLoggedPageAsync(cancellationToken);
+        var results = new List<TomographAgendaHtmlSnapshot>();
+
+        foreach (var tomograph in tomographs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
+            var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
+
+            results.Add(new TomographAgendaHtmlSnapshot
+            {
+                CenterName            = tomograph.CenterName,
+                TomographDisplayName  = tomograph.DisplayName,
+                AgendaDate            = date,
+                Html                  = html,
+                DomSnapshots          = domSnapshots.Count > 0 ? domSnapshots : null
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<TomographAgendaHtmlSnapshot>>> DownloadTomographAgendaPagesForDatesAsync(
+        IReadOnlyList<RtTomograph> tomographs,
+        IReadOnlyList<DateOnly> dates,
+        CancellationToken cancellationToken)
+    {
+        if (!CanUseRemoteScraping() || dates.Count == 0 || tomographs.Count == 0)
+            return new Dictionary<DateOnly, IReadOnlyList<TomographAgendaHtmlSnapshot>>();
+
+        await using var page = await CreateLoggedPageAsync(cancellationToken);
+        var result = new Dictionary<DateOnly, IReadOnlyList<TomographAgendaHtmlSnapshot>>();
+
+        foreach (var date in dates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var dateResults = new List<TomographAgendaHtmlSnapshot>();
+
+            foreach (var tomograph in tomographs)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
+                var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
+
+                dateResults.Add(new TomographAgendaHtmlSnapshot
+                {
+                    CenterName           = tomograph.CenterName,
+                    TomographDisplayName = tomograph.DisplayName,
+                    AgendaDate           = date,
+                    Html                 = html,
+                    DomSnapshots         = domSnapshots.Count > 0 ? domSnapshots : null
+                });
+            }
+
+            result[date] = dateResults;
+        }
+
+        return result;
+    }
+
     public async Task<ScrapingTestResult> RunFollowUpTestAsync(
         RtCenter center,
         ProcessStageDefinition stage,
@@ -200,12 +269,222 @@ public sealed class PlaywrightSitraMedClient
         };
     }
 
+    public async Task<ScrapingTestResult> RunTomographTestAsync(
+        RtTomograph tomograph,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        if (!CanUseRemoteScraping())
+        {
+            return new ScrapingTestResult
+            {
+                Success = false,
+                Message = "Faltan credenciales MEVA_SITRAMED_USER / MEVA_SITRAMED_PASSWORD."
+            };
+        }
+
+        await using var page = await CreateLoggedPageAsync(cancellationToken);
+
+        // Capture network requests made after login to understand what AJAX calls the page makes
+        var capturedRequests = new System.Collections.Concurrent.ConcurrentBag<string>();
+        page.Page.Request += (_, req) =>
+        {
+            if (!req.Url.Contains(".js") && !req.Url.Contains(".css") &&
+                !req.Url.Contains("fonts") && !req.Url.Contains(".ico") &&
+                !req.Url.Contains(".png") && !req.Url.Contains(".woff"))
+            {
+                capturedRequests.Add($"{req.Method} {req.Url}");
+            }
+        };
+
+        await page.Page.GotoAsync(TomographAgendaUrl, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        try { await page.Page.WaitForSelectorAsync("#search_center_id", new PageWaitForSelectorOptions { Timeout = 10000 }); } catch { }
+
+        // Snapshot center and tomograph options before selection
+        var centerOpts = await page.Page.EvaluateAsync<string>(
+            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_center_id option')).map(o => o.textContent?.trim()))");
+
+        // Step 1: select center
+        await SelectFirstByLabelAsync(page.Page, new[] { "#search_center_id", "select[name='search[center_id]']" }, tomograph.CenterName);
+        await page.Page.WaitForTimeoutAsync(600);
+
+        var tomoOptsBefore = await page.Page.EvaluateAsync<string>(
+            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_tomograph_id option')).map(o => o.textContent?.trim()))");
+
+        // Step 2: set date (BEFORE selecting tomograph — on the live page, setting date after
+        //         tomograph resets the tomograph selection)
+        var dateStr = date.ToString("dd/MM/yyyy");
+        await page.Page.EvaluateAsync("""
+            (date) => {
+                const tSel = document.querySelector('#search_tomograph_id');
+                const form = tSel?.closest('form');
+                if (!form) return;
+                const di = form.querySelector('#search_date') ?? form.querySelector('input[name="search[date]"]');
+                if (di) {
+                    di.value = date;
+                    di.dispatchEvent(new Event('input',  { bubbles: true }));
+                    di.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+            """, dateStr);
+        await page.Page.WaitForTimeoutAsync(400);
+
+        // Step 3: select tomograph — this onChange should trigger the results AJAX
+        await SelectFirstByLabelAsync(page.Page, new[] { "#search_tomograph_id", "select[name='search[tomograph_id]']" }, tomograph.SitraName);
+
+        // Capture form info after all selections
+        var tomoOpts = await page.Page.EvaluateAsync<string>(
+            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_tomograph_id option')).map(o => o.textContent?.trim()))");
+
+        var formInfo = await page.Page.EvaluateAsync<string>("""
+            () => {
+                const tSel = document.querySelector('#search_tomograph_id');
+                const form = tSel?.closest('form');
+                if (!form) return JSON.stringify({error: 'no filter form found near #search_tomograph_id'});
+                const di = form.querySelector('#search_date') ?? form.querySelector('input[name="search[date]"]');
+                return JSON.stringify({
+                    action: form.action, method: form.method,
+                    hasDateInput: !!di, dateId: di?.id, dateName: di?.name, dateType: di?.type,
+                    dateValue: di?.value,
+                    centerVal: document.querySelector('#search_center_id')?.value,
+                    tomoVal:   document.querySelector('#search_tomograph_id')?.value,
+                    iframes:   document.querySelectorAll('iframe').length,
+                    hasSubmitBtn: !!form.querySelector('button[type=submit], input[type=submit]')
+                });
+            }
+            """);
+
+        await page.Page.WaitForTimeoutAsync(400);
+        try { await page.Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 }); } catch { }
+        try { await page.Page.WaitForSelectorAsync("table tbody tr", new PageWaitForSelectorOptions { Timeout = 15000 }); } catch { }
+
+        var title    = await page.Page.TitleAsync();
+        var finalUrl = page.Page.Url;
+        var html     = await page.Page.ContentAsync();
+
+        // Collect raw rows without keyword filter
+        var rawRows = new List<string>();
+        foreach (var selector in new[] { "#tomographDrag tbody tr", "#machineDrag tbody tr", "table.table tbody tr", "table tbody tr" })
+        {
+            var loc = page.Page.Locator(selector);
+            int count; try { count = await loc.CountAsync(); } catch { count = 0; }
+            if (count == 0) continue;
+            for (var i = 0; i < Math.Min(count, 20); i++)
+            {
+                var cells   = await loc.Nth(i).Locator("td").AllInnerTextsAsync();
+                var trimmed = cells.Select(c => string.Join(' ', c.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim()).ToArray();
+                rawRows.Add($"[{selector}] " + string.Join(" | ", trimmed));
+            }
+            break;
+        }
+
+        // DOM snapshot
+        var domInfo = await page.Page.EvaluateAsync<string>("""
+            () => {
+                const frames  = Array.from(document.querySelectorAll('turbo-frame')).map(f => ({
+                    id: f.id, src: f.getAttribute('src') ?? '', rows: f.querySelectorAll('tr').length,
+                    html: f.innerHTML.substring(0, 400)
+                }));
+                const tables  = Array.from(document.querySelectorAll('table')).map(t => ({
+                    id: t.id, cls: t.className, rows: t.rows.length, text: t.innerText?.substring(0, 200)
+                }));
+                const iframes = Array.from(document.querySelectorAll('iframe')).map(f => f.src);
+                const bodyText = document.body.innerText?.substring(0, 600);
+                return JSON.stringify({ frames, tables, iframes, bodyText }, null, 2);
+            }
+            """);
+
+        var preview = JsonSerializer.Serialize(new
+        {
+            formInfo         = JsonSerializer.Deserialize<object>(formInfo       ?? "{}"),
+            centerOpts       = JsonSerializer.Deserialize<object>(centerOpts     ?? "[]"),
+            tomoOptsAfterCtr = JsonSerializer.Deserialize<object>(tomoOptsBefore ?? "[]"),
+            tomoOptsAfterDate= JsonSerializer.Deserialize<object>(tomoOpts      ?? "[]"),
+            requests         = capturedRequests.OrderBy(x => x).ToArray(),
+            dom              = JsonSerializer.Deserialize<object>(domInfo        ?? "{}")
+        }, new JsonSerializerOptions { WriteIndented = true });
+
+        return new ScrapingTestResult
+        {
+            Success = true,
+            Message = rawRows.Count > 0
+                ? $"OK. {rawRows.Count} filas en el DOM (sin filtro)."
+                : "OK pero 0 filas en el DOM. Ver HtmlPreview.",
+            Url       = finalUrl,
+            PageTitle = title,
+            HtmlLength = html.Length,
+            HtmlPreview = preview,
+            RawRowSamples = rawRows
+        };
+    }
+
+    private static readonly Regex HcFormatRegex = new(
+        @"^\d{1,3}-\d{4,7}-\d{1,3}$",
+        RegexOptions.Compiled);
+
+    public async Task<IReadOnlyDictionary<string, string>> FetchHcForGuidsAsync(
+        IEnumerable<string> guids,
+        CancellationToken cancellationToken)
+    {
+        var guidList = guids.Where(g => !string.IsNullOrWhiteSpace(g)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (guidList.Count == 0 || !CanUseRemoteScraping())
+            return new Dictionary<string, string>();
+
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+        var page = session.Page;
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var guid in guidList)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var url = $"https://sitramed.mevaterapia.com.ar/medical_histories/{guid}/overview";
+                await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+
+                string? hc = null;
+                try
+                {
+                    hc = await page.EvaluateAsync<string?>(
+                        """
+                        () => {
+                            const re = /\b(\d{1,3}-\d{4,7}-\d{1,3})\b/;
+                            // Paso 1: match exacto en elementos hoja comunes (rápido)
+                            const candidates = Array.from(document.querySelectorAll(
+                                'td, dd, dt, span, p, h1, h2, h3, h4, strong, b, th, li, label'));
+                            for (const el of candidates) {
+                                const t = (el.textContent || '').trim();
+                                if (/^\d{1,3}-\d{4,7}-\d{1,3}$/.test(t)) return t;
+                            }
+                            // Paso 2: buscar el patrón dentro de cualquier nodo de texto (TreeWalker)
+                            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                            let node;
+                            while ((node = walker.nextNode())) {
+                                const m = (node.textContent || '').match(re);
+                                if (m) return m[1];
+                            }
+                            return null;
+                        }
+                        """);
+                }
+                catch { }
+
+                if (!string.IsNullOrWhiteSpace(hc) && HcFormatRegex.IsMatch(hc))
+                    result[guid] = hc;
+            }
+            catch { }
+        }
+
+        return result;
+    }
+
     private async Task<PlaywrightSession> CreateLoggedPageAsync(CancellationToken cancellationToken)
     {
         var playwright = await Playwright.CreateAsync();
         var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
-            Headless = _options.Headless
+            Headless = _options.Headless,
+            Args = _options.Headless ? ["--disable-gpu", "--disable-dev-shm-usage"] : []
         });
 
         var context = await browser.NewContextAsync();
@@ -478,6 +757,19 @@ public sealed class PlaywrightSitraMedClient
                 continue;
             }
 
+            var agendaGuid = string.Empty;
+            try
+            {
+                var link = row.Locator("a[href*='overview']").First;
+                if (await link.CountAsync() > 0)
+                {
+                    var href = await link.GetAttributeAsync("href") ?? string.Empty;
+                    var gm = MedicalHistoryIdRegex.Match(href);
+                    if (gm.Success) agendaGuid = gm.Groups[1].Value;
+                }
+            }
+            catch { }
+
             list.Add(new MachineAppointmentSnapshot
             {
                 CenterName = machine.CenterName,
@@ -486,7 +778,8 @@ public sealed class PlaywrightSitraMedClient
                 AgendaDate = date,
                 StartTime = mapped.Value.StartTime,
                 EndTime = mapped.Value.EndTime,
-                Treatment = mapped.Value.Treatment
+                Treatment = mapped.Value.Treatment,
+                SitraMedGuid = string.IsNullOrEmpty(agendaGuid) ? null : agendaGuid
             });
         }
 
@@ -544,6 +837,216 @@ public sealed class PlaywrightSitraMedClient
         }
 
         return null;
+    }
+
+    private async Task<string> DownloadTomographAgendaHtmlAsync(IPage page, RtTomograph tomograph, DateOnly date, CancellationToken cancellationToken)
+    {
+        await page.GotoAsync(TomographAgendaUrl, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+
+        try { await page.WaitForSelectorAsync("#search_center_id", new PageWaitForSelectorOptions { Timeout = 10000 }); } catch { }
+
+        // 1. Select center so the tomograph dropdown populates.
+        await SelectFirstByLabelAsync(page, new[]
+        {
+            "#search_center_id",
+            "select[name='search[center_id]']"
+        }, tomograph.CenterName);
+
+        await page.WaitForTimeoutAsync(600);
+
+        // 2. Set the date BEFORE selecting the tomograph.
+        //    SitraMed uses Phoenix LiveView with phx-change="machine_calendar" on the form and
+        //    phx-debounce="blur" on the date input. LiveView maintains server-side form state:
+        //    the server only updates its stored date when the input fires a blur event.
+        //    Without blur, selecting the tomograph sends a phx-change with the server's cached
+        //    date (today), not the DOM value — so all dates return today's patients.
+        var dateStr = date.ToString("dd/MM/yyyy");  // for JS Date parsing
+        var isoStr  = date.ToString("yyyy-MM-dd");  // ISO format SitraMed stores server-side
+
+        var flatpickrSet = await page.EvaluateAsync<bool>("""
+            (date) => {
+                // date is "dd/MM/yyyy" — parse manually to avoid flatpickr dateFormat mismatch.
+                const [dd, mm, yyyy] = date.split('/').map(Number);
+                const di = document.querySelector('#search_date') ?? document.querySelector('input[name="search[date]"]');
+                if (!di?._flatpickr) return false;
+                // triggerChange=false: set internal state silently to avoid resetting the tomograph dropdown.
+                // The blur dispatch below will inform LiveView of the new date.
+                di._flatpickr.setDate(new Date(yyyy, mm - 1, dd), false);
+                return true;
+            }
+            """, dateStr);
+
+        if (!flatpickrSet)
+        {
+            // No flatpickr: fill with ISO format — SitraMed's server expects "yyyy-MM-dd"
+            // (captured HTML shows value="2026-04-30").
+            await FillFirstAsync(page, new[] { "#search_date", "input[name='search[date]']" }, isoStr);
+        }
+
+        // CRITICAL: fire blur so LiveView (phx-debounce="blur") syncs the new date to the server.
+        // Without this the server retains today's date regardless of what the DOM shows.
+        await page.EvaluateAsync("""
+            () => {
+                const di = document.querySelector('#search_date')
+                        ?? document.querySelector('input[name="search[date]"]');
+                di?.focus();
+                di?.blur();
+            }
+            """);
+
+        await page.WaitForTimeoutAsync(400);
+        try
+        {
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                new PageWaitForLoadStateOptions { Timeout = 8000 });
+        }
+        catch (TimeoutException) { }
+
+        // 3. Now select the tomograph — phx-change fires with the date already stored server-side.
+        await SelectFirstByLabelAsync(page, new[]
+        {
+            "#search_tomograph_id",
+            "select[name='search[tomograph_id]']"
+        }, tomograph.SitraName);
+
+        // 4. Wait for the AJAX/NetworkIdle to finish loading results.
+        await page.WaitForTimeoutAsync(400);
+        try
+        {
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 });
+        }
+        catch (TimeoutException) { }
+
+        try
+        {
+            await page.WaitForSelectorAsync("table tbody tr",
+                new PageWaitForSelectorOptions { Timeout = 15000 });
+        }
+        catch (TimeoutException) { }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return await page.ContentAsync();
+    }
+
+    private async Task<List<MachineAppointmentSnapshot>> TryExtractTomographAgendaDomAsync(
+        IPage page,
+        RtTomograph tomograph,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        foreach (var selector in new[]
+                 {
+                     "#machineDrag tbody tr",
+                     "#machine_drag tbody tr",
+                     "#tomographDrag tbody tr",
+                     "#tomograph_drag tbody tr",
+                     "table.table tbody tr",
+                     "table tbody tr"
+                 })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var locator = page.Locator(selector);
+            int count;
+            try { count = await locator.CountAsync(); } catch { continue; }
+            if (count == 0) continue;
+
+            var parsed = await ParseTomographAgendaRowsAsync(locator, count, tomograph, date);
+            if (parsed.Count > 0) return parsed;
+        }
+
+        return [];
+    }
+
+    private static async Task<List<MachineAppointmentSnapshot>> ParseTomographAgendaRowsAsync(
+        ILocator rowLocator,
+        int rowCount,
+        RtTomograph tomograph,
+        DateOnly date)
+    {
+        var list = new List<MachineAppointmentSnapshot>();
+        for (var i = 0; i < rowCount; i++)
+        {
+            var row = rowLocator.Nth(i);
+            var cells = await row.Locator("td").AllInnerTextsAsync();
+            if (cells.Count < 2) continue;
+
+            var trimmed = cells
+                .Select(static c => string.Join(' ', c.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim())
+                .ToArray();
+            if (trimmed.All(string.IsNullOrWhiteSpace)) continue;
+
+            // Skip header rows
+            var joined = string.Join(' ', trimmed).ToLowerInvariant();
+            if (joined.Contains("paciente") && (joined.Contains("inicio") || joined.Contains("hora"))) continue;
+
+            // Skip empty leading cells (signs column)
+            var offset = 0;
+            while (offset < trimmed.Length - 1 && string.IsNullOrWhiteSpace(trimmed[offset])) offset++;
+
+            var startTime = offset < trimmed.Length ? trimmed[offset] : string.Empty;
+            var patient   = offset + 1 < trimmed.Length ? trimmed[offset + 1] : string.Empty;
+
+            // Scan ALL cells (from offset+2) for a valid treatment keyword.
+            // Avoids assuming a fixed column position regardless of how many columns the table has.
+            var tipoTurno = string.Empty;
+            for (var j = offset + 2; j < trimmed.Length; j++)
+            {
+                if (IsValidTomographTreatment(trimmed[j]))
+                {
+                    var stripped = StripSitraMedAlerts(trimmed[j]);
+                    tipoTurno = SitraMedFollowUpExtractor.ClassifyTreatment(stripped);
+                    if (string.IsNullOrEmpty(tipoTurno)) tipoTurno = stripped;
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(tipoTurno)) continue;
+            if (string.IsNullOrWhiteSpace(patient) || patient == "-") continue;
+
+            var tomoGuid = string.Empty;
+            try
+            {
+                var link = row.Locator("a[href*='overview']").First;
+                if (await link.CountAsync() > 0)
+                {
+                    var href = await link.GetAttributeAsync("href") ?? string.Empty;
+                    var gm = MedicalHistoryIdRegex.Match(href);
+                    if (gm.Success) tomoGuid = gm.Groups[1].Value;
+                }
+            }
+            catch { }
+
+            list.Add(new MachineAppointmentSnapshot
+            {
+                CenterName  = tomograph.CenterName,
+                MachineName = tomograph.DisplayName,
+                PatientName = patient,
+                AgendaDate  = date,
+                StartTime   = startTime,
+                EndTime     = string.Empty,
+                Treatment   = tipoTurno,
+                SitraMedGuid = string.IsNullOrEmpty(tomoGuid) ? null : tomoGuid
+            });
+        }
+
+        return list;
+    }
+
+    private static readonly string[] TomographTreatmentKeywords = ["3D", "IMRT", "SBRT", "RxCx", "Modulada", "Tridimensional", "Braquiterapia", "Radiocirug", "Intraoperatoria", "IORT", "IGRT", "TBI"];
+
+    private static bool IsValidTomographTreatment(string tipoTurno)
+    {
+        if (string.IsNullOrWhiteSpace(tipoTurno) || tipoTurno.Trim() == "-") return false;
+        if (tipoTurno.Contains("actividad", StringComparison.OrdinalIgnoreCase)) return false;
+        return TomographTreatmentKeywords.Any(k => tipoTurno.Contains(k, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // SitraMed appends alert text (e.g. "NO REGISTRA CONSENTIMIENTO MÉDICO FIRMADO") to the
+    // Tipo de turno field. Strip everything from " NO REGISTRA" onwards.
+    private static string StripSitraMedAlerts(string tipoTurno)
+    {
+        var idx = tipoTurno.IndexOf(" NO REGISTRA", StringComparison.OrdinalIgnoreCase);
+        return idx >= 0 ? tipoTurno[..idx].Trim() : tipoTurno.Trim();
     }
 
     private static bool LooksLikePersonName(string s)
@@ -979,25 +1482,67 @@ public sealed class PlaywrightSitraMedClient
             }
             catch { }
 
-            if (string.IsNullOrWhiteSpace(sitraMedId))
+            var sitraMedGuid = string.Empty;
+            try
             {
-                try
+                var link = cells.Nth(2).Locator("a[href*='overview']").First;
+                if (await link.CountAsync() > 0)
                 {
-                    var link = cells.Nth(2).Locator("a[href*='overview']").First;
-                    if (await link.CountAsync() > 0)
+                    var href = await link.GetAttributeAsync("href") ?? string.Empty;
+                    var m = MedicalHistoryIdRegex.Match(href);
+                    if (m.Success)
                     {
-                        var href = await link.GetAttributeAsync("href") ?? string.Empty;
-                        var m = MedicalHistoryIdRegex.Match(href);
-                        if (m.Success) sitraMedId = m.Groups[1].Value;
+                        sitraMedGuid = m.Groups[1].Value;
+                        if (string.IsNullOrWhiteSpace(sitraMedId))
+                            sitraMedId = sitraMedGuid;
                     }
                 }
-                catch { }
             }
+            catch { }
+
+            var assignedPhysicist = string.Empty;
+            try
+            {
+                assignedPhysicist = await row.EvaluateAsync<string>(
+                    """
+                    tr => {
+                        const sel = tr.querySelector('select[id*="physicist"]');
+                        if (!sel) return '';
+                        const idx = sel.selectedIndex;
+                        return idx >= 0 ? (sel.options[idx].text || '').trim() : '';
+                    }
+                    """).ConfigureAwait(false) ?? string.Empty;
+            }
+            catch { }
+
+            var treatmentZone = string.Empty;
+            try
+            {
+                treatmentZone = await row.EvaluateAsync<string>(
+                    """
+                    tr => {
+                        const keywords = ['tridimensional', '3d', 'modulada', 'imrt', 'sbrt',
+                                          'igrt', 'tbi', 'irradiaci', 'radiocirug', 'braquiterapia',
+                                          'intraoperatoria', 'iort', 'rxcx'];
+                        const cells = Array.from(tr.querySelectorAll(':scope > td'));
+                        for (let i = 2; i < cells.length; i++) {
+                            const raw = (cells[i].textContent || '').trim();
+                            const tl = raw.replace(/[\s ]+/g, ' ').toLowerCase();
+                            if (raw.length > 2 && keywords.some(kw => tl.includes(kw))) return raw;
+                        }
+                        return '';
+                    }
+                    """).ConfigureAwait(false) ?? string.Empty;
+            }
+            catch { }
 
             list.Add(new FollowUpPatientDomRow
             {
                 PatientName = patientName,
                 SitraMedId = sitraMedId,
+                SitraMedGuid = sitraMedGuid,
+                AssignedPhysicist = assignedPhysicist,
+                TreatmentZone = treatmentZone,
                 FirstConsultDate = firstConsultDate,
                 Institution = institution,
                 DoctorHc = doctorHc,
@@ -1032,6 +1577,9 @@ public sealed class FollowUpPatientDomRow
 {
     public string PatientName { get; set; } = string.Empty;
     public string SitraMedId { get; set; } = string.Empty;
+    public string SitraMedGuid { get; set; } = string.Empty;
+    public string AssignedPhysicist { get; set; } = string.Empty;
+    public string TreatmentZone { get; set; } = string.Empty;
     public string FirstConsultDate { get; set; } = string.Empty;
     public string Institution { get; set; } = string.Empty;
     public string DoctorHc { get; set; } = string.Empty;
@@ -1053,6 +1601,8 @@ public sealed class ScrapingTestResult
     public string? FollowUpSearchAction { get; set; }
     public string? SelectedCenterValue { get; set; }
     public string? SelectedMicroStatusValue { get; set; }
+    // Raw cell values for each TR row (without any keyword filter), up to 20 rows
+    public List<string> RawRowSamples { get; set; } = [];
 }
 
 public sealed class AgendaHtmlSnapshot
@@ -1063,6 +1613,15 @@ public sealed class AgendaHtmlSnapshot
     public string Html { get; set; } = string.Empty;
 
     /// <summary>Filas parseadas desde el DOM con Playwright; si hay datos se prefieren al regex sobre HTML.</summary>
+    public List<MachineAppointmentSnapshot>? DomSnapshots { get; set; }
+}
+
+public sealed class TomographAgendaHtmlSnapshot
+{
+    public string CenterName            { get; set; } = string.Empty;
+    public string TomographDisplayName  { get; set; } = string.Empty;
+    public DateOnly AgendaDate          { get; set; }
+    public string Html                  { get; set; } = string.Empty;
     public List<MachineAppointmentSnapshot>? DomSnapshots { get; set; }
 }
 

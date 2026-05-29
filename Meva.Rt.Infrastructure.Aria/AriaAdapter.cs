@@ -69,6 +69,11 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                 {
                     row.PlannedMachineDisplayName ??= display;
                 }
+
+                if (plan != null && plan.Radiations.Any())
+                {
+                    row.BeamType ??= ResolveBeamType(plan);
+                }
             }
         }
 
@@ -126,6 +131,11 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             {
                 row.PlanStatus = mock.PlanStatus;
             }
+
+            if (!string.IsNullOrWhiteSpace(mock.BeamType))
+            {
+                row.BeamType = mock.BeamType;
+            }
         }
     }
 
@@ -141,5 +151,13 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             string.Equals(m.SitraName, trimmed, StringComparison.OrdinalIgnoreCase));
 
         return machine?.DisplayName;
+    }
+
+    private static string? ResolveBeamType(AriaQ.PlanSetup plan)
+    {
+        if (MetodosParaWebScrap.requiereElectrones(plan)) return "Electrones";
+        if (MetodosParaWebScrap.requiereSRS(plan)) return "SRS";
+        if (MetodosParaWebScrap.requiereAltaEnergia(plan)) return "AltaE";
+        return null;
     }
 }

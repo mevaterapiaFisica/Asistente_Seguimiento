@@ -5,11 +5,12 @@ const state = {
   homeData: null,
 
   followup: {
-    centerFilter: null,   // null = all
-    stageFilter: null,    // null = all stages
+    centerFilter: null,
+    stageFilter: null,
+    profesionalFilter: null,
     searchQuery: '',
-    activeCenter: null,   // center whose stage was clicked
-    activeStage: null     // stage code clicked
+    activeCenter: null,
+    activeStage: null
   },
 
   agenda: {
@@ -30,7 +31,13 @@ const state = {
     loading: false
   },
 
-  configData: null
+  configData: null,
+
+  fisica: {
+    selectedCenters: new Set(),
+    selectedTask: null,
+    selectedPhysicist: null
+  }
 };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -85,6 +92,34 @@ function hcTag(patientId) {
     : `<span class="hc-tag muted-italic">HC: No asignada</span>`;
 }
 
+function classifyTreatment(text) {
+  if (!text) return '';
+  // Normalizar espacios (incluye   no-break space de SitraMed)
+  const t = text.replace(/[\s ]+/g, ' ').toLowerCase();
+  if (t.includes('irradiaci') && t.includes('corporal')) return 'TBI';
+  if (t === 'tbi') return 'TBI';
+  if (t.includes('modulada') || t === 'imrt') return 'IMRT';
+  if (t.includes('sbrt')) return 'SBRT';
+  if (t.includes('tridimensional') || t === '3d' || t === '3dc') return '3DC';
+  if (t.includes('igrt')) return 'IGRT';
+  if (t.includes('radiocirug') || t.includes('rxcx') || t === 'rc') return 'RC';
+  if (t.includes('braquiterapia')) return 'BQT';
+  if (t.includes('intraoperatoria') || t === 'iort') return 'IORT';
+  return '';
+}
+
+function treatmentBadge(typeCode) {
+  if (!typeCode) return '';
+  return `<span class="treatment-badge tt-${typeCode}">${typeCode}</span>`;
+}
+
+function beamBadge(beamType) {
+  if (!beamType) return '';
+  const labels = { '6X': '6X', Electrones: 'e⁻', SRS: 'SRS', AltaE: 'Alta E.', 'Alta Energia': 'Alta E.' };
+  const cssKey = beamType.replace(/\s+/g, '-');
+  return `<span class="beam-badge beam-${cssKey}">${labels[beamType] ?? beamType}</span>`;
+}
+
 function groupByStage(patients, stageOrder) {
   const map = new Map();
   patients.forEach(p => {
@@ -94,6 +129,14 @@ function groupByStage(patients, stageOrder) {
   return [...map.entries()].sort((a, b) =>
     (stageOrder[a[0]] ?? 999) - (stageOrder[b[0]] ?? 999));
 }
+
+// ── Professional / Fisica constants ──────────────────────────────────────────
+
+const PROFESSIONAL_STAGE_MAP = {
+  Medicos: ['F5', 'F6C'],
+  Fisicos: ['F6A', 'F6B', 'F6F', 'F6G', 'F7A', 'F7C']
+};
+const PHYSICS_STAGES = PROFESSIONAL_STAGE_MAP.Fisicos;
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
@@ -108,6 +151,7 @@ function wireTabs() {
       if (state.activeTab === 'agenda') refreshAgendaView();
       if (state.activeTab === 'tomograph') refreshTomographAgendaView();
       if (state.activeTab === 'config') loadConfigData();
+      if (state.activeTab === 'fisica') renderFisicaView();
     });
   });
 }
@@ -222,8 +266,9 @@ async function actionUpdateAria() {
     const resp = await fetch('/api/aria/run-query', { method: 'POST' });
     const r = await resp.json();
     if (resp.ok) {
-      const homeResp = await fetch('/api/home');
-      if (homeResp.ok) renderHome(await homeResp.json());
+      document.getElementById('generatedAt').textContent = 'Aplicando datos ARIA...';
+      const applyResp = await fetch('/api/home/apply-aria', { method: 'POST' });
+      if (applyResp.ok) renderHome(await applyResp.json());
       else document.getElementById('generatedAt').textContent = `ARIA: ${r.withActivePlan} con plan`;
     } else {
       document.getElementById('generatedAt').textContent = r.error ?? `Error ${resp.status}`;
@@ -271,6 +316,8 @@ function renderHome(data) {
     new Date(data.generatedAtUtc).toLocaleString();
   buildFollowUpFilters(data);
   renderFollowUp();
+  buildFisicaCenterFilter();
+  renderFisicaView();
   populateAgendaTestControls(data);
 }
 
@@ -296,6 +343,7 @@ function buildFollowUpFilters(data) {
   ));
 
   buildStageFilterPills(data);
+  buildProfesionalFilterPills();
 }
 
 function buildStageFilterPills(data) {
@@ -311,6 +359,28 @@ function buildStageFilterPills(data) {
   (data.stages ?? []).forEach(s => row.appendChild(
     makePill(s.displayName, state.followup.stageFilter === s.code, () => {
       state.followup.stageFilter = s.code;
+      state.followup.activeCenter = null;
+      state.followup.activeStage = null;
+      renderFollowUp();
+    })
+  ));
+}
+
+function buildProfesionalFilterPills() {
+  const row = document.getElementById('profesionalFilterPills');
+  if (!row) return;
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', state.followup.profesionalFilter === null, () => {
+    state.followup.profesionalFilter = null;
+    state.followup.stageFilter = null;
+    state.followup.activeCenter = null;
+    state.followup.activeStage = null;
+    renderFollowUp();
+  }));
+  ['Medicos', 'Fisicos'].forEach(prof => row.appendChild(
+    makePill(prof, state.followup.profesionalFilter === prof, () => {
+      state.followup.profesionalFilter = prof;
+      state.followup.stageFilter = null;
       state.followup.activeCenter = null;
       state.followup.activeStage = null;
       renderFollowUp();
@@ -338,6 +408,14 @@ function renderFollowUp() {
       btn.textContent === 'Todas'
         ? state.followup.stageFilter === null
         : matchingStage?.code === state.followup.stageFilter);
+  });
+
+  // Sync profesional pills
+  document.querySelectorAll('#profesionalFilterPills .pill-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      btn.textContent === 'Todos'
+        ? state.followup.profesionalFilter === null
+        : btn.textContent === state.followup.profesionalFilter);
   });
 
   const allPatients = state.homeData.patients ?? [];
@@ -388,6 +466,8 @@ function buildCenterCard(centerName, patients, stageOrder) {
 
   stageDefs.forEach(def => {
     if (state.followup.stageFilter && def.code !== state.followup.stageFilter) return;
+    if (state.followup.profesionalFilter &&
+        !(PROFESSIONAL_STAGE_MAP[state.followup.profesionalFilter] ?? []).includes(def.code)) return;
     const pats = patients.filter(p => p.stageCode === def.code);
     const isEmpty = pats.length === 0;
     const countable = pats.filter(p => !p.isLongWait);
@@ -464,7 +544,8 @@ function renderFollowupDetail() {
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName} · ${def?.displayName ?? p.stageCode}</span>` +
         `</div>` +
-        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
+        treatmentBadge(p.treatmentType) +
+        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
     });
@@ -497,7 +578,8 @@ function renderFollowupDetail() {
         nameHtml +
         hcTag(p.patientId) +
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
-        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
+        treatmentBadge(p.treatmentType) +
+        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
     });
@@ -535,9 +617,52 @@ function renderFollowupDetail() {
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName}</span>` +
         `</div>` +
-        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') +
+        treatmentBadge(p.treatmentType) +
+        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
+    });
+    return;
+  }
+
+  // Filtro profesional activo sin etapa específica
+  if (state.followup.profesionalFilter && !state.followup.stageFilter) {
+    const stageCodes = PROFESSIONAL_STAGE_MAP[state.followup.profesionalFilter] ?? [];
+    let pats = allPatients.filter(p => stageCodes.includes(p.stageCode));
+    if (state.followup.centerFilter) pats = pats.filter(p => p.centerName === state.followup.centerFilter);
+
+    panel.innerHTML = '';
+    panel.appendChild(el('div', 'detail-title',
+      `${state.followup.profesionalFilter} · ${pats.length} pac.`));
+    if (pats.length === 0) {
+      panel.appendChild(el('p', 'detail-placeholder', 'Sin pacientes.'));
+      return;
+    }
+    stageCodes.forEach(code => {
+      const stagePats = pats.filter(p => p.stageCode === code).sort((a, b) => b.daysInStage - a.daysInStage);
+      if (stagePats.length === 0) return;
+      const def = stageDefs.find(s => s.code === code);
+      panel.appendChild(el('div', 'detail-subtitle', `${def?.displayName ?? code} · ${stagePats.length} pac.`));
+      stagePats.forEach(p => {
+        const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
+        const row = document.createElement('article');
+        row.className = `patient-row ${dc}`;
+        const nameHtml = p.sitraMedGuid
+          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+          : `<strong>${p.patientName}</strong>`;
+        row.innerHTML =
+          delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
+          `<div class="patient-main">` +
+            nameHtml +
+            hcTag(p.patientId) +
+            (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
+            `<span class="patient-context">${p.centerName}</span>` +
+          `</div>` +
+          treatmentBadge(p.treatmentType) +
+          (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
+          `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        panel.appendChild(row);
+      });
     });
     return;
   }
@@ -776,9 +901,12 @@ function renderAgendaDetail() {
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
         : slot.patientName;
     }
+    const tt = classifyTreatment(slot.treatment);
     row.innerHTML =
       `<span class="slot-time">${slot.startTime || '~'}</span>` +
       `<span class="slot-patient">${displayName}</span>` +
+      (tt ? treatmentBadge(tt) : '') +
+      beamBadge(slot.beamType) +
       (slot.isEstimated
         ? `<span class="slot-badge rosa">inicio estimado${slot.estimatedFromStage ? ` · ${slot.estimatedFromStage}` : ''}</span>`
         : `<span class="slot-badge celeste">en agenda</span>`);
@@ -1010,6 +1138,246 @@ function renderTomographAgendaDetail() {
   });
 }
 
+
+// ── Fisica tab ────────────────────────────────────────────────────────────────
+
+function buildFisicaCenterFilter() {
+  const row = document.getElementById('fisicaCenterFilterPills');
+  if (!row) return;
+  const centers = [...new Set(
+    (state.homeData?.configuration?.machineCapacities ?? []).map(c => c.centerName)
+  )].sort();
+  row.innerHTML = '';
+
+  const todosActive = state.fisica.selectedCenters.size === 0;
+  row.appendChild(makePill('Todos', todosActive, () => {
+    state.fisica.selectedCenters.clear();
+    renderFisicaView();
+  }));
+  centers.forEach(c => {
+    row.appendChild(makePill(c, state.fisica.selectedCenters.has(c), () => {
+      if (state.fisica.selectedCenters.has(c)) state.fisica.selectedCenters.delete(c);
+      else state.fisica.selectedCenters.add(c);
+      renderFisicaView();
+    }));
+  });
+}
+
+function renderFisicaView() {
+  if (!state.homeData) return;
+
+  // Sync pills
+  document.querySelectorAll('#fisicaCenterFilterPills .pill-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      btn.textContent === 'Todos'
+        ? state.fisica.selectedCenters.size === 0
+        : state.fisica.selectedCenters.has(btn.textContent));
+  });
+
+  const allPatients = state.homeData.patients ?? [];
+  const stageDefs = state.homeData.stages ?? [];
+
+  const patients = state.fisica.selectedCenters.size === 0
+    ? allPatients
+    : allPatients.filter(p => state.fisica.selectedCenters.has(p.centerName));
+
+  const physicsPatients = patients.filter(p => PHYSICS_STAGES.includes(p.stageCode));
+
+  // Tareas de Fisica card
+  const taskContainer = document.getElementById('fisicaTaskCards');
+  taskContainer.innerHTML = '';
+  const taskCard = document.createElement('section');
+  taskCard.className = 'center-card';
+  const delayed = physicsPatients.filter(p => p.isDelayed).length;
+  taskCard.innerHTML =
+    `<div class="center-card-header">` +
+      `<span class="center-name">Tareas de Fisica</span>` +
+      `<span class="center-counts">${physicsPatients.length} pac` +
+        (delayed > 0 ? `<span class="dot dot-red"></span><span class="count-delayed">${delayed} dem.</span>` : '') +
+      `</span>` +
+    `</div>`;
+  PHYSICS_STAGES.forEach(code => {
+    const def = stageDefs.find(s => s.code === code);
+    const pats = physicsPatients.filter(p => p.stageCode === code);
+    const hasDelayed = pats.some(p => p.isDelayed);
+    const isEmpty = pats.length === 0;
+    const isSelected = state.fisica.selectedTask === code;
+    const row = document.createElement('div');
+    row.className = `stage-row${isEmpty ? ' stage-empty' : ''}${isSelected ? ' active' : ''}`;
+    row.innerHTML =
+      `<span class="stage-row-name">${def?.displayName ?? code}</span>` +
+      `<span class="stage-row-stats">${isEmpty ? '—' : `${pats.length} pac`}</span>` +
+      (hasDelayed ? `<span class="dot dot-red"></span>` : '');
+    if (!isEmpty) {
+      row.addEventListener('click', () => {
+        state.fisica.selectedTask = state.fisica.selectedTask === code ? null : code;
+        state.fisica.selectedPhysicist = null;
+        renderFisicaView();
+      });
+    }
+    taskCard.appendChild(row);
+  });
+  taskContainer.appendChild(taskCard);
+
+  // Fisicos asignados card (below task card)
+  const physicistPanel = document.getElementById('fisicaPhysicistPanel');
+  physicistPanel.innerHTML = '';
+
+  const physicistMap = new Map();
+  physicsPatients.forEach(p => {
+    if (p.stageCode === 'F6B' && p.assignedPhysicist) {
+      physicistMap.set(p.assignedPhysicist, (physicistMap.get(p.assignedPhysicist) ?? 0) + 1);
+    } else if (p.stageCode === 'F6A') {
+      physicistMap.set('(sin asignar)', (physicistMap.get('(sin asignar)') ?? 0) + 1);
+    }
+  });
+
+  const assigned = [...physicistMap.entries()]
+    .filter(([k]) => k !== '(sin asignar)')
+    .sort((a, b) => b[1] - a[1]);
+  const sinAsignar = physicistMap.get('(sin asignar)') ?? 0;
+
+  if (assigned.length > 0 || sinAsignar > 0) {
+    const physicistCard = document.createElement('section');
+    physicistCard.className = 'center-card';
+    physicistCard.innerHTML =
+      `<div class="center-card-header">` +
+        `<span class="center-name">Fisicos asignados</span>` +
+        `<span class="center-counts">${assigned.length} fisico${assigned.length !== 1 ? 's' : ''}</span>` +
+      `</div>`;
+
+    assigned.forEach(([name, count]) => {
+      const row = document.createElement('div');
+      const isSelected = state.fisica.selectedPhysicist === name;
+      row.className = `fisica-physicist-row${isSelected ? ' active' : ''}`;
+      row.innerHTML =
+        `<span class="fisica-physicist-name">${name}</span>` +
+        `<span class="fisica-physicist-count">${count} pac</span>`;
+      row.addEventListener('click', () => {
+        state.fisica.selectedPhysicist = state.fisica.selectedPhysicist === name ? null : name;
+        state.fisica.selectedTask = null;
+        renderFisicaView();
+      });
+      physicistCard.appendChild(row);
+    });
+
+    if (sinAsignar > 0) {
+      const row = document.createElement('div');
+      const isSelected = state.fisica.selectedPhysicist === '(sin asignar)';
+      row.className = `fisica-physicist-row fisica-unassigned${isSelected ? ' active' : ''}`;
+      row.innerHTML =
+        `<span class="fisica-physicist-name">(sin asignar)</span>` +
+        `<span class="fisica-physicist-count">${sinAsignar} pac</span>`;
+      row.addEventListener('click', () => {
+        state.fisica.selectedPhysicist = state.fisica.selectedPhysicist === '(sin asignar)' ? null : '(sin asignar)';
+        state.fisica.selectedTask = null;
+        renderFisicaView();
+      });
+      physicistCard.appendChild(row);
+    }
+
+    physicistPanel.appendChild(physicistCard);
+  }
+
+  renderFisicaDetail();
+}
+
+function renderFisicaDetail() {
+  const panel = document.getElementById('fisicaDetailPanel');
+  if (!panel || !state.homeData) return;
+
+  const allPatients = state.homeData.patients ?? [];
+  const stageDefs = state.homeData.stages ?? [];
+
+  const physicsPatients = (state.fisica.selectedCenters.size === 0
+    ? allPatients
+    : allPatients.filter(p => state.fisica.selectedCenters.has(p.centerName))
+  ).filter(p => PHYSICS_STAGES.includes(p.stageCode));
+
+  if (state.fisica.selectedTask) {
+    const code = state.fisica.selectedTask;
+    const def = stageDefs.find(s => s.code === code);
+    const pats = physicsPatients.filter(p => p.stageCode === code).sort((a, b) => b.daysInStage - a.daysInStage);
+
+    panel.innerHTML = '';
+    panel.appendChild(el('div', 'detail-title', `${def?.displayName ?? code} · ${pats.length} pac.`));
+
+    if (pats.length === 0) {
+      panel.appendChild(el('p', 'detail-placeholder', 'Sin pacientes en esta tarea.'));
+      return;
+    }
+    pats.forEach(p => {
+      const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
+      const row = document.createElement('article');
+      row.className = `patient-row ${dc}`;
+      const nameHtml = p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        : `<strong>${p.patientName}</strong>`;
+      row.innerHTML =
+        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
+        `<div class="patient-main">` +
+          nameHtml +
+          hcTag(p.patientId) +
+          (p.assignedPhysicist && code !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
+          `<span class="patient-context">${p.centerName}</span>` +
+        `</div>` +
+        treatmentBadge(p.treatmentType) +
+        (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
+        `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+      panel.appendChild(row);
+    });
+    return;
+  }
+
+  if (state.fisica.selectedPhysicist) {
+    const physicistName = state.fisica.selectedPhysicist;
+    let pats;
+    if (physicistName === '(sin asignar)') {
+      pats = physicsPatients.filter(p => p.stageCode === 'F6A');
+    } else {
+      pats = physicsPatients.filter(p => p.assignedPhysicist === physicistName && p.stageCode === 'F6B');
+    }
+    pats.sort((a, b) => b.daysInStage - a.daysInStage);
+
+    panel.innerHTML = '';
+    panel.appendChild(el('div', 'detail-title', `${physicistName} · ${pats.length} pac.`));
+
+    if (pats.length === 0) {
+      panel.appendChild(el('p', 'detail-placeholder', 'Sin pacientes.'));
+      return;
+    }
+
+    PHYSICS_STAGES.forEach(code => {
+      const stagePats = pats.filter(p => p.stageCode === code);
+      if (stagePats.length === 0) return;
+      const def = stageDefs.find(s => s.code === code);
+      panel.appendChild(el('div', 'detail-subtitle', `${def?.displayName ?? code} · ${stagePats.length} pac.`));
+      stagePats.forEach(p => {
+        const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
+        const row = document.createElement('article');
+        row.className = `patient-row ${dc}`;
+        const nameHtml = p.sitraMedGuid
+          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+          : `<strong>${p.patientName}</strong>`;
+        row.innerHTML =
+          delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
+          `<div class="patient-main">` +
+            nameHtml +
+            hcTag(p.patientId) +
+            `<span class="patient-context">${p.centerName}</span>` +
+          `</div>` +
+          treatmentBadge(p.treatmentType) +
+          (p.plannedMachineDisplayName ? `<span class="aria-machine">▸ ${p.plannedMachineDisplayName}</span>` : '') + beamBadge(p.beamType) +
+          `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        panel.appendChild(row);
+      });
+    });
+    return;
+  }
+
+  panel.innerHTML = '';
+  panel.appendChild(el('p', 'detail-placeholder', 'Seleccione una tarea o fisico para ver pacientes.'));
+}
 
 // ── Config editable ───────────────────────────────────────────────────────────
 
