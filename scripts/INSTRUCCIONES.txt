@@ -1,90 +1,112 @@
 ================================================================
-  MEVA RT - INSTRUCCIONES DE CONFIGURACION Y USO (Win10)
+  MEVA RT - INSTRUCCIONES DE USO Y DESARROLLO
 ================================================================
 
-REQUISITOS
-----------
-- PC con Windows 10 con acceso de red a ARIAMEVADB-SVR (puerto 1433)
-- .NET 9 Runtime instalado (https://dotnet.microsoft.com/download/dotnet/9.0)
-- El servidor Meva RT corriendo en http://localhost:5062
-- Contrasena del usuario "varian" de la PC ECL-FISICA2
+RESUMEN DE DIRECTORIOS Y PUERTOS
+---------------------------------
+
+  C:\Pablo\Meva.Rt\     → CODIGO FUENTE (git, edicion, desarrollo)
+  C:\MevaRT\            → DESPLIEGUE (servicio Windows + datos)
+
+  Puerto 5062           → URL unica: http://localhost:5062
+                          Lo usa tanto el servicio como el modo dev.
+                          Solo puede correr UNO a la vez.
 
 
-CONFIGURACION INICIAL (hacer una sola vez)
-------------------------------------------
+MODO NORMAL (USO DIARIO)
+------------------------
+El servicio Windows "MevaRT" corre automaticamente al encender la PC.
+Siempre disponible en http://localhost:5062
 
-1. COMPILAR AriaRunner
-   Abrir una consola en C:\Pablo\Meva.Rt y ejecutar:
+  - Codigo fuente: C:\Pablo\Meva.Rt\   (no hace falta tocarlo)
+  - Ejecutable:    C:\MevaRT\Meva.Rt.Web.exe
+  - Datos:         C:\MevaRT\data\
+  - Logs AriaRunner: C:\MevaRT\data\aria_runner_*.log
 
-     dotnet publish Meva.Rt.AriaRunner -f net9.0-windows -c Release -o Meva.Rt.AriaRunner\bin\Release\net9.0-windows
-
-2. CONFIGURAR LA CONTRASENA DE ARIA
-   Editar el archivo scripts\refresh.bat y reemplazar en la linea:
-
-     set ARIA_VARIAN_PASSWORD=CAMBIAR_POR_PASSWORD_REAL
-
-   por la contrasena real del usuario "varian" en ECL-FISICA2.
-
-3. VERIFICAR RUTAS en scripts\refresh.bat
-   Confirmar que estas variables apunten a las rutas correctas:
-
-     DATA_DIR   → carpeta data\ dentro de Meva.Rt.Web
-     RUNNER_EXE → AriaRunner.exe compilado en el paso 1
+Para actualizar datos: boton "Actualizar" en la web o correr refresh.bat
 
 
-EJECUCION MANUAL
-----------------
-Doble click en scripts\refresh.bat
-  o bien desde consola:
-    scripts\refresh.bat
+MODO DESARROLLO (cuando se modifica el codigo)
+-----------------------------------------------
+1. Detener el servicio (ocupa el puerto 5062):
+     Stop-Service MevaRT
 
-El script ejecuta los 6 pasos en orden y muestra el resultado
-de cada uno. Si algun paso falla, el proceso se detiene.
+2. Editar el codigo en C:\Pablo\Meva.Rt\
 
-Los logs de AriaRunner quedan en:
-  Meva.Rt.Web\data\aria_runner_YYYYMMDD_HHMMSS.log
+3. Correr el servidor de desarrollo:
+     cd C:\Pablo\Meva.Rt
+     dotnet run --project Meva.Rt.Web
 
+   Mismo puerto (5062), mismos datos (C:\MevaRT\data\) gracias a
+   MEVA_DATA_DIR configurado en launchSettings.json.
 
-AUTOMATIZACION CON TASK SCHEDULER
-----------------------------------
-1. Abrir "Programador de tareas" (taskschd.msc)
-2. Crear tarea basica:
-   - Desencadenador: Diariamente a la hora deseada (ej: 06:00)
-   - Accion: Iniciar programa
-       Programa:  cmd.exe
-       Argumentos: /c "C:\Pablo\Meva.Rt\scripts\refresh.bat"
-3. En la pestana "General":
-   - Marcar "Ejecutar tanto si el usuario inicia sesion como si no"
-   - Marcar "Ejecutar con los privilegios mas altos"
-4. En "Condiciones": desmarcar "Iniciar la tarea solo si el
-   equipo esta conectado a la corriente"
+4. Probar en http://localhost:5062
+
+5. Al terminar, publicar los cambios y reiniciar el servicio:
+     .\scripts\publish.ps1
+
+   Esto compila en Release, copia a C:\MevaRT\ y reinicia el servicio.
 
 
-ARQUITECTURA (como funciona la conexion a ARIA)
-------------------------------------------------
-El programa corre completamente en esta PC (Win10).
-Para conectarse a la base de datos de ARIA en ARIAMEVADB-SVR,
-AriaRunner usa impersonacion de Windows con el usuario
-ECL-FISICA2\varian mediante la tecnica "runas /netonly":
-el proceso corre como tu usuario local, pero las conexiones
-de red usan las credenciales de ECL-FISICA2\varian.
-Esto funciona sin necesidad de que ese usuario exista en Win10.
+ACTUALIZAR DATOS DE ARIA (boton web o refresh.bat)
+---------------------------------------------------
+El boton "Actualizar ARIA" en la web corre todo automaticamente:
+  1. Lanza AriaRunner.exe (credenciales via variable de sistema ARIA_VARIAN_PASSWORD)
+  2. Importa los resultados al mock
+  3. Aplica los datos al snapshot del dashboard
+
+Para actualizar todo (SitraMed + ARIA + agendas): boton "Actualizar todo"
+o bien desde consola: scripts\refresh.bat
+
+El script refresh.bat siempre apunta a http://localhost:5062, funciona
+igual con el servicio corriendo o con el modo desarrollo.
+
+
+VARIABLES DE ENTORNO DEL SISTEMA (configuradas, no tocar)
+----------------------------------------------------------
+  MEVA_ARIA_RUNNER_EXE  → C:\Pablo\Meva.Rt\Meva.Rt.AriaRunner\bin\Release\net9.0-windows\AriaRunner.exe
+  ARIA_VARIAN_PASSWORD  → contrasena del usuario varian en ECL-FISICA2
+  MEVA_HOME_REFRESH_MODE → (opcional) snapshot_first | snapshot_only | every_request
+
+
+PUBLICAR CAMBIOS AL SERVICIO
+-----------------------------
+Desde consola de administrador en C:\Pablo\Meva.Rt:
+
+  .\scripts\publish.ps1
+
+Detiene el servicio, publica en Release a C:\MevaRT\ y lo reinicia.
+Tarda ~30 segundos.
+
+
+ARQUITECTURA DE CONEXION A ARIA
+---------------------------------
+AriaRunner.exe se ejecuta en esta PC y se conecta a ARIAMEVADB-SVR
+usando impersonacion Windows (tecnica "runas /netonly") con el usuario
+ECL-FISICA2\varian. No requiere que ese usuario exista localmente.
 
 
 SOLUCION DE PROBLEMAS
 ---------------------
-"Falló el test de conexion"
-  → Verificar contrasena en ARIA_VARIAN_PASSWORD (refresh.bat)
-  → Verificar conectividad: desde PowerShell ejecutar
+"Failed to fetch" o la web no responde
+  → El servicio no esta corriendo. Verificar:
+      Get-Service MevaRT
+    Si esta detenido: Start-Service MevaRT
+  → Si estas en modo dev: asegurarse de que dotnet run este corriendo.
+
+"Falto el test de conexion ARIA"
+  → Verificar variable ARIA_VARIAN_PASSWORD:
+      [Environment]::GetEnvironmentVariable('ARIA_VARIAN_PASSWORD','Machine')
+  → Verificar conectividad a ARIAMEVADB-SVR:
       Test-NetConnection -ComputerName ARIAMEVADB-SVR -Port 1433
-  → Verificar que el firewall de ARIAMEVADB-SVR permita el puerto
 
 "Error Win32: 1326" en el log de AriaRunner
   → Contrasena incorrecta para ECL-FISICA2\varian
 
-"HTTP 000" en algun curl
-  → El servidor Meva RT no esta corriendo en el puerto 5062
+"HTTP 000" en algun curl del refresh.bat
+  → El servidor no esta corriendo en el puerto 5062
 
-"Archivo de entrada no encontrado"
-  → El servidor no pudo exportar los IDs (revisar paso 1)
+Puerto 5062 ya en uso al correr dotnet run
+  → El servicio Windows sigue corriendo. Ejecutar: Stop-Service MevaRT
+
 ================================================================
