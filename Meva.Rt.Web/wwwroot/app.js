@@ -153,6 +153,7 @@ function wireTabs() {
       if (state.activeTab === 'tomograph') refreshTomographAgendaView();
       if (state.activeTab === 'config') loadConfigData();
       if (state.activeTab === 'fisica') renderFisicaView();
+      if (state.activeTab === 'derivacion') openDerivacion();
     });
   });
 }
@@ -1831,6 +1832,499 @@ function renderResumenTendencias() {
   wrap.appendChild(table);
   container.innerHTML = '';
   container.appendChild(wrap);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Derivacion ────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+const deriv = {
+  equipoFallido: null,
+  fechaInicio: null,
+  fechaFin: null,
+  incluirPlanificacion: false,
+  agendaSlots: {},
+  pacientes: [],
+  asignaciones: {},
+  seleccionado: null
+};
+
+let _derivWired = false;
+
+async function openDerivacion() {
+  if (!_derivWired) {
+    document.getElementById('derivCalcularBtn').addEventListener('click', _calcularDerivacion);
+    document.getElementById('derivExportarBtn').addEventListener('click', () => exportarDerivacion(false));
+    document.getElementById('derivExportarIgualBtn').addEventListener('click', () => exportarDerivacion(true));
+    _derivWired = true;
+  }
+  if (!state.homeData) return;
+  if (!state.configData) {
+    try { state.configData = await fetch('/api/configuration').then(r => r.json()); } catch (e) {}
+  }
+  _renderDerivConfig();
+}
+
+function _renderDerivConfig() {
+  const machines = state.homeData?.configuration?.machines || [];
+  const today = todayStr();
+  if (!deriv.fechaInicio) deriv.fechaInicio = today;
+  if (!deriv.fechaFin) deriv.fechaFin = today;
+
+  const sel = document.getElementById('derivEquipoSelect');
+  const prev = deriv.equipoFallido || sel.value;
+  sel.innerHTML = '<option value="">Seleccionar equipo...</option>';
+  const byCentre = {};
+  machines.forEach(m => (byCentre[m.centerName] = byCentre[m.centerName] || []).push(m));
+  Object.entries(byCentre).sort(([a],[b]) => a.localeCompare(b)).forEach(([center, ml]) => {
+    const og = document.createElement('optgroup');
+    og.label = center;
+    ml.sort((a,b) => a.displayName.localeCompare(b.displayName)).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.displayName;
+      opt.textContent = m.displayName;
+      if (m.displayName === prev) opt.selected = true;
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+
+  document.getElementById('derivFechaInicio').value = deriv.fechaInicio;
+  document.getElementById('derivFechaFin').value = deriv.fechaFin;
+  document.getElementById('derivIncluirPlanif').checked = deriv.incluirPlanificacion;
+
+  if (deriv.pacientes.length > 0) _renderDerivResult();
+}
+
+async function _calcularDerivacion() {
+  const equipo = document.getElementById('derivEquipoSelect').value;
+  const fi = document.getElementById('derivFechaInicio').value;
+  const ff = document.getElementById('derivFechaFin').value;
+  const incluir = document.getElementById('derivIncluirPlanif').checked;
+
+  if (!equipo) { alert('Seleccioná un equipo'); return; }
+  if (!fi || !ff || fi > ff) { alert('Fechas inválidas (inicio debe ser ≤ fin)'); return; }
+
+  deriv.equipoFallido = equipo;
+  deriv.fechaInicio = fi;
+  deriv.fechaFin = ff;
+  deriv.incluirPlanificacion = incluir;
+  deriv.asignaciones = {};
+  deriv.seleccionado = null;
+  deriv.pacientes = [];
+  deriv.agendaSlots = {};
+
+  const btn = document.getElementById('derivCalcularBtn');
+  btn.disabled = true; btn.textContent = 'Calculando…';
+
+  try {
+    const dates = _weekdaysBetween(fi, ff);
+    const results = await Promise.all(
+      dates.map(d => fetch(`/api/agenda?date=${d}`).then(r => r.ok ? r.json() : []).catch(() => []))
+    );
+    dates.forEach((d, i) => {
+      const raw = results[i];
+      deriv.agendaSlots[d] = Array.isArray(raw) ? raw : (raw?.slots || []);
+    });
+    deriv.pacientes = _buildPacientesAfectados(equipo, dates, incluir);
+    _renderDerivResult();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Calcular derivacion';
+  }
+}
+
+function _buildPacientesAfectados(equipo, dates, incluirPlanif) {
+  const pacientes = [];
+
+  // FUENTE A — turnos reales en agenda
+  const patMap = new Map();
+  for (const date of dates) {
+    for (const slot of (deriv.agendaSlots[date] || [])) {
+      if (slot.machineName !== equipo || slot.isEstimated) continue;
+      const mk = slot.sitraMedGuid || `_n_${slot.patientName}`;
+      if (!patMap.has(mk)) {
+        patMap.set(mk, {
+          key: `a_${mk}`, source: 'agenda',
+          nombre: slot.patientName || '—', sitraMedGuid: slot.sitraMedGuid || null, hc: null,
+          fechasTurno: [],
+          treatmentLabel: slot.treatmentLabel || slot.treatmentTechnique || slot.treatment || '—',
+          etapaDisplay: null, sortOrder: -1, fracciones: null
+        });
+      }
+      patMap.get(mk).fechasTurno.push(date);
+    }
+  }
+  for (const p of patMap.values()) {
+    p.fechasTurno = [...new Set(p.fechasTurno)].sort();
+    pacientes.push(p);
+  }
+  pacientes.sort((a,b) => (a.fechasTurno[0]||'').localeCompare(b.fechasTurno[0]||''));
+
+  // FUENTE B — pacientes en planificacion con equipo asignado en ARIA
+  if (incluirPlanif) {
+    const stages = state.homeData?.stages || [];
+    const f6aSort = (stages.find(s => s.code === 'F6A') || { sortOrder: 60 }).sortOrder;
+    const stageByCode = Object.fromEntries(stages.map(s => [s.code, s]));
+    const fuenteB = (state.homeData?.patients || [])
+      .filter(p => p.plannedMachineDisplayName === equipo &&
+                   (stageByCode[p.stageCode]?.sortOrder ?? 0) >= f6aSort)
+      .map(p => ({
+        key: `b_${p.patientId}`, source: 'planificacion',
+        nombre: p.patientName || '—', sitraMedGuid: p.sitraMedGuid || null, hc: p.patientId,
+        fechasTurno: null,
+        treatmentLabel: p.treatmentLabel || p.treatmentTechnique || '—',
+        etapaDisplay: p.stageDisplayName || p.stageCode,
+        sortOrder: stageByCode[p.stageCode]?.sortOrder ?? 0,
+        fracciones: p.numberOfFractions
+      }))
+      .sort((a,b) => a.sortOrder - b.sortOrder);
+    pacientes.push(...fuenteB);
+  }
+  return pacientes;
+}
+
+function _renderDerivResult() {
+  document.getElementById('derivContent').hidden = false;
+  document.getElementById('derivBarraResumen').hidden = false;
+  _renderDerivPacientes();
+  _renderDerivBarra();
+  if (deriv.seleccionado) {
+    const p = deriv.pacientes.find(x => x.key === deriv.seleccionado);
+    if (p) _renderDerivDestinos(p);
+    else document.getElementById('derivDestinosPanel').innerHTML =
+      '<p class="detail-placeholder">Seleccione un paciente para ver equipos destino.</p>';
+  } else {
+    document.getElementById('derivDestinosPanel').innerHTML =
+      '<p class="detail-placeholder">Seleccione un paciente para ver equipos destino.</p>';
+  }
+}
+
+function _renderDerivPacientes() {
+  const container = document.getElementById('derivPacientesList');
+  container.innerHTML = '';
+  const fa = deriv.pacientes.filter(p => p.source === 'agenda');
+  const fb = deriv.pacientes.filter(p => p.source === 'planificacion');
+  if (!fa.length && !fb.length) {
+    container.innerHTML = '<p class="detail-placeholder">No hay pacientes afectados en el período.</p>';
+    return;
+  }
+  const appendSection = (label, list) => {
+    if (!list.length) return;
+    const h = document.createElement('div');
+    h.className = 'deriv-source-header';
+    h.innerHTML = `<strong>${label}</strong><span class="badge-count">${list.length}</span>`;
+    container.appendChild(h);
+    list.forEach(p => container.appendChild(_buildDerivCard(p)));
+  };
+  appendSection('Con turno en el rango', fa);
+  appendSection('En planificacion', fb);
+}
+
+function _buildDerivCard(p) {
+  const asig = deriv.asignaciones[p.key];
+  const estado = asig?.estado || 'sin_asignar';
+  const isSelected = deriv.seleccionado === p.key;
+
+  const fechasStr = p.fechasTurno
+    ? p.fechasTurno.map(_fmtDate).join(', ')
+    : (p.fracciones ? `${p.etapaDisplay} · ${p.fracciones} fx` : (p.etapaDisplay || '—'));
+
+  const badgeHtml = estado === 'derivado'
+    ? `<span class="deriv-badge deriv-badge-ok">→ ${asig.equipo}</span>`
+    : estado === 'suspendido'
+    ? `<span class="deriv-badge deriv-badge-grey">⊗ Suspendido</span>`
+    : `<span class="deriv-badge deriv-badge-none">Sin asignar</span>`;
+
+  const label = p.treatmentLabel || '—';
+  const card = document.createElement('div');
+  card.className = `deriv-patient-card estado-${estado}${isSelected ? ' selected' : ''}`;
+  card.dataset.key = p.key;
+  card.innerHTML = `
+    <div class="deriv-card-header">
+      <span class="deriv-card-name">${p.nombre}</span>
+      ${p.hc ? `<span class="deriv-card-hc">${p.hc}</span>` : ''}
+    </div>
+    <div class="deriv-card-row">
+      <span class="treatment-badge ${_derivLabelClass(label)}">${label}</span>
+      <span class="deriv-card-dates">${fechasStr}</span>
+    </div>
+    <div class="deriv-card-footer">
+      ${badgeHtml}
+      <button class="deriv-suspend-btn${estado === 'suspendido' ? ' active' : ''}"
+              title="${estado === 'suspendido' ? 'Quitar suspension' : 'Suspender'}">
+        ${estado === 'suspendido' ? '↩' : '⊗'}
+      </button>
+    </div>`;
+  card.addEventListener('click', e => {
+    if (e.target.closest('.deriv-suspend-btn')) return;
+    _selectDerivPaciente(p.key);
+  });
+  card.querySelector('.deriv-suspend-btn').addEventListener('click', e => {
+    e.stopPropagation(); _toggleSuspender(p.key);
+  });
+  return card;
+}
+
+function _selectDerivPaciente(key) {
+  deriv.seleccionado = key;
+  document.querySelectorAll('.deriv-patient-card').forEach(c =>
+    c.classList.toggle('selected', c.dataset.key === key));
+  const p = deriv.pacientes.find(x => x.key === key);
+  if (p) _renderDerivDestinos(p);
+}
+
+function _renderDerivDestinos(p) {
+  const panel = document.getElementById('derivDestinosPanel');
+  const caps = state.configData?.machineCapabilities || [];
+  const capacities = state.homeData?.configuration?.machineCapacities || [];
+  const machines = (state.homeData?.configuration?.machines || [])
+    .filter(m => m.displayName !== deriv.equipoFallido);
+  const failedCenter = (state.homeData?.configuration?.machines || [])
+    .find(m => m.displayName === deriv.equipoFallido)?.centerName;
+  const dates = Object.keys(deriv.agendaSlots).sort();
+
+  const byCentre = {};
+  machines.forEach(m => (byCentre[m.centerName] = byCentre[m.centerName] || []).push(m));
+  const centerOrder = Object.keys(byCentre).sort((a,b) =>
+    a === failedCenter ? -1 : b === failedCenter ? 1 : a.localeCompare(b));
+
+  let html = `<div class="deriv-destinos-wrap">
+    <div class="deriv-destinos-title">Destinos para <strong>${p.nombre}</strong>
+      ${p.hc ? `<span class="deriv-card-hc">${p.hc}</span>` : ''}
+    </div>`;
+
+  for (const center of centerOrder) {
+    html += `<div class="deriv-center-group">
+      <div class="deriv-center-name">${center}${center === failedCenter ? ' ★' : ''}</div>`;
+    const ml = (byCentre[center]||[]).sort((a,b) => a.displayName.localeCompare(b.displayName));
+    for (const m of ml) {
+      const cap = caps.find(c => c.machineName === m.displayName);
+      const { ok, warn, reason } = _checkCompat(p.treatmentLabel, cap);
+      const slotsLibres = _calcSlots(m.displayName, dates, capacities);
+      const derivCount = Object.values(deriv.asignaciones)
+        .filter(a => a.estado === 'derivado' && a.equipo === m.displayName).length;
+      const isAssigned = deriv.asignaciones[p.key]?.estado === 'derivado' &&
+                         deriv.asignaciones[p.key]?.equipo === m.displayName;
+      if (!ok) {
+        html += `<div class="deriv-machine-row incompatible">
+          <span class="deriv-machine-name">${m.displayName}</span>
+          <span class="deriv-incompat-reason">${reason}</span>
+        </div>`;
+      } else {
+        const adj = slotsLibres !== null ? slotsLibres - derivCount : null;
+        const sc = adj === null ? '' : adj > 3 ? 'slots-ok' : adj > 0 ? 'slots-warn' : 'slots-full';
+        const slotsLabel = adj !== null
+          ? `<span class="deriv-slots ${sc}">${adj >= 0 ? adj : '↑'+Math.abs(adj)} slot${adj !== 1 ? 's' : ''}</span>`
+          : '';
+        const wi = warn ? ' <span title="Verificar disponibilidad IGRT" style="color:var(--orange)">⚠</span>' : '';
+        html += `<div class="deriv-machine-row compatible${isAssigned ? ' assigned' : ''}">
+          <span class="deriv-machine-name">${m.displayName}${wi}</span>
+          ${slotsLabel}
+          <button class="deriv-assign-btn${isAssigned ? ' active' : ''}"
+                  data-key="${p.key}" data-machine="${m.displayName}">
+            ${isAssigned ? '✓ Asignado' : 'Derivar →'}
+          </button>
+        </div>`;
+      }
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  panel.innerHTML = html;
+
+  panel.querySelectorAll('.deriv-assign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      const machine = btn.dataset.machine;
+      const cur = deriv.asignaciones[key];
+      if (cur?.estado === 'derivado' && cur?.equipo === machine) delete deriv.asignaciones[key];
+      else deriv.asignaciones[key] = { estado: 'derivado', equipo: machine };
+      _refreshDerivCard(key);
+      _renderDerivDestinos(deriv.pacientes.find(x => x.key === key));
+      _renderDerivBarra();
+    });
+  });
+}
+
+function _toggleSuspender(key) {
+  const cur = deriv.asignaciones[key];
+  if (cur?.estado === 'suspendido') delete deriv.asignaciones[key];
+  else deriv.asignaciones[key] = { estado: 'suspendido', equipo: null };
+  _refreshDerivCard(key);
+  if (deriv.seleccionado === key) {
+    const p = deriv.pacientes.find(x => x.key === key);
+    if (p) _renderDerivDestinos(p);
+  }
+  _renderDerivBarra();
+}
+
+function _refreshDerivCard(key) {
+  const el = document.querySelector(`.deriv-patient-card[data-key="${CSS.escape(key)}"]`);
+  if (!el) return;
+  const p = deriv.pacientes.find(x => x.key === key);
+  if (!p) return;
+  const nc = _buildDerivCard(p);
+  if (deriv.seleccionado === key) nc.classList.add('selected');
+  el.replaceWith(nc);
+}
+
+function _renderDerivBarra() {
+  const total = deriv.pacientes.length;
+  const derivados = Object.values(deriv.asignaciones).filter(a => a.estado === 'derivado').length;
+  const suspendidos = Object.values(deriv.asignaciones).filter(a => a.estado === 'suspendido').length;
+  const sinAsignar = total - derivados - suspendidos;
+  document.getElementById('derivStatTotal').textContent = `Total: ${total}`;
+  document.getElementById('derivStatDerivados').textContent = `Derivados: ${derivados}`;
+  document.getElementById('derivStatSuspendidos').textContent = `Suspendidos: ${suspendidos}`;
+  document.getElementById('derivStatSinAsignar').innerHTML =
+    `Sin asignar: <strong${sinAsignar > 0 ? ' style="color:var(--warn)"' : ''}>${sinAsignar}</strong>`;
+  document.getElementById('derivExportarBtn').disabled = sinAsignar > 0;
+}
+
+function _checkCompat(label, cap) {
+  const l = (label || '').trim();
+  if (!l || l === '—') return { ok: true, warn: false, reason: '' };
+  if (l === 'BQT' || l === 'IORT') return { ok: false, warn: false, reason: 'No aplica a linac' };
+  if (l === 'VMAT' || l === 'SBRT - VMAT' || l === 'RC - VMAT')
+    return cap?.canDoVMAT ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad VMAT' };
+  if (l === 'IGRT - VMAT')
+    return cap?.canDoVMAT ? { ok: true, warn: true, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad VMAT' };
+  if (l === 'SBRT' || l === 'SBRT - haz SRS')
+    return cap?.canDoSBRT ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad SBRT' };
+  if (l === 'RC' || l === 'RC - haz SRS')
+    return cap?.canDoRC ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad RC' };
+  if (l === 'TBI')
+    return cap?.canDoTBI ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad TBI' };
+  if (l === 'TSET' || l === '3DC e-')
+    return cap?.canDoElectrons ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin electrones' };
+  if (l === '3DC 10X')
+    return cap?.highEnergyBeams?.includes('10X') ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin campo 10X' };
+  if (l === '3DC 15X')
+    return cap?.highEnergyBeams?.includes('15X') ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin campo 15X' };
+  if (l === '3DC 18X')
+    return cap?.highEnergyBeams?.includes('18X') ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin campo 18X' };
+  if (l === 'IGRT' || l === 'IGRT - estático') return { ok: true, warn: true, reason: '' };
+  return { ok: true, warn: false, reason: '' };
+}
+
+function _calcSlots(machineName, dates, capacities) {
+  const cap = capacities.find(c => c.machineName === machineName);
+  if (!cap || !cap.standardSlotMinutes) return null;
+  const perDay = Math.floor((cap.workingHours - (cap.reservedSpecialHours || 0)) * 60 / cap.standardSlotMinutes);
+  const total = perDay * dates.length;
+  let occupied = 0;
+  for (const d of dates) {
+    occupied += (deriv.agendaSlots[d] || []).filter(s => s.machineName === machineName && !s.isEstimated).length;
+  }
+  return Math.max(0, total - occupied);
+}
+
+function exportarDerivacion(incluirSinAsignar) {
+  const equipo = deriv.equipoFallido || '—';
+  const fi = _fmtDate(deriv.fechaInicio);
+  const ff = _fmtDate(deriv.fechaFin);
+  const now = new Date().toLocaleString('es-AR');
+
+  const derivados = deriv.pacientes
+    .filter(p => deriv.asignaciones[p.key]?.estado === 'derivado')
+    .sort((a,b) => {
+      const ea = deriv.asignaciones[a.key]?.equipo || '';
+      const eb = deriv.asignaciones[b.key]?.equipo || '';
+      return ea.localeCompare(eb) || a.nombre.localeCompare(b.nombre);
+    });
+  const suspendidos = deriv.pacientes.filter(p => deriv.asignaciones[p.key]?.estado === 'suspendido');
+  const sinAsignar = deriv.pacientes.filter(p => !deriv.asignaciones[p.key]);
+  const exportList = [...derivados, ...suspendidos, ...(incluirSinAsignar ? sinAsignar : [])];
+
+  const countByEquipo = {};
+  derivados.forEach(p => {
+    const eq = deriv.asignaciones[p.key]?.equipo || '—';
+    countByEquipo[eq] = (countByEquipo[eq] || 0) + 1;
+  });
+
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tableRows = exportList.map(p => {
+    const asig = deriv.asignaciones[p.key];
+    const destino = asig?.estado === 'derivado' ? asig.equipo
+      : asig?.estado === 'suspendido' ? 'Suspendido — retoma al reactivar equipo'
+      : 'Sin asignar';
+    const bg = !asig ? 'background:#fff8e1;' : asig.estado === 'suspendido' ? 'background:#f5f5f5;color:#888;' : '';
+    const fechas = p.fechasTurno ? p.fechasTurno.map(_fmtDate).join(', ') : (p.etapaDisplay || '—');
+    return `<tr style="${bg}"><td>${esc(p.nombre)}</td><td>${esc(p.hc||'—')}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td><td>${esc(destino)}</td><td></td></tr>`;
+  }).join('');
+
+  const summaryRows = Object.entries(countByEquipo)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([eq,n]) => `<tr><td>${esc(eq)}</td><td>${n} paciente${n>1?'s':''}</td></tr>`)
+    .join('') || '<tr><td colspan="2" style="color:#999">Sin derivaciones</td></tr>';
+
+  const slug = equipo.toLowerCase().replace(/[^a-z0-9]+/g,'_');
+  const ds = (deriv.fechaInicio||'').replace(/-/g,'');
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Derivacion — ${esc(equipo)}</title>
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;margin:32px;color:#1b2f38;font-size:13px;line-height:1.5}
+h1{font-size:20px;color:#0f6c74;margin:0 0 4px}
+.meta{color:#6b7b83;font-size:12px;margin-bottom:24px}
+h2{font-size:14px;color:#0f6c74;margin:24px 0 8px;border-bottom:1px solid #d8cec0;padding-bottom:4px}
+table{border-collapse:collapse;width:100%;margin-bottom:20px}
+th{background:#f3efe6;border:1px solid #d8cec0;padding:8px 10px;text-align:left;font-size:12px;font-weight:600}
+td{border:1px solid #d8cec0;padding:7px 10px;vertical-align:top}
+tr:nth-child(even) td{background:#fafaf7}
+.note{font-size:11px;color:#6b7b83;margin-top:20px;border-top:1px solid #d8cec0;padding-top:12px}
+@media print{body{margin:16px}.note{page-break-before:avoid}}
+</style></head><body>
+<h1>Plan de Derivacion — ${esc(equipo)}</h1>
+<div class="meta">
+  Periodo del evento: ${fi}${fi!==ff?' al '+ff:''}<br>
+  Generado el: ${now}&nbsp;·&nbsp;Generado por: Meva RT
+</div>
+<h2>Tabla de derivaciones</h2>
+<table><thead><tr><th>Paciente</th><th>HC</th><th>Tecnica</th><th>Turno(s) / Etapa</th><th>Destino</th><th>Observaciones</th></tr></thead>
+<tbody>${tableRows||'<tr><td colspan="6" style="color:#999;text-align:center">Sin pacientes</td></tr>'}</tbody></table>
+<h2>Carga por equipo destino</h2>
+<table style="width:auto"><thead><tr><th>Equipo destino</th><th>Pacientes derivados</th></tr></thead>
+<tbody>${summaryRows}</tbody></table>
+<div class="note">
+  Total: ${exportList.length}&nbsp;|&nbsp;Derivados: ${derivados.length}&nbsp;|&nbsp;Suspendidos: ${suspendidos.length}${incluirSinAsignar&&sinAsignar.length?'&nbsp;|&nbsp;Sin asignar: '+sinAsignar.length:''}<br>
+  Este documento es orientativo. Las modificaciones deben realizarse en SitraMed.
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `derivacion_${slug}_${ds}.html`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function _weekdaysBetween(s, e) {
+  const days = [];
+  const cur = new Date(s + 'T12:00:00');
+  const end = new Date(e + 'T12:00:00');
+  while (cur <= end) {
+    const dow = cur.getDay();
+    if (dow > 0 && dow < 6) days.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+function _fmtDate(s) {
+  if (!s) return '—';
+  const [y,m,d] = s.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function _derivLabelClass(label) {
+  if (!label) return '';
+  const f = label.split(/[\s\-]/)[0].toUpperCase();
+  const m = { VMAT:'VMAT', IMRT:'IMRT', SBRT:'SBRT', IGRT:'IGRT',
+              RC:'RC', TBI:'TBI', TSET:'TSET', BQT:'BQT', IORT:'IORT', '3DC':'3DC' };
+  return m[f] ? `tt-${m[f]}` : '';
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
