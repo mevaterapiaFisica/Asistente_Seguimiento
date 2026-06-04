@@ -8,7 +8,8 @@ REM    - NO re-corre AriaRunner.exe            (usa mock ARIA existente)
 REM    - Agenda equipos: solo hoy + 1 dia habil (en vez de 7)
 REM    - NO scrapea agenda tomografos
 REM
-REM  Tiempo estimado: < 2 min (vs 20-30 min del refresh completo)
+REM  Tiempo estimado: < 3 min (la lentitud viene del scraping SitraMed y
+REM  del scraping de agenda Playwright, no de las queries a ARIA que son rapidas)
 REM
 REM  Cuando usarlo:
 REM    - Probar cambios de UI o logica sin esperar el ciclo completo
