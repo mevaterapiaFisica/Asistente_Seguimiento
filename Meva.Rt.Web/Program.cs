@@ -400,11 +400,19 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; p.NumberOfFractions = null; p.IrradiationModality = null; p.ExactBeamEnergy = null; }
     foreach (var a in data.AgendaItems) { a.BeamType = null; a.IrradiationModality = null; }
 
-    var patientIds = data.FollowUpPatients
+    var followUpIdSet = data.FollowUpPatients
         .Select(p => p.PatientId)
         .Where(id => !string.IsNullOrWhiteSpace(id))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToList();
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // Agenda-pura: pacientes en agenda que NO están en seguimiento — se leen de mock.json
+    var agendaOnlyIds = data.AgendaItems
+        .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapApply.ContainsKey(a.SitraMedGuid!))
+        .Select(a => guidHcMapApply[a.SitraMedGuid!])
+        .Where(id => !string.IsNullOrWhiteSpace(id) && !followUpIdSet.Contains(id))
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    var patientIds = followUpIdSet.Concat(agendaOnlyIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     var aria = (await ariaPlanResolver.ResolveAsync(patientIds, cancellationToken)).ToList();
     var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
@@ -442,7 +450,7 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
             patient.BeamType);
     }
 
-    // Propagar TreatmentLabel a los turnos de agenda del mismo paciente
+    // Propagar TreatmentLabel desde seguimiento a sus turnos de agenda
     var followUpLabelMapApply = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (var p in data.FollowUpPatients)
         if (!string.IsNullOrWhiteSpace(p.PatientId) && !string.IsNullOrWhiteSpace(p.TreatmentLabel))
@@ -451,8 +459,16 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     {
         if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
         if (!guidHcMapApply.TryGetValue(item.SitraMedGuid, out var hc)) continue;
-        if (!followUpLabelMapApply.TryGetValue(hc, out var label)) continue;
-        item.TreatmentLabel = label;
+        if (followUpLabelMapApply.TryGetValue(hc, out var label))
+        {
+            item.TreatmentLabel = label;  // paciente en seguimiento: label preciso
+        }
+        else if (ariaByPatient.TryGetValue(hc, out var plan))
+        {
+            // Paciente agenda-pura: calcular label desde datos ARIA + texto de agenda
+            var tech = TreatmentClassifier.Classify(item.Treatment);
+            item.TreatmentLabel = TreatmentClassifier.BuildLabel(tech, plan.IrradiationModality, plan.ExactBeamEnergy, plan.BeamType);
+        }
     }
 
     var stageByCodeApply = configurationProvider.Configuration.Stages
@@ -509,11 +525,35 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
         var guidHcMapQuery = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
                              ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        var hcIds = (snapshot?.FollowUpPatients ?? [])
+        // Seguimiento: siempre frescos
+        var followUpHcIds = (snapshot?.FollowUpPatients ?? [])
             .Select(p => p.PatientId ?? "")
             .Where(id => hcRegex.IsMatch(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Agenda-pura: solo los que NO están ya en mock.json (primera vez o pacientes nuevos)
+        var mockPath0 = ariaOptions.MockPlansJsonPath;
+        var existingMockIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(mockPath0) && File.Exists(mockPath0))
+        {
+            try
+            {
+                var existing0 = JsonSerializer.Deserialize<List<AriaPlanSnapshot>>(
+                    await File.ReadAllTextAsync(mockPath0, cancellationToken),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (existing0 != null)
+                    foreach (var e in existing0) existingMockIds.Add(e.PatientId);
+            }
+            catch { }
+        }
+
+        var agendaNewIds = (snapshot?.AgendaItems ?? [])
+            .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapQuery.ContainsKey(a.SitraMedGuid!))
+            .Select(a => guidHcMapQuery[a.SitraMedGuid!])
+            .Where(id => hcRegex.IsMatch(id) && !followUpHcIds.Contains(id) && !existingMockIds.Contains(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var hcIds = followUpHcIds.Concat(agendaNewIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         if (hcIds.Count == 0)
             return TypedResults.BadRequest(new { error = "No hay pacientes con HC válida en el snapshot." });
@@ -591,6 +631,22 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
                 if (!string.IsNullOrWhiteSpace(mockPath))
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(mockPath)!);
+
+                    // Mergear: nuevos resultados + datos anteriores de pacientes no re-consultados
+                    var newIds = plans.Select(p => p.PatientId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (File.Exists(mockPath))
+                    {
+                        try
+                        {
+                            var old = JsonSerializer.Deserialize<List<AriaPlanSnapshot>>(
+                                await File.ReadAllTextAsync(mockPath),
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            if (old != null)
+                                plans.AddRange(old.Where(p => !newIds.Contains(p.PatientId)));
+                        }
+                        catch { }
+                    }
+
                     await File.WriteAllTextAsync(mockPath,
                         JsonSerializer.Serialize(plans, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
                 }

@@ -165,6 +165,7 @@ public sealed class BootstrapService
         }
 
         List<AriaPlanSnapshot> aria = [];
+        var ariaByPatient = new Dictionary<string, AriaPlanSnapshot>(StringComparer.OrdinalIgnoreCase);
         if (!skipAria)
         {
             var ariaEnabledCenters = _configurationProvider.Configuration.Centers
@@ -178,10 +179,12 @@ public sealed class BootstrapService
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var allPatientIds = followUpIds.ToList();
+            var allPatientIds = followUpIds
+                .Concat(agendaByHc.Keys.Where(hc => !followUpIds.Contains(hc)))
+                .ToList();
 
             aria = (await _ariaPlanResolver.ResolveAsync(allPatientIds, cancellationToken)).ToList();
-            var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
+            ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
             foreach (var patient in followUp)
             {
                 if (!ariaByPatient.TryGetValue(patient.PatientId, out var plan)) continue;
@@ -217,17 +220,27 @@ public sealed class BootstrapService
                 patient.BeamType);
         }
 
-        // Propagar TreatmentLabel a los turnos de agenda del mismo paciente
-        // (el texto de tratamiento scrapeado de la agenda es genérico; el de seguimiento es preciso)
+        // Propagar TreatmentLabel a los turnos de agenda
         var followUpByHc = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in followUp)
             if (!string.IsNullOrWhiteSpace(p.PatientId) && !string.IsNullOrWhiteSpace(p.TreatmentLabel))
                 followUpByHc[p.PatientId!] = p.TreatmentLabel!;
         foreach (var (hc, items) in agendaByHc)
         {
-            if (!followUpByHc.TryGetValue(hc, out var label)) continue;
-            foreach (var item in items)
-                item.TreatmentLabel = label;
+            if (followUpByHc.TryGetValue(hc, out var label))
+            {
+                foreach (var item in items)
+                    item.TreatmentLabel = label;  // paciente en seguimiento
+            }
+            else if (ariaByPatient.TryGetValue(hc, out var plan))
+            {
+                // Paciente agenda-pura: calcular label desde datos ARIA + texto de agenda
+                foreach (var item in items)
+                {
+                    var tech = TreatmentClassifier.Classify(item.Treatment);
+                    item.TreatmentLabel = TreatmentClassifier.BuildLabel(tech, plan.IrradiationModality, plan.ExactBeamEnergy, plan.BeamType);
+                }
+            }
         }
 
         var stageByCode = _configurationProvider.Configuration.Stages
