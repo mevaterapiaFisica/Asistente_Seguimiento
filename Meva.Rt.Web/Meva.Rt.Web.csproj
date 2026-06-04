@@ -6,6 +6,9 @@
     <ProjectReference Include="..\Meva.Rt.Infrastructure.Aria\Meva.Rt.Infrastructure.Aria.csproj" />
     <ProjectReference Include="..\Meva.Rt.Infrastructure.Storage\Meva.Rt.Infrastructure.Storage.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="..\..\Insumos ARIA\mapEquiposAriaSitra.txt">
