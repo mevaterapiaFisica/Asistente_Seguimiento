@@ -262,16 +262,19 @@ async function actionUpdateAria() {
   document.getElementById('scrapMenu').hidden = true;
   const btn = document.getElementById('scrapMenuBtn');
   btn.disabled = true;
-  document.getElementById('generatedAt').textContent = 'Consultando ARIA...';
+  document.getElementById('generatedAt').textContent = 'Iniciando consulta ARIA...';
   try {
     const resp = await fetch('/api/aria/run-query', { method: 'POST' });
-    const r = await resp.json();
-    if (resp.ok) {
+    if (resp.status === 202 || resp.status === 409) {
+      // 202: arrancó en background. 409: ya corría, engancharse al polling.
+      await _pollAriaStatus();
+    } else if (resp.ok) {
+      // Sin runner exe: importó directo, aplicar
       document.getElementById('generatedAt').textContent = 'Aplicando datos ARIA...';
       const applyResp = await fetch('/api/home/apply-aria', { method: 'POST' });
       if (applyResp.ok) renderHome(await applyResp.json());
-      else document.getElementById('generatedAt').textContent = `ARIA: ${r.withActivePlan} con plan`;
     } else {
+      const r = await resp.json().catch(() => ({}));
       document.getElementById('generatedAt').textContent = r.error ?? `Error ${resp.status}`;
     }
   } catch (e) {
@@ -279,13 +282,43 @@ async function actionUpdateAria() {
   } finally { btn.disabled = false; }
 }
 
+async function _pollAriaStatus() {
+  while (true) {
+    await new Promise(r => setTimeout(r, 4000));
+    try {
+      const st = await fetch('/api/aria/query-status').then(r => r.json());
+      if (st.isRunning) {
+        const pct = st.progressPct ?? 0;
+        document.getElementById('generatedAt').textContent =
+          `Consultando ARIA... ${pct}% (${st.currentPatient}/${st.totalPatients})`;
+      } else {
+        if (st.lastRunSucceeded) {
+          document.getElementById('generatedAt').textContent = 'Aplicando datos ARIA...';
+          const applyResp = await fetch('/api/home/apply-aria', { method: 'POST' });
+          if (applyResp.ok) renderHome(await applyResp.json());
+          else document.getElementById('generatedAt').textContent = 'ARIA actualizado (error al aplicar)';
+        } else {
+          document.getElementById('generatedAt').textContent = `Error ARIA: ${st.lastError ?? 'desconocido'}`;
+        }
+        break;
+      }
+    } catch (e) {
+      document.getElementById('generatedAt').textContent = `Error estado: ${e.message}`;
+      break;
+    }
+  }
+}
+
 async function actionUpdateAll() {
   document.getElementById('scrapMenu').hidden = true;
   const btn = document.getElementById('scrapMenuBtn');
   btn.disabled = true;
-  document.getElementById('generatedAt').textContent = 'Consultando ARIA...';
+  document.getElementById('generatedAt').textContent = 'Iniciando consulta ARIA...';
   try {
-    await fetch('/api/aria/run-query', { method: 'POST' });
+    const ariaResp = await fetch('/api/aria/run-query', { method: 'POST' });
+    if (ariaResp.status === 202 || ariaResp.status === 409) {
+      await _pollAriaStatus();
+    }
     document.getElementById('generatedAt').textContent = 'Actualizando Sitramed...';
     const resp = await fetch('/api/home/refresh', { method: 'POST' });
     if (!resp.ok) { document.getElementById('generatedAt').textContent = `Error ${resp.status}`; return; }

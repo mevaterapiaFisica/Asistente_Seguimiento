@@ -55,6 +55,7 @@ builder.Services.AddSingleton(businessDayCalc);
 builder.Services.AddSingleton<ISnapshotStore>(_ => new JsonSnapshotStore(snapshotsDirectory));
 builder.Services.AddSingleton<IStageTransitionStore>(_ => new StageTransitionStore(snapshotsDirectory));
 builder.Services.AddSingleton<IWeeklyStatsStore>(_ => new WeeklyStatsStore(snapshotsDirectory));
+builder.Services.AddSingleton<AriaJobState>();
 builder.Services.AddSingleton<PlaywrightSitraMedClient>();
 builder.Services.AddSingleton<IAgendaExtractor, SitraMedAgendaExtractor>();
 builder.Services.AddSingleton<ITomographAgendaExtractor, SitraMedTomographExtractor>();
@@ -493,77 +494,127 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
 
-// Consulta ARIA (si MEVA_ARIA_RUNNER_EXE está configurado) e importa el resultado.
-// Si el runner no está configurado, solo importa el aria_results_*.json más reciente.
+// Consulta ARIA en background (fire-and-forget).
+// Cuando hay runner exe configurado retorna 202 inmediatamente; el cliente hace polling a /api/aria/query-status.
+// Cuando no hay runner exe importa el aria_results_*.json más reciente de forma sincrónica (rápido).
 app.MapPost("/api/aria/run-query", async Task<IResult> (
+        AriaJobState jobState,
         ISnapshotStore snapshotStore,
         IRtSystemConfigurationProvider configurationProvider,
         AriaRuntimeOptions ariaOptions,
         CancellationToken cancellationToken) =>
 {
     var hcRegex = new Regex(@"^\d{1,3}-\d{4,7}-\d{1,3}$");
-
     var runnerExe = Environment.GetEnvironmentVariable("MEVA_ARIA_RUNNER_EXE");
-    var ranQuery = false;
 
     if (!string.IsNullOrWhiteSpace(runnerExe) && File.Exists(runnerExe))
     {
+        // ── Camino async: AriaRunner en background ────────────────────────
+        if (jobState.IsRunning)
+            return TypedResults.Conflict(new { error = "Ya hay una consulta ARIA en curso. Usar /api/aria/query-status para ver el progreso." });
+
         var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
         var guidHcMapQuery = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
                              ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        var followUpHcIds = (snapshot?.FollowUpPatients ?? [])
-            .Select(p => p.PatientId ?? "")
-            .Where(id => hcRegex.IsMatch(id));
-
-        var agendaHcIds = (snapshot?.AgendaItems ?? [])
-            .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapQuery.ContainsKey(a.SitraMedGuid!))
-            .Select(a => guidHcMapQuery[a.SitraMedGuid!])
-            .Where(id => hcRegex.IsMatch(id));
-
-        var hcIds = followUpHcIds
-            .Concat(agendaHcIds)
+        var hcIds = (snapshot?.FollowUpPatients ?? [])
+            .Select(p => p.PatientId ?? "").Where(id => hcRegex.IsMatch(id))
+            .Concat((snapshot?.AgendaItems ?? [])
+                .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapQuery.ContainsKey(a.SitraMedGuid!))
+                .Select(a => guidHcMapQuery[a.SitraMedGuid!]).Where(id => hcRegex.IsMatch(id)))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (hcIds.Count == 0)
-            return TypedResults.BadRequest(new { error = "No hay pacientes con HC válida en el snapshot para consultar ARIA." });
+            return TypedResults.BadRequest(new { error = "No hay pacientes con HC válida en el snapshot." });
+
+        if (!jobState.TryStart(hcIds.Count, snapshotsDirectory))
+            return TypedResults.Conflict(new { error = "Consulta ya iniciada (race condition)." });
 
         var inputPath = Path.Combine(snapshotsDirectory, "aria_input_tmp.json");
-        await File.WriteAllTextAsync(inputPath,
-            JsonSerializer.Serialize(new { patientIds = hcIds }),
-            cancellationToken);
+        await File.WriteAllTextAsync(inputPath, JsonSerializer.Serialize(new { patientIds = hcIds }), cancellationToken);
 
         var runnerDir = Path.GetDirectoryName(runnerExe)!;
         var psi = new ProcessStartInfo(runnerExe)
         {
             Arguments = $"--input=\"{inputPath}\" --output-dir=\"{snapshotsDirectory}\"",
             WorkingDirectory = runnerDir,
-            RedirectStandardOutput = true,
+            RedirectStandardOutput = false,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromMinutes(20));
-
-        using var proc = Process.Start(psi);
+        var proc = Process.Start(psi);
         if (proc == null)
-            return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
-
-        await proc.WaitForExitAsync(cts.Token);
-
-        if (proc.ExitCode != 0)
         {
-            var stderr = await proc.StandardError.ReadToEndAsync(cancellationToken);
-            return TypedResults.BadRequest(new { error = $"AriaRunner salio con codigo {proc.ExitCode}.", detail = stderr.Trim() });
+            jobState.Complete(false, 0, "No se pudo iniciar AriaRunner.exe.");
+            return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
         }
 
-        ranQuery = true;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await proc.WaitForExitAsync();
+
+                if (proc.ExitCode != 0)
+                {
+                    var stderr = await proc.StandardError.ReadToEndAsync();
+                    jobState.Complete(false, 0, $"AriaRunner salio con codigo {proc.ExitCode}. {stderr.Trim()}");
+                    return;
+                }
+
+                // Importar resultado
+                var resultFile = Directory.GetFiles(snapshotsDirectory, "aria_results_*.json")
+                    .OrderByDescending(f => f).FirstOrDefault();
+
+                if (resultFile == null) { jobState.Complete(false, 0, "No se encontró archivo de resultados."); return; }
+
+                var json = await File.ReadAllTextAsync(resultFile);
+                var output = JsonSerializer.Deserialize<AriaRunnerOutput>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (output?.Patients == null) { jobState.Complete(false, 0, "Archivo de resultados vacío."); return; }
+
+                var machines = configurationProvider.Configuration.Machines;
+                var plans = new List<AriaPlanSnapshot>();
+                foreach (var patient in output.Patients)
+                {
+                    if (!patient.Found || patient.ActivePlan == null) continue;
+                    var snap = new AriaPlanSnapshot
+                    {
+                        PatientId = patient.PatientId,
+                        PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
+                        PlanStatus = patient.ActivePlan.Status,
+                        BeamType = patient.ActivePlan.BeamType,
+                        NumberOfFractions = patient.ActivePlan.NumberOfFractions,
+                        IrradiationModality = patient.ActivePlan.IrradiationModality,
+                        ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
+                    };
+                    var machine = machines.FirstOrDefault(m =>
+                        string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
+                    snap.PlannedMachineDisplayName = machine?.DisplayName;
+                    plans.Add(snap);
+                }
+
+                var mockPath = ariaOptions.MockPlansJsonPath;
+                if (!string.IsNullOrWhiteSpace(mockPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(mockPath)!);
+                    await File.WriteAllTextAsync(mockPath,
+                        JsonSerializer.Serialize(plans, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                }
+
+                jobState.Complete(true, plans.Count, null);
+            }
+            catch (Exception ex) { jobState.Complete(false, 0, ex.Message); }
+            finally { proc.Dispose(); }
+        });
+
+        return TypedResults.Accepted("/api/aria/query-status", new { status = "started", totalPatients = hcIds.Count });
     }
 
-    // Importar el aria_results_*.json más reciente (recién generado o pre-existente)
+    // ── Camino sincrónico: importar resultado existente (sin runner) ──────
     var resolvedPath = Directory.GetFiles(snapshotsDirectory, "aria_results_*.json")
         .OrderByDescending(f => f).FirstOrDefault();
 
@@ -574,25 +625,18 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
     try
     {
         var json = await File.ReadAllTextAsync(resolvedPath, cancellationToken);
-        runnerOutput2 = JsonSerializer.Deserialize<AriaRunnerOutput>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        runnerOutput2 = JsonSerializer.Deserialize<AriaRunnerOutput>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
-    catch (Exception ex)
-    {
-        return TypedResults.BadRequest(new { error = $"Error leyendo {resolvedPath}: {ex.Message}" });
-    }
+    catch (Exception ex) { return TypedResults.BadRequest(new { error = $"Error leyendo {resolvedPath}: {ex.Message}" }); }
 
     if (runnerOutput2?.Patients == null)
         return TypedResults.BadRequest(new { error = "Archivo vacio o formato invalido." });
 
     var machines2 = configurationProvider.Configuration.Machines;
     var plans2 = new List<AriaPlanSnapshot>();
-    var withMachine2 = 0;
-
     foreach (var patient in runnerOutput2.Patients)
     {
         if (!patient.Found || patient.ActivePlan == null) continue;
-
         var snap = new AriaPlanSnapshot
         {
             PatientId = patient.PatientId,
@@ -603,17 +647,9 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
             IrradiationModality = patient.ActivePlan.IrradiationModality,
             ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
         };
-
-        if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
-        {
-            var machine = machines2.FirstOrDefault(m =>
-                string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
-            snap.PlannedMachineDisplayName = machine?.DisplayName;
-        }
-
-        if (!string.IsNullOrWhiteSpace(snap.PlannedMachineDisplayName))
-            withMachine2++;
-
+        var machine = machines2.FirstOrDefault(m =>
+            string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
+        snap.PlannedMachineDisplayName = machine?.DisplayName;
         plans2.Add(snap);
     }
 
@@ -626,13 +662,24 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
         JsonSerializer.Serialize(plans2, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
         cancellationToken);
 
-    return TypedResults.Ok(new
+    return TypedResults.Ok(new { queriedAria = false, importedFile = Path.GetFileName(resolvedPath), withActivePlan = plans2.Count });
+});
+
+app.MapGet("/api/aria/query-status", (AriaJobState jobState) =>
+{
+    var (current, total) = jobState.ReadProgress();
+    var pct = total > 0 ? current * 100 / total : 0;
+    return Results.Ok(new
     {
-        queriedAria = ranQuery,
-        importedFile = Path.GetFileName(resolvedPath),
-        totalInFile = runnerOutput2.Patients.Count,
-        withActivePlan = plans2.Count,
-        withMachineResolved = withMachine2
+        isRunning = jobState.IsRunning,
+        startedAt = jobState.StartedAt,
+        currentPatient = current,
+        totalPatients = total,
+        progressPct = pct,
+        lastRunSucceeded = jobState.LastRunSucceeded,
+        lastWithActivePlan = jobState.LastWithActivePlan,
+        lastError = jobState.LastError,
+        completedAt = jobState.CompletedAt
     });
 });
 
