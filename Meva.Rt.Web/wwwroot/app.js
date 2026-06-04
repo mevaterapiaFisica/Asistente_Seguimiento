@@ -1946,12 +1946,14 @@ function _buildPacientesAfectados(equipo, dates, incluirPlanif) {
         patMap.set(mk, {
           key: `a_${mk}`, source: 'agenda',
           nombre: slot.patientName || '—', sitraMedGuid: slot.sitraMedGuid || null, hc: null,
-          fechasTurno: [],
+          fechasTurno: [], horarios: [],
           treatmentLabel: slot.treatmentLabel || slot.treatmentTechnique || slot.treatment || '—',
           etapaDisplay: null, sortOrder: -1, fracciones: null
         });
       }
-      patMap.get(mk).fechasTurno.push(date);
+      const entry = patMap.get(mk);
+      entry.fechasTurno.push(date);
+      if (slot.startTime) entry.horarios.push(`${date} ${slot.startTime}`);
     }
   }
   for (const p of patMap.values()) {
@@ -1988,15 +1990,7 @@ function _renderDerivResult() {
   document.getElementById('derivBarraResumen').hidden = false;
   _renderDerivPacientes();
   _renderDerivBarra();
-  if (deriv.seleccionado) {
-    const p = deriv.pacientes.find(x => x.key === deriv.seleccionado);
-    if (p) _renderDerivDestinos(p);
-    else document.getElementById('derivDestinosPanel').innerHTML =
-      '<p class="detail-placeholder">Seleccione un paciente para ver equipos destino.</p>';
-  } else {
-    document.getElementById('derivDestinosPanel').innerHTML =
-      '<p class="detail-placeholder">Seleccione un paciente para ver equipos destino.</p>';
-  }
+  _renderDerivResumenEquipos();
 }
 
 function _renderDerivPacientes() {
@@ -2020,24 +2014,72 @@ function _renderDerivPacientes() {
   appendSection('En planificacion', fb);
 }
 
+// Nombre corto: parte después de " - " o el nombre completo
+function _shortName(name) {
+  const i = name.lastIndexOf(' - ');
+  return i >= 0 ? name.slice(i + 3) : name;
+}
+
+// Máquinas compatibles ordenadas: mismo centro primero, luego alfabético
+function _getSortedCompatMachines(treatmentLabel) {
+  const caps = state.configData?.machineCapabilities || [];
+  const failedCenter = (state.homeData?.configuration?.machines || [])
+    .find(m => m.displayName === deriv.equipoFallido)?.centerName;
+  return (state.homeData?.configuration?.machines || [])
+    .filter(m => m.displayName !== deriv.equipoFallido)
+    .filter(m => _checkCompat(treatmentLabel, caps.find(c => c.machineName === m.displayName)).ok)
+    .sort((a,b) => {
+      const sa = a.centerName === failedCenter ? 0 : 1;
+      const sb = b.centerName === failedCenter ? 0 : 1;
+      return sa !== sb ? sa - sb : a.centerName.localeCompare(b.centerName) || a.displayName.localeCompare(b.displayName);
+    });
+}
+
 function _buildDerivCard(p) {
   const asig = deriv.asignaciones[p.key];
   const estado = asig?.estado || 'sin_asignar';
-  const isSelected = deriv.seleccionado === p.key;
 
-  const fechasStr = p.fechasTurno
+  // Horario actual (solo fuente agenda)
+  const horariosStr = p.horarios?.length
+    ? p.horarios.map(h => {
+        const [datePart, timePart] = h.split(' ');
+        return `${_fmtDate(datePart)} ${timePart||''}`.trim();
+      }).join(' · ')
+    : null;
+
+  // Fechas / etapa debajo del badge
+  const infoStr = p.fechasTurno
     ? p.fechasTurno.map(_fmtDate).join(', ')
     : (p.fracciones ? `${p.etapaDisplay} · ${p.fracciones} fx` : (p.etapaDisplay || '—'));
 
   const badgeHtml = estado === 'derivado'
-    ? `<span class="deriv-badge deriv-badge-ok">→ ${asig.equipo}</span>`
+    ? `<span class="deriv-badge deriv-badge-ok">→ ${_shortName(asig.equipo)}</span>`
     : estado === 'suspendido'
     ? `<span class="deriv-badge deriv-badge-grey">⊗ Suspendido</span>`
     : `<span class="deriv-badge deriv-badge-none">Sin asignar</span>`;
 
   const label = p.treatmentLabel || '—';
+
+  // Botones rápidos
+  const compatMachines = _getSortedCompatMachines(label);
+  const top3 = compatMachines.slice(0, 3);
+  const others = compatMachines.slice(3);
+  const quickBtns = top3.map(m => {
+    const isAssigned = asig?.estado === 'derivado' && asig?.equipo === m.displayName;
+    return `<button class="deriv-quick-btn${isAssigned ? ' active' : ''}"
+              data-machine="${m.displayName}" title="${m.displayName}">
+      ${_shortName(m.displayName)} →
+    </button>`;
+  }).join('');
+  const othersSelect = others.length
+    ? `<select class="deriv-others-sel" data-key="${p.key}">
+        <option value="">Otros...</option>
+        ${others.map(m => `<option value="${m.displayName}"${asig?.estado === 'derivado' && asig?.equipo === m.displayName ? ' selected' : ''}>${_shortName(m.displayName)}</option>`).join('')}
+       </select>`
+    : '';
+
   const card = document.createElement('div');
-  card.className = `deriv-patient-card estado-${estado}${isSelected ? ' selected' : ''}`;
+  card.className = `deriv-patient-card estado-${estado}`;
   card.dataset.key = p.key;
   card.innerHTML = `
     <div class="deriv-card-header">
@@ -2046,7 +2088,12 @@ function _buildDerivCard(p) {
     </div>
     <div class="deriv-card-row">
       <span class="treatment-badge ${_derivLabelClass(label)}">${label}</span>
-      <span class="deriv-card-dates">${fechasStr}</span>
+      <span class="deriv-card-dates">${infoStr}</span>
+      ${horariosStr ? `<span class="deriv-card-horario">🕐 ${horariosStr}</span>` : ''}
+    </div>
+    <div class="deriv-quickbtns">
+      ${quickBtns}
+      ${othersSelect}
     </div>
     <div class="deriv-card-footer">
       ${badgeHtml}
@@ -2055,95 +2102,36 @@ function _buildDerivCard(p) {
         ${estado === 'suspendido' ? '↩' : '⊗'}
       </button>
     </div>`;
-  card.addEventListener('click', e => {
-    if (e.target.closest('.deriv-suspend-btn')) return;
-    _selectDerivPaciente(p.key);
+
+  // Quick-assign buttons
+  card.querySelectorAll('.deriv-quick-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      _asignarDerivPaciente(p.key, btn.dataset.machine);
+    });
   });
+
+  // Others dropdown
+  const sel = card.querySelector('.deriv-others-sel');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      if (sel.value) _asignarDerivPaciente(p.key, sel.value);
+    });
+  }
+
   card.querySelector('.deriv-suspend-btn').addEventListener('click', e => {
     e.stopPropagation(); _toggleSuspender(p.key);
   });
   return card;
 }
 
-function _selectDerivPaciente(key) {
-  deriv.seleccionado = key;
-  document.querySelectorAll('.deriv-patient-card').forEach(c =>
-    c.classList.toggle('selected', c.dataset.key === key));
-  const p = deriv.pacientes.find(x => x.key === key);
-  if (p) _renderDerivDestinos(p);
-}
-
-function _renderDerivDestinos(p) {
-  const panel = document.getElementById('derivDestinosPanel');
-  const caps = state.configData?.machineCapabilities || [];
-  const capacities = state.homeData?.configuration?.machineCapacities || [];
-  const machines = (state.homeData?.configuration?.machines || [])
-    .filter(m => m.displayName !== deriv.equipoFallido);
-  const failedCenter = (state.homeData?.configuration?.machines || [])
-    .find(m => m.displayName === deriv.equipoFallido)?.centerName;
-  const dates = Object.keys(deriv.agendaSlots).sort();
-
-  const byCentre = {};
-  machines.forEach(m => (byCentre[m.centerName] = byCentre[m.centerName] || []).push(m));
-  const centerOrder = Object.keys(byCentre).sort((a,b) =>
-    a === failedCenter ? -1 : b === failedCenter ? 1 : a.localeCompare(b));
-
-  let html = `<div class="deriv-destinos-wrap">
-    <div class="deriv-destinos-title">Destinos para <strong>${p.nombre}</strong>
-      ${p.hc ? `<span class="deriv-card-hc">${p.hc}</span>` : ''}
-    </div>`;
-
-  for (const center of centerOrder) {
-    html += `<div class="deriv-center-group">
-      <div class="deriv-center-name">${center}${center === failedCenter ? ' ★' : ''}</div>`;
-    const ml = (byCentre[center]||[]).sort((a,b) => a.displayName.localeCompare(b.displayName));
-    for (const m of ml) {
-      const cap = caps.find(c => c.machineName === m.displayName);
-      const { ok, warn, reason } = _checkCompat(p.treatmentLabel, cap);
-      const slotsLibres = _calcSlots(m.displayName, dates, capacities);
-      const derivCount = Object.values(deriv.asignaciones)
-        .filter(a => a.estado === 'derivado' && a.equipo === m.displayName).length;
-      const isAssigned = deriv.asignaciones[p.key]?.estado === 'derivado' &&
-                         deriv.asignaciones[p.key]?.equipo === m.displayName;
-      if (!ok) {
-        html += `<div class="deriv-machine-row incompatible">
-          <span class="deriv-machine-name">${m.displayName}</span>
-          <span class="deriv-incompat-reason">${reason}</span>
-        </div>`;
-      } else {
-        const adj = slotsLibres !== null ? slotsLibres - derivCount : null;
-        const sc = adj === null ? '' : adj > 3 ? 'slots-ok' : adj > 0 ? 'slots-warn' : 'slots-full';
-        const slotsLabel = adj !== null
-          ? `<span class="deriv-slots ${sc}">${adj >= 0 ? adj : '↑'+Math.abs(adj)} slot${adj !== 1 ? 's' : ''}</span>`
-          : '';
-        const wi = warn ? ' <span title="Verificar disponibilidad IGRT" style="color:var(--orange)">⚠</span>' : '';
-        html += `<div class="deriv-machine-row compatible${isAssigned ? ' assigned' : ''}">
-          <span class="deriv-machine-name">${m.displayName}${wi}</span>
-          ${slotsLabel}
-          <button class="deriv-assign-btn${isAssigned ? ' active' : ''}"
-                  data-key="${p.key}" data-machine="${m.displayName}">
-            ${isAssigned ? '✓ Asignado' : 'Derivar →'}
-          </button>
-        </div>`;
-      }
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  panel.innerHTML = html;
-
-  panel.querySelectorAll('.deriv-assign-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.key;
-      const machine = btn.dataset.machine;
-      const cur = deriv.asignaciones[key];
-      if (cur?.estado === 'derivado' && cur?.equipo === machine) delete deriv.asignaciones[key];
-      else deriv.asignaciones[key] = { estado: 'derivado', equipo: machine };
-      _refreshDerivCard(key);
-      _renderDerivDestinos(deriv.pacientes.find(x => x.key === key));
-      _renderDerivBarra();
-    });
-  });
+function _asignarDerivPaciente(key, machine) {
+  const cur = deriv.asignaciones[key];
+  if (cur?.estado === 'derivado' && cur?.equipo === machine) delete deriv.asignaciones[key];
+  else deriv.asignaciones[key] = { estado: 'derivado', equipo: machine };
+  _refreshDerivCard(key);
+  _renderDerivResumenEquipos();
+  _renderDerivBarra();
 }
 
 function _toggleSuspender(key) {
@@ -2151,10 +2139,7 @@ function _toggleSuspender(key) {
   if (cur?.estado === 'suspendido') delete deriv.asignaciones[key];
   else deriv.asignaciones[key] = { estado: 'suspendido', equipo: null };
   _refreshDerivCard(key);
-  if (deriv.seleccionado === key) {
-    const p = deriv.pacientes.find(x => x.key === key);
-    if (p) _renderDerivDestinos(p);
-  }
+  _renderDerivResumenEquipos();
   _renderDerivBarra();
 }
 
@@ -2162,10 +2147,85 @@ function _refreshDerivCard(key) {
   const el = document.querySelector(`.deriv-patient-card[data-key="${CSS.escape(key)}"]`);
   if (!el) return;
   const p = deriv.pacientes.find(x => x.key === key);
-  if (!p) return;
-  const nc = _buildDerivCard(p);
-  if (deriv.seleccionado === key) nc.classList.add('selected');
-  el.replaceWith(nc);
+  if (p) el.replaceWith(_buildDerivCard(p));
+}
+
+// Panel derecho: tarjetas de equipos destino con turnos libres y pacientes derivados
+function _renderDerivResumenEquipos() {
+  const panel = document.getElementById('derivDestinosPanel');
+  if (!deriv.equipoFallido || !deriv.pacientes.length) {
+    panel.innerHTML = '<p class="detail-placeholder">Calculá la derivacion para ver el resumen de equipos.</p>';
+    return;
+  }
+  const capacities = state.homeData?.configuration?.machineCapacities || [];
+  const machines = (state.homeData?.configuration?.machines || [])
+    .filter(m => m.displayName !== deriv.equipoFallido);
+  const failedCenter = (state.homeData?.configuration?.machines || [])
+    .find(m => m.displayName === deriv.equipoFallido)?.centerName;
+  const dates = Object.keys(deriv.agendaSlots).sort();
+
+  // Derivados por equipo
+  const derivadosPorEquipo = {};
+  deriv.pacientes.forEach(p => {
+    const asig = deriv.asignaciones[p.key];
+    if (asig?.estado === 'derivado') {
+      (derivadosPorEquipo[asig.equipo] = derivadosPorEquipo[asig.equipo] || []).push(p);
+    }
+  });
+
+  // Ordenar: con derivados primero, luego mismo centro, luego alfabético
+  const sorted = [...machines].sort((a,b) => {
+    const ad = (derivadosPorEquipo[a.displayName]?.length || 0) > 0 ? 0 : 1;
+    const bd = (derivadosPorEquipo[b.displayName]?.length || 0) > 0 ? 0 : 1;
+    if (ad !== bd) return ad - bd;
+    const ac = a.centerName === failedCenter ? 0 : 1;
+    const bc = b.centerName === failedCenter ? 0 : 1;
+    return ac !== bc ? ac - bc : a.centerName.localeCompare(b.centerName) || a.displayName.localeCompare(b.displayName);
+  });
+
+  let html = '<div class="deriv-resumen-grid">';
+  for (const m of sorted) {
+    const derivados = derivadosPorEquipo[m.displayName] || [];
+    const slotsLibres = _calcSlots(m.displayName, dates, capacities);
+    const adj = slotsLibres !== null ? slotsLibres - derivados.length : null;
+    const sc = adj === null ? '' : adj > 3 ? 'slots-ok' : adj > 0 ? 'slots-warn' : 'slots-full';
+    const turnosLabel = adj !== null
+      ? `<span class="deriv-slots ${sc}">${Math.max(0, adj)} turno${adj !== 1 ? 's' : ''} disponible${adj !== 1 ? 's' : ''}</span>`
+      : '';
+
+    html += `<div class="deriv-equipo-card${derivados.length ? ' has-derivados' : ''}">
+      <div class="deriv-equipo-header">
+        <span class="deriv-equipo-name">${m.displayName}</span>
+        <span class="deriv-equipo-center">${m.centerName === failedCenter ? '★ ' : ''}${m.centerName}</span>
+      </div>
+      ${turnosLabel}`;
+
+    if (derivados.length) {
+      html += '<ul class="deriv-equipo-patients">';
+      derivados.forEach(pt => {
+        html += `<li>
+          <span>${pt.nombre}</span>
+          <button class="deriv-unassign-btn" data-key="${pt.key}" title="Quitar derivacion">✕</button>
+        </li>`;
+      });
+      html += '</ul>';
+    } else {
+      html += '<div class="deriv-equipo-empty">Sin derivaciones</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  panel.innerHTML = html;
+
+  panel.querySelectorAll('.deriv-unassign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      delete deriv.asignaciones[key];
+      _refreshDerivCard(key);
+      _renderDerivResumenEquipos();
+      _renderDerivBarra();
+    });
+  });
 }
 
 function _renderDerivBarra() {
