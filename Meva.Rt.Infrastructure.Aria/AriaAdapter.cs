@@ -146,6 +146,16 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             {
                 row.NumberOfFractions = mock.NumberOfFractions;
             }
+
+            if (!string.IsNullOrWhiteSpace(mock.IrradiationModality))
+            {
+                row.IrradiationModality = mock.IrradiationModality;
+            }
+
+            if (!string.IsNullOrWhiteSpace(mock.ExactBeamEnergy))
+            {
+                row.ExactBeamEnergy = mock.ExactBeamEnergy;
+            }
         }
     }
 

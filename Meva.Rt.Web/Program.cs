@@ -396,7 +396,7 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     var guidHcMapApply = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
                          ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; p.NumberOfFractions = null; p.IrradiationModality = null; }
+    foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; p.NumberOfFractions = null; p.IrradiationModality = null; p.ExactBeamEnergy = null; }
     foreach (var a in data.AgendaItems) { a.BeamType = null; a.IrradiationModality = null; }
 
     var followUpApplyIds = data.FollowUpPatients
@@ -426,6 +426,8 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
         patient.NumberOfFractions = plan.NumberOfFractions;
         if (!string.IsNullOrWhiteSpace(plan.IrradiationModality))
             patient.IrradiationModality = plan.IrradiationModality;
+        if (!string.IsNullOrWhiteSpace(plan.ExactBeamEnergy))
+            patient.ExactBeamEnergy = plan.ExactBeamEnergy;
     }
 
     foreach (var item in data.AgendaItems)
