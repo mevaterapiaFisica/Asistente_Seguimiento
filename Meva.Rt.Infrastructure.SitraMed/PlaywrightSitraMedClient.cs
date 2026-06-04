@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -1524,13 +1524,21 @@ public sealed class PlaywrightSitraMedClient
                         const keywords = ['tridimensional', '3d', 'modulada', 'imrt', 'sbrt',
                                           'igrt', 'tbi', 'irradiaci', 'radiocirug', 'braquiterapia',
                                           'intraoperatoria', 'iort', 'rxcx'];
+                        const secondary = ['braquiterapia', 'intraoperatoria', 'iort'];
                         const cells = Array.from(tr.querySelectorAll(':scope > td'));
+                        let fallback = '';
                         for (let i = 2; i < cells.length; i++) {
                             const raw = (cells[i].textContent || '').trim();
-                            const tl = raw.replace(/[\s ]+/g, ' ').toLowerCase();
-                            if (raw.length > 2 && keywords.some(kw => tl.includes(kw))) return raw;
+                            const tl = raw.replace(/[\s ]+/g, ' ').toLowerCase();
+                            if (raw.length > 2 && keywords.some(kw => tl.includes(kw))) {
+                                if (secondary.some(kw => tl.includes(kw))) {
+                                    if (!fallback) fallback = raw;
+                                } else {
+                                    return raw;
+                                }
+                            }
                         }
-                        return '';
+                        return fallback;
                     }
                     """).ConfigureAwait(false) ?? string.Empty;
             }

@@ -392,8 +392,16 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
 
     private static string ResolveTreatmentZone(string segment)
     {
-        var m = TreatmentZoneRegex.Match(segment);
-        return m.Success ? DecodeAndStrip(m.Groups["zone"].Value) : string.Empty;
+        var matches = TreatmentZoneRegex.Matches(segment);
+        if (matches.Count == 0) return string.Empty;
+        // Si hay múltiples tratamientos preferir el que no sea BQT/IORT
+        foreach (Match m in matches)
+        {
+            var zone = DecodeAndStrip(m.Groups["zone"].Value);
+            var tech = TreatmentClassifier.Classify(zone);
+            if (tech != "BQT" && tech != "IORT") return zone;
+        }
+        return DecodeAndStrip(matches[0].Groups["zone"].Value);
     }
 
     private static string? ResolveExamplesDirectory()
