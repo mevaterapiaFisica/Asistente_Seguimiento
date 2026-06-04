@@ -29,6 +29,7 @@ public static class HomeResponseMapper
         return new HomeResponse
         {
             GeneratedAtUtc = data.GeneratedAtUtc,
+            Centers = data.Centers,
             Stages = data.Stages,
             StageSummary = data.StageSummary,
             Patients = data.FollowUpPatients,
@@ -60,6 +61,7 @@ public sealed class HomeResponse
 {
     public string SolutionName { get; set; } = "Meva.Rt";
     public DateTime GeneratedAtUtc { get; set; }
+    public List<RtCenter> Centers { get; set; } = new();
     public List<ProcessStageDefinition> Stages { get; set; } = new();
     public List<StageSummaryItem> StageSummary { get; set; } = new();
     public List<ProcessPatientSnapshot> Patients { get; set; } = new();
@@ -96,10 +98,16 @@ public sealed class AgendaSlotDto
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
     public string Treatment { get; set; } = string.Empty;
+    public string? TreatmentTechnique { get; set; }
     public string? BeamType { get; set; }
+    public string? IrradiationModality { get; set; }
+    public string? TreatmentLabel { get; set; }
+    public string? SitraMedGuid { get; set; }
     public bool IsEstimated { get; set; }
     public string? EstimatedFromStage { get; set; }
     public string? EstimatedPatientId { get; set; }
+    /// <summary>"aria" = equipo desde ARIA, "center" = inferido por equipo único del centro</summary>
+    public string? EstimatedSource { get; set; }
 
     public AgendaSlotDto() { }
 
@@ -112,6 +120,12 @@ public sealed class AgendaSlotDto
         StartTime = src.StartTime;
         EndTime = src.EndTime;
         Treatment = src.Treatment;
+        TreatmentTechnique = TreatmentClassifier.Classify(src.Treatment);
         BeamType = src.BeamType;
+        IrradiationModality = src.IrradiationModality;
+        // Preferir el label pre-calculado (propagado desde seguimiento) sobre el del texto de agenda
+        TreatmentLabel = src.TreatmentLabel
+            ?? TreatmentClassifier.BuildLabel(TreatmentTechnique, IrradiationModality, null, BeamType);
+        SitraMedGuid = src.SitraMedGuid;
     }
 }

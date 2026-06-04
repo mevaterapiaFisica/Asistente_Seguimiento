@@ -53,6 +53,8 @@ builder.Services.AddSingleton(ariaOptions);
 builder.Services.AddSingleton(homeSnapshotOptions);
 builder.Services.AddSingleton(businessDayCalc);
 builder.Services.AddSingleton<ISnapshotStore>(_ => new JsonSnapshotStore(snapshotsDirectory));
+builder.Services.AddSingleton<IStageTransitionStore>(_ => new StageTransitionStore(snapshotsDirectory));
+builder.Services.AddSingleton<IWeeklyStatsStore>(_ => new WeeklyStatsStore(snapshotsDirectory));
 builder.Services.AddSingleton<PlaywrightSitraMedClient>();
 builder.Services.AddSingleton<IAgendaExtractor, SitraMedAgendaExtractor>();
 builder.Services.AddSingleton<ITomographAgendaExtractor, SitraMedTomographExtractor>();
@@ -138,6 +140,13 @@ app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
 
     return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+app.MapGet("/api/stats/weekly", async Task<IResult> (
+        IWeeklyStatsStore weeklyStatsStore,
+        CancellationToken cancellationToken) =>
+    TypedResults.Ok(await weeklyStatsStore.LoadAsync()));
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -279,6 +288,9 @@ app.MapGet("/api/aria/export-patient-ids", async Task<IResult> (
     return TypedResults.Ok(new { patientIds = ids, count = ids.Count, snapshotAge = DateTime.UtcNow - snapshot.GeneratedAtUtc });
 });
 
+// NOTA: Los campos IrradiationModality y ExactBeamEnergy en el JSON importado requieren
+// AriaRunner versión actual (que incluye Modalidad() y DetermineExactBeamEnergy()).
+// Si esos campos llegan null, el runner es una versión anterior y hay que recompilarlo y re-ejecutarlo.
 app.MapPost("/api/aria/import-results", async Task<IResult> (
         IRtSystemConfigurationProvider configurationProvider,
         AriaRuntimeOptions ariaOptions,
@@ -333,7 +345,10 @@ app.MapPost("/api/aria/import-results", async Task<IResult> (
             PatientId = patient.PatientId,
             PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
             PlanStatus = patient.ActivePlan.Status,
-            BeamType = patient.ActivePlan.BeamType
+            BeamType = patient.ActivePlan.BeamType,
+            NumberOfFractions = patient.ActivePlan.NumberOfFractions,
+            IrradiationModality = patient.ActivePlan.IrradiationModality,
+            ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
         };
 
         if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
@@ -381,8 +396,8 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     var guidHcMapApply = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
                          ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; }
-    foreach (var a in data.AgendaItems) a.BeamType = null;
+    foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; p.NumberOfFractions = null; p.IrradiationModality = null; }
+    foreach (var a in data.AgendaItems) { a.BeamType = null; a.IrradiationModality = null; }
 
     var followUpApplyIds = data.FollowUpPatients
         .Select(p => p.PatientId)
@@ -408,28 +423,61 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
             patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
         if (!string.IsNullOrWhiteSpace(plan.BeamType))
             patient.BeamType = plan.BeamType;
+        patient.NumberOfFractions = plan.NumberOfFractions;
+        if (!string.IsNullOrWhiteSpace(plan.IrradiationModality))
+            patient.IrradiationModality = plan.IrradiationModality;
     }
 
     foreach (var item in data.AgendaItems)
     {
         if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
         if (!guidHcMapApply.TryGetValue(item.SitraMedGuid, out var hc)) continue;
-        if (!ariaByPatient.TryGetValue(hc, out var plan) || string.IsNullOrWhiteSpace(plan.BeamType)) continue;
-        item.BeamType = plan.BeamType;
+        if (!ariaByPatient.TryGetValue(hc, out var plan)) continue;
+        if (!string.IsNullOrWhiteSpace(plan.BeamType)) item.BeamType = plan.BeamType;
+        if (!string.IsNullOrWhiteSpace(plan.IrradiationModality)) item.IrradiationModality = plan.IrradiationModality;
     }
 
+    // Recalcular TreatmentLabel con los datos ARIA actualizados
+    foreach (var patient in data.FollowUpPatients)
+    {
+        patient.TreatmentLabel = TreatmentClassifier.BuildLabel(
+            patient.TreatmentTechnique,
+            patient.IrradiationModality,
+            patient.ExactBeamEnergy,
+            patient.BeamType);
+    }
+
+    // Propagar TreatmentLabel a los turnos de agenda del mismo paciente
+    var followUpLabelMapApply = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var p in data.FollowUpPatients)
+        if (!string.IsNullOrWhiteSpace(p.PatientId) && !string.IsNullOrWhiteSpace(p.TreatmentLabel))
+            followUpLabelMapApply[p.PatientId!] = p.TreatmentLabel!;
+    foreach (var item in data.AgendaItems)
+    {
+        if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
+        if (!guidHcMapApply.TryGetValue(item.SitraMedGuid, out var hc)) continue;
+        if (!followUpLabelMapApply.TryGetValue(hc, out var label)) continue;
+        item.TreatmentLabel = label;
+    }
+
+    var stageByCodeApply = configurationProvider.Configuration.Stages
+        .ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
     data.StageSummary = data.FollowUpPatients
-        .GroupBy(x => new { x.CenterName, x.StageGroupName, x.ExpectedDaysInStage })
+        .GroupBy(x => new { x.CenterName, x.StageCode })
         .Select(group =>
         {
+            var stageDef = stageByCodeApply.GetValueOrDefault(group.Key.StageCode);
             var countable = group.Where(x => !x.IsLongWait).ToList();
             return new StageSummaryItem
             {
                 CenterName = group.Key.CenterName,
-                StageGroupName = group.Key.StageGroupName,
+                StageCode = group.Key.StageCode,
+                StageGroupName = stageDef?.GroupName ?? group.First().StageGroupName,
                 PatientCount = group.Count(),
                 AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
-                ExpectedDays = group.Key.ExpectedDaysInStage
+                ExpectedDays = stageDef?.ExpectedDays ?? 0,
+                DelayedCount = group.Count(x => x.IsDelayed),
+                LongWaitCount = group.Count(x => x.IsLongWait)
             };
         })
         .OrderBy(x => x.CenterName)
@@ -557,7 +605,10 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
             PatientId = patient.PatientId,
             PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
             PlanStatus = patient.ActivePlan.Status,
-            BeamType = patient.ActivePlan.BeamType
+            BeamType = patient.ActivePlan.BeamType,
+            NumberOfFractions = patient.ActivePlan.NumberOfFractions,
+            IrradiationModality = patient.ActivePlan.IrradiationModality,
+            ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
         };
 
         if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
@@ -686,34 +737,109 @@ app.MapGet("/api/agenda", async Task<IResult> (
         var bootstrap = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
         if (bootstrap != null)
         {
+            // Enriquecer slots scrapeados con TreatmentLabel del paciente en seguimiento
+            // (el texto de la agenda es genérico; el de seguimiento tiene la técnica real)
+            var guidHcMapAgenda = await snapshotStore.TryLoadAsync<Dictionary<string, string>>("guid_hc_map", cancellationToken)
+                                  ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var followUpLabelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in bootstrap.FollowUpPatients)
+                if (!string.IsNullOrWhiteSpace(p.PatientId) && !string.IsNullOrWhiteSpace(p.TreatmentLabel))
+                    followUpLabelMap[p.PatientId!] = p.TreatmentLabel!;
+            foreach (var slot in slots)
+            {
+                if (string.IsNullOrWhiteSpace(slot.SitraMedGuid)) continue;
+                if (!guidHcMapAgenda.TryGetValue(slot.SitraMedGuid, out var hc)) continue;
+                if (!followUpLabelMap.TryGetValue(hc, out var label)) continue;
+                slot.TreatmentLabel ??= label;
+            }
             var stages = configProvider.Configuration.Stages.OrderBy(s => s.SortOrder).ToList();
+            var machines = configProvider.Configuration.Machines;
+
+            var f4bSortOrder = stages.FirstOrDefault(s =>
+                string.Equals(s.Code, "F4B", StringComparison.OrdinalIgnoreCase))?.SortOrder ?? int.MaxValue;
+
+            // Upper bound: last scraped date on disk (avoids generating slots beyond scrape range)
+            var maxScrapedDate = Directory.Exists(snapshotsDirectory)
+                ? Directory.GetFiles(snapshotsDirectory, "agenda_????-??-??.json")
+                    .Select(f => Path.GetFileNameWithoutExtension(f).Replace("agenda_", ""))
+                    .Where(d => DateOnly.TryParse(d, out _))
+                    .Select(d => DateOnly.Parse(d))
+                    .Where(d => d > today)
+                    .DefaultIfEmpty(today)
+                    .Max()
+                : today;
 
             foreach (var patient in bootstrap.FollowUpPatients)
             {
-                if (string.IsNullOrWhiteSpace(patient.PlannedMachineDisplayName)) continue;
+                // Resolve machine name and source
+                string? machineName;
+                string estimatedSource;
 
                 var stageIdx = stages.FindIndex(s =>
                     string.Equals(s.Code, patient.StageCode, StringComparison.OrdinalIgnoreCase));
                 if (stageIdx < 0) continue;
 
+                if (!string.IsNullOrWhiteSpace(patient.PlannedMachineDisplayName))
+                {
+                    machineName = patient.PlannedMachineDisplayName;
+                    estimatedSource = "aria";
+                }
+                else
+                {
+                    // Infer from single-machine center for patients past F4B (tomosimulación)
+                    if (stages[stageIdx].SortOrder < f4bSortOrder) continue;
+
+                    var centerMachines = machines
+                        .Where(m => string.Equals(m.CenterName, patient.CenterName, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (centerMachines.Count != 1) continue;
+
+                    machineName = centerMachines[0].DisplayName;
+                    estimatedSource = "center";
+                }
+
                 var remainingDays = stages.Skip(stageIdx).Sum(s => s.ExpectedDays);
                 var daysToStart = Math.Max(remainingDays, 1);
                 var estimatedStart = bdCalc.AddBusinessDays(today, daysToStart);
 
-                if (estimatedStart == targetDate)
+                if (targetDate < estimatedStart || targetDate > maxScrapedDate) continue;
+
+                bool inWindow;
+                if (patient.NumberOfFractions is > 0)
                 {
-                    slots.Add(new AgendaSlotDto
-                    {
-                        CenterName = patient.CenterName ?? string.Empty,
-                        MachineName = patient.PlannedMachineDisplayName,
-                        PatientName = patient.PatientName,
-                        AgendaDate = targetDate.ToString("yyyy-MM-dd"),
-                        Treatment = patient.StageDisplayName,
-                        IsEstimated = true,
-                        EstimatedFromStage = $"{patient.StageCode} - {patient.StageDisplayName}",
-                        EstimatedPatientId = patient.PatientId
-                    });
+                    var treatmentDays = bdCalc.GetUpcomingBusinessDays(
+                        estimatedStart.AddDays(-1), patient.NumberOfFractions.Value);
+                    inWindow = treatmentDays.Contains(targetDate);
                 }
+                else
+                {
+                    inWindow = estimatedStart == targetDate;
+                }
+
+                if (!inWindow) continue;
+
+                slots.Add(new AgendaSlotDto
+                {
+                    CenterName = patient.CenterName ?? string.Empty,
+                    MachineName = machineName,
+                    PatientName = patient.PatientName,
+                    AgendaDate = targetDate.ToString("yyyy-MM-dd"),
+                    Treatment = patient.StageDisplayName,
+                    TreatmentTechnique = patient.TreatmentTechnique,
+                    BeamType = patient.BeamType,
+                    IrradiationModality = patient.IrradiationModality,
+                    TreatmentLabel = patient.TreatmentLabel
+                        ?? TreatmentClassifier.BuildLabel(
+                            patient.TreatmentTechnique,
+                            patient.IrradiationModality,
+                            patient.ExactBeamEnergy,
+                            patient.BeamType),
+                    SitraMedGuid = patient.SitraMedGuid,
+                    IsEstimated = true,
+                    EstimatedFromStage = $"{patient.StageCode} - {patient.StageDisplayName}",
+                    EstimatedPatientId = patient.PatientId,
+                    EstimatedSource = estimatedSource
+                });
             }
         }
     }

@@ -20,4 +20,7 @@ internal sealed class AriaRunnerPlan
     public string? MachineName { get; set; }
     public string? Status { get; set; }
     public string? BeamType { get; set; }
+    public int? NumberOfFractions { get; set; }
+    public string? IrradiationModality { get; set; }
+    public string? ExactBeamEnergy { get; set; }
 }

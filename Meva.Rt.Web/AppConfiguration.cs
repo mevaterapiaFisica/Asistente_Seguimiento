@@ -30,7 +30,6 @@ public static class AppConfiguration
                 new RtMachine { CenterName = "QUILMES",      SitraName = "Quilmes - Equipo 1", AriaName = "QBA_600CD_523", DisplayName = "QUILMES - Equipo 1" },
                 new RtMachine { CenterName = "QUILMES",      SitraName = "Quilmes - Equipo 2", AriaName = "EQ2_iX_827",    DisplayName = "QUILMES - Equipo 2" },
                 // SAN JUSTO
-                new RtMachine { CenterName = "SAN JUSTO",    SitraName = "San Justo - Equipo 1", AriaName = "6oo C/D",    DisplayName = "SAN JUSTO - Equipo 1" },
                 new RtMachine { CenterName = "SAN JUSTO",    SitraName = "San Justo - Equipo 2", AriaName = "Varian 21 EX", DisplayName = "SAN JUSTO - Equipo 2" },
                 // RT MEDRANO
                 new RtMachine { CenterName = "RT MEDRANO",    SitraName = "RT Medrano",              AriaName = "CL21EX", DisplayName = "RT MEDRANO - RT Medrano" },
@@ -71,11 +70,24 @@ public static class AppConfiguration
                 new MachineCapacitySetting { CenterName = "CETRO",        MachineName = "CETRO - Cetro",              WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "QUILMES",      MachineName = "QUILMES - Equipo 1",         WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 1 },
                 new MachineCapacitySetting { CenterName = "QUILMES",      MachineName = "QUILMES - Equipo 2",         WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 },
-                new MachineCapacitySetting { CenterName = "SAN JUSTO",    MachineName = "SAN JUSTO - Equipo 1",       WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 1 },
                 new MachineCapacitySetting { CenterName = "SAN JUSTO",    MachineName = "SAN JUSTO - Equipo 2",       WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "RT MEDRANO",    MachineName = "RT MEDRANO - RT Medrano",       WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "MEVA-Viamonte", MachineName = "MEVA-Viamonte - Equipo 1",    WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "MEVA-Viamonte", MachineName = "MEVA-Viamonte - Equipo 2",    WorkingHours = 10, StandardSlotMinutes = 15, ReservedSpecialHours = 0 }
+            },
+            MachineCapabilities =
+            {
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 1", CanDoVMAT = true, CanDoSBRT = true, CanDoRC = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 2", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 3", CanDoElectrons = true, CanDoTSET = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 4", HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "CETRO - Cetro", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 1", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 2", CanDoVMAT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "SAN JUSTO - Equipo 2", HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "RT MEDRANO - RT Medrano", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 1", HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 2", HighEnergyBeams = ["6X"] }
             },
             Tomographs =
             {

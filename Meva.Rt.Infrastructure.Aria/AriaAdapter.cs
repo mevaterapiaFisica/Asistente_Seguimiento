@@ -73,7 +73,12 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                 if (plan != null && plan.Radiations.Any())
                 {
                     row.BeamType ??= ResolveBeamType(plan);
+                    row.IrradiationModality ??= ResolveIrradiationModality(plan);
+                    row.ExactBeamEnergy ??= ResolveExactBeamEnergy(plan);
                 }
+
+                if (plan?.Prescription != null)
+                    row.NumberOfFractions ??= plan.Prescription.NumberOfFractions;
             }
         }
 
@@ -136,6 +141,11 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             {
                 row.BeamType = mock.BeamType;
             }
+
+            if (mock.NumberOfFractions is > 0)
+            {
+                row.NumberOfFractions = mock.NumberOfFractions;
+            }
         }
     }
 
@@ -159,5 +169,39 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
         if (MetodosParaWebScrap.requiereSRS(plan)) return "SRS";
         if (MetodosParaWebScrap.requiereAltaEnergia(plan)) return "AltaE";
         return null;
+    }
+
+    private static string? ResolveIrradiationModality(AriaQ.PlanSetup plan)
+    {
+        try
+        {
+            var firstRad = plan.Radiations?.FirstOrDefault();
+            if (firstRad?.ExternalFieldCommon?.Technique == null) return "Indefinido";
+            var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
+            if (techId == "ARC") return "VMAT";
+            if (techId == "STATIC")
+                return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";
+            return "Indefinido";
+        }
+        catch { return null; }
+    }
+
+    private static string? ResolveExactBeamEnergy(AriaQ.PlanSetup plan)
+    {
+        try
+        {
+            var firstRad = plan.Radiations?.FirstOrDefault();
+            var em = firstRad?.ExternalFieldCommon?.EnergyMode;
+            if (em == null) return "Indefinido";
+            if (string.Equals(em.RadiationType?.Trim(), "E", StringComparison.OrdinalIgnoreCase))
+                return "Electrones";
+            var e = em.Energy;
+            if (e < 7000) return "6X";
+            if (Math.Abs(e - 10000) <= 500) return "10X";
+            if (Math.Abs(e - 15000) <= 500) return "15X";
+            if (Math.Abs(e - 18000) <= 500) return "18X";
+            return "Indefinido";
+        }
+        catch { return null; }
     }
 }

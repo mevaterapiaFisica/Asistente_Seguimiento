@@ -27,7 +27,11 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
         try
         {
             var json = File.ReadAllText(_configurationPath);
-            return JsonSerializer.Deserialize<RtSystemConfiguration>(json) ?? AppConfiguration.BuildDefault();
+            var config = JsonSerializer.Deserialize<RtSystemConfiguration>(json) ?? AppConfiguration.BuildDefault();
+            // Backfill new fields added after the saved JSON was written
+            if (config.MachineCapabilities.Count == 0)
+                config.MachineCapabilities = AppConfiguration.BuildDefault().MachineCapabilities;
+            return config;
         }
         catch
         {

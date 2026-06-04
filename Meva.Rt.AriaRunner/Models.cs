@@ -102,4 +102,10 @@ public sealed class PlanResult
 
     [JsonProperty("beamType")]
     public string? BeamType { get; set; }
+
+    [JsonProperty("irradiationModality")]
+    public string? IrradiationModality { get; set; }
+
+    [JsonProperty("exactBeamEnergy")]
+    public string? ExactBeamEnergy { get; set; }
 }

@@ -50,7 +50,10 @@ public sealed class AriaQuery
             var patient = ctx.Patients
                 .Include("Courses.PlanSetups.Radiations.RadiationDevice.Machine")
                 .Include("Courses.PlanSetups.Radiations.ExternalFieldCommon.EnergyMode")
+                .Include("Courses.PlanSetups.Radiations.ExternalFieldCommon.Technique")
+                .Include("Courses.PlanSetups.Radiations.ExternalFieldCommon.ControlPoints")
                 .Include("Courses.PlanSetups.Prescription")
+                .Include("Courses.PlanSetups.RTPlans")
                 .Include("PatientDoctors.Doctor")
                 .FirstOrDefault(p => p.PatientId == patientId);
 
@@ -104,7 +107,8 @@ public sealed class AriaQuery
             _log.Info($"  [{patientId}] {result.LastName}, {result.FirstName} | " +
                       $"Plan: {result.ActivePlan?.PlanId ?? "ninguno"} ({result.ActivePlan?.Status ?? "-"}) | " +
                       $"Equipo: {result.ActivePlan?.MachineAriaId ?? "-"} | " +
-                      $"Haz: {result.ActivePlan?.BeamType ?? "-"}");
+                      $"Haz: {result.ActivePlan?.BeamType ?? "-"} | " +
+                      $"Fx: {result.ActivePlan?.NumberOfFractions?.ToString() ?? "null"}");
         }
         catch (Exception ex)
         {
@@ -138,6 +142,10 @@ public sealed class AriaQuery
             pr.PrescriptionTechnique = plan.Prescription.Technique?.Trim();
         }
 
+        // Fallback: RTPlan (DICOM export) always has NoFractions when plan is complete
+        if (pr.NumberOfFractions == null)
+            pr.NumberOfFractions = plan.RTPlans?.OrderByDescending(r => r.CreationDate).FirstOrDefault()?.NoFractions;
+
         var firstRadiation = plan.Radiations?.FirstOrDefault();
         if (firstRadiation?.RadiationDevice?.Machine != null)
         {
@@ -152,6 +160,8 @@ public sealed class AriaQuery
             var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
             var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
             pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
+            pr.IrradiationModality = Modalidad(plan);
+            pr.ExactBeamEnergy = DetermineExactBeamEnergy(em?.RadiationType?.Trim(), em?.Energy);
         }
 
         return pr;
@@ -177,6 +187,37 @@ public sealed class AriaQuery
             return emEnergy >= HighEnergyThresholdKev ? "AltaE" : "6X";
 
         return null;
+    }
+
+    private static string Modalidad(PlanSetup plan)
+    {
+        var firstRad = plan.Radiations?.FirstOrDefault();
+        if (firstRad?.ExternalFieldCommon?.Technique == null)
+            return "Indefinido";
+
+        var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
+
+        if (techId == "ARC")
+            return "VMAT";
+
+        if (techId == "STATIC")
+            return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";
+
+        return "Indefinido";
+    }
+
+    private static string DetermineExactBeamEnergy(string? radiationType, int? energyKev)
+    {
+        if (string.Equals(radiationType, "E", StringComparison.OrdinalIgnoreCase))
+            return "Electrones";
+        if (!energyKev.HasValue)
+            return "Indefinido";
+        var e = energyKev.Value;
+        if (e < 7000) return "6X";
+        if (Math.Abs(e - 10000) <= 500) return "10X";
+        if (Math.Abs(e - 15000) <= 500) return "15X";
+        if (Math.Abs(e - 18000) <= 500) return "18X";
+        return "Indefinido";
     }
 
     private static PlanResult? SelectActivePlan(List<PlanResult> plans)

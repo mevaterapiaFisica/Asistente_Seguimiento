@@ -43,9 +43,23 @@ public interface IPatientHcResolver
         CancellationToken cancellationToken);
 }
 
+public interface IStageTransitionStore
+{
+    Task AppendAsync(IEnumerable<StageTransitionEvent> events);
+    Task PruneAsync(int retentionDays = 90);
+    Task<IReadOnlyList<StageTransitionEvent>> LoadAsync();
+}
+
+public interface IWeeklyStatsStore
+{
+    Task AccumulateAsync(IEnumerable<StageTransitionEvent> newEvents);
+    Task<IReadOnlyList<WeeklyStageStats>> LoadAsync();
+}
+
 public sealed class DashboardBootstrapData
 {
     public DateTime GeneratedAtUtc { get; set; }
+    public List<RtCenter> Centers { get; set; } = new();
     public List<ProcessStageDefinition> Stages { get; set; } = new();
     public List<StageSummaryItem> StageSummary { get; set; } = new();
     public List<MachineAppointmentSnapshot> AgendaItems { get; set; } = new();
@@ -61,6 +75,8 @@ public sealed class BootstrapService
     private readonly ISnapshotStore _snapshotStore;
     private readonly IRtSystemConfigurationProvider _configurationProvider;
     private readonly IPatientHcResolver _hcResolver;
+    private readonly IStageTransitionStore _transitionStore;
+    private readonly IWeeklyStatsStore _weeklyStatsStore;
 
     public BootstrapService(
         IAgendaExtractor agendaExtractor,
@@ -68,7 +84,9 @@ public sealed class BootstrapService
         IAriaPlanResolver ariaPlanResolver,
         ISnapshotStore snapshotStore,
         IRtSystemConfigurationProvider configurationProvider,
-        IPatientHcResolver hcResolver)
+        IPatientHcResolver hcResolver,
+        IStageTransitionStore transitionStore,
+        IWeeklyStatsStore weeklyStatsStore)
     {
         _agendaExtractor = agendaExtractor;
         _followUpExtractor = followUpExtractor;
@@ -76,6 +94,8 @@ public sealed class BootstrapService
         _snapshotStore = snapshotStore;
         _configurationProvider = configurationProvider;
         _hcResolver = hcResolver;
+        _transitionStore = transitionStore;
+        _weeklyStatsStore = weeklyStatsStore;
     }
 
     public async Task<DashboardBootstrapData> BuildAsync(CancellationToken cancellationToken, bool skipAria = false)
@@ -85,7 +105,10 @@ public sealed class BootstrapService
 
         var longWaitThreshold = _configurationProvider.Configuration.LongWaitThresholdDays;
         foreach (var patient in followUp)
+        {
             patient.IsLongWait = patient.DaysInStage > longWaitThreshold;
+            patient.IsDelayed = patient.DaysInStage > patient.ExpectedDaysInStage && !patient.IsLongWait;
+        }
 
         // Build GUID→HC map: load previous scrape's cache, drop any GUID→GUID entries (unresolved),
         // then enrich and prune.
@@ -169,28 +192,66 @@ public sealed class BootstrapService
                     patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
                 if (!string.IsNullOrWhiteSpace(plan.BeamType))
                     patient.BeamType = plan.BeamType;
+                patient.NumberOfFractions = plan.NumberOfFractions;
+                if (!string.IsNullOrWhiteSpace(plan.IrradiationModality))
+                    patient.IrradiationModality = plan.IrradiationModality;
+                if (!string.IsNullOrWhiteSpace(plan.ExactBeamEnergy))
+                    patient.ExactBeamEnergy = plan.ExactBeamEnergy;
             }
 
             foreach (var (hc, items) in agendaByHc)
             {
-                if (!ariaByPatient.TryGetValue(hc, out var plan) || string.IsNullOrWhiteSpace(plan.BeamType)) continue;
+                if (!ariaByPatient.TryGetValue(hc, out var plan)) continue;
                 foreach (var item in items)
-                    item.BeamType = plan.BeamType;
+                {
+                    if (!string.IsNullOrWhiteSpace(plan.BeamType)) item.BeamType = plan.BeamType;
+                    if (!string.IsNullOrWhiteSpace(plan.IrradiationModality)) item.IrradiationModality = plan.IrradiationModality;
+                }
             }
         }
 
+        // Calcular TreatmentLabel para todos los pacientes (con la info ARIA disponible hasta ahora)
+        foreach (var patient in followUp)
+        {
+            patient.TreatmentLabel = TreatmentClassifier.BuildLabel(
+                patient.TreatmentTechnique,
+                patient.IrradiationModality,
+                patient.ExactBeamEnergy,
+                patient.BeamType);
+        }
+
+        // Propagar TreatmentLabel a los turnos de agenda del mismo paciente
+        // (el texto de tratamiento scrapeado de la agenda es genérico; el de seguimiento es preciso)
+        var followUpByHc = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in followUp)
+            if (!string.IsNullOrWhiteSpace(p.PatientId) && !string.IsNullOrWhiteSpace(p.TreatmentLabel))
+                followUpByHc[p.PatientId!] = p.TreatmentLabel!;
+        foreach (var (hc, items) in agendaByHc)
+        {
+            if (!followUpByHc.TryGetValue(hc, out var label)) continue;
+            foreach (var item in items)
+                item.TreatmentLabel = label;
+        }
+
+        var stageByCode = _configurationProvider.Configuration.Stages
+            .ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
+
         var summary = followUp
-            .GroupBy(x => new { x.CenterName, x.StageGroupName, x.ExpectedDaysInStage })
+            .GroupBy(x => new { x.CenterName, x.StageCode })
             .Select(group =>
             {
+                var stageDef = stageByCode.GetValueOrDefault(group.Key.StageCode);
                 var countable = group.Where(x => !x.IsLongWait).ToList();
                 return new StageSummaryItem
                 {
                     CenterName = group.Key.CenterName,
-                    StageGroupName = group.Key.StageGroupName,
+                    StageCode = group.Key.StageCode,
+                    StageGroupName = stageDef?.GroupName ?? group.First().StageGroupName,
                     PatientCount = group.Count(),
                     AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
-                    ExpectedDays = group.Key.ExpectedDaysInStage
+                    ExpectedDays = stageDef?.ExpectedDays ?? 0,
+                    DelayedCount = group.Count(x => x.IsDelayed),
+                    LongWaitCount = group.Count(x => x.IsLongWait)
                 };
             })
             .OrderBy(x => x.CenterName)
@@ -200,12 +261,53 @@ public sealed class BootstrapService
         var data = new DashboardBootstrapData
         {
             GeneratedAtUtc = DateTime.UtcNow,
+            Centers = _configurationProvider.Configuration.Centers.ToList(),
             Stages = _configurationProvider.Configuration.Stages.OrderBy(x => x.SortOrder).ToList(),
             StageSummary = summary,
             AgendaItems = agenda.ToList(),
             FollowUpPatients = followUp.ToList(),
             AriaPlans = aria
         };
+
+        var previousBootstrap = await _snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
+        if (previousBootstrap is not null)
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var previousByPatient = new Dictionary<string, ProcessPatientSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in previousBootstrap.FollowUpPatients)
+                if (!string.IsNullOrEmpty(p.PatientId))
+                    previousByPatient[p.PatientId] = p;
+
+            var transitions = new List<StageTransitionEvent>();
+            foreach (var current in data.FollowUpPatients)
+            {
+                if (string.IsNullOrEmpty(current.PatientId)) continue;
+                if (!previousByPatient.TryGetValue(current.PatientId, out var previous)) continue;
+                if (string.Equals(previous.StageCode, current.StageCode, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var startDate = previous.StageStartDate ?? today;
+                transitions.Add(new StageTransitionEvent
+                {
+                    PatientId = previous.PatientId,
+                    CenterName = previous.CenterName,
+                    StageCode = previous.StageCode,
+                    TreatmentTechnique = previous.TreatmentTechnique ?? string.Empty,
+                    PlannedMachineDisplayName = previous.PlannedMachineDisplayName,
+                    StageStartDate = startDate,
+                    StageEndDate = today,
+                    DaysInStage = today.DayNumber - startDate.DayNumber,
+                    ExpectedDays = previous.ExpectedDaysInStage,
+                    WasDelayed = previous.IsDelayed
+                });
+            }
+
+            if (transitions.Count > 0)
+            {
+                await _transitionStore.AppendAsync(transitions);
+                await _weeklyStatsStore.AccumulateAsync(transitions);
+            }
+            await _transitionStore.PruneAsync();
+        }
 
         await _snapshotStore.SaveAsync("dashboard_bootstrap", data, cancellationToken);
         return data;
