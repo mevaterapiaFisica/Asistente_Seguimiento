@@ -155,13 +155,16 @@ public sealed class AriaQuery
 
         // EnergyMode de ExternalFieldCommon tiene RadiationType y Energy reales.
         // Radiation.RadiationType == "BeamLinac" para todos los haces de linac — no útil para clasificar.
+        // BeamType e IrradiationModality se derivan del primer campo (técnica y tecnología).
+        // ExactBeamEnergy usa el máximo sobre todos los campos: si al menos uno es 10X/15X/18X
+        // se etiqueta con esa energía aunque otros campos sean 6X.
         if (firstRadiation != null)
         {
             var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
             var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
             pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
             pr.IrradiationModality = Modalidad(plan);
-            pr.ExactBeamEnergy = DetermineExactBeamEnergy(em?.RadiationType?.Trim(), em?.Energy);
+            pr.ExactBeamEnergy = DetermineExactBeamEnergy(plan.Radiations);
         }
 
         return pr;
@@ -206,17 +209,29 @@ public sealed class AriaQuery
         return "Indefinido";
     }
 
-    private static string DetermineExactBeamEnergy(string? radiationType, int? energyKev)
+    private static string DetermineExactBeamEnergy(ICollection<Radiation>? radiations)
     {
-        if (string.Equals(radiationType, "E", StringComparison.OrdinalIgnoreCase))
+        if (radiations == null || radiations.Count == 0) return "Indefinido";
+
+        // Electrones: si algún campo es electrones
+        if (radiations.Any(r =>
+            string.Equals(r.ExternalFieldCommon?.EnergyMode?.RadiationType?.Trim(), "E",
+                StringComparison.OrdinalIgnoreCase)))
             return "Electrones";
-        if (!energyKev.HasValue)
-            return "Indefinido";
-        var e = energyKev.Value;
-        if (e < 7000) return "6X";
-        if (Math.Abs(e - 10000) <= 500) return "10X";
-        if (Math.Abs(e - 15000) <= 500) return "15X";
-        if (Math.Abs(e - 18000) <= 500) return "18X";
+
+        // Máxima energía fotónica sobre todos los campos
+        var maxKev = radiations
+            .Select(r => r.ExternalFieldCommon?.EnergyMode?.Energy)
+            .Where(e => e.HasValue)
+            .Select(e => e!.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        if (maxKev <= 0) return "Indefinido";
+        if (maxKev < 7000) return "6X";
+        if (Math.Abs(maxKev - 10000) <= 500) return "10X";
+        if (Math.Abs(maxKev - 15000) <= 500) return "15X";
+        if (Math.Abs(maxKev - 18000) <= 500) return "18X";
         return "Indefinido";
     }
 

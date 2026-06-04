@@ -200,16 +200,26 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
     {
         try
         {
-            var firstRad = plan.Radiations?.FirstOrDefault();
-            var em = firstRad?.ExternalFieldCommon?.EnergyMode;
-            if (em == null) return "Indefinido";
-            if (string.Equals(em.RadiationType?.Trim(), "E", StringComparison.OrdinalIgnoreCase))
+            var rads = plan.Radiations;
+            if (rads == null || !rads.Any()) return "Indefinido";
+
+            if (rads.Any(r =>
+                string.Equals(r.ExternalFieldCommon?.EnergyMode?.RadiationType?.Trim(), "E",
+                    StringComparison.OrdinalIgnoreCase)))
                 return "Electrones";
-            var e = em.Energy;
-            if (e < 7000) return "6X";
-            if (Math.Abs(e - 10000) <= 500) return "10X";
-            if (Math.Abs(e - 15000) <= 500) return "15X";
-            if (Math.Abs(e - 18000) <= 500) return "18X";
+
+            var maxKev = rads
+                .Select(r => r.ExternalFieldCommon?.EnergyMode?.Energy)
+                .Where(e => e.HasValue)
+                .Select(e => e!.Value)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            if (maxKev <= 0) return "Indefinido";
+            if (maxKev < 7000) return "6X";
+            if (Math.Abs(maxKev - 10000) <= 500) return "10X";
+            if (Math.Abs(maxKev - 15000) <= 500) return "15X";
+            if (Math.Abs(maxKev - 18000) <= 500) return "18X";
             return "Indefinido";
         }
         catch { return null; }
