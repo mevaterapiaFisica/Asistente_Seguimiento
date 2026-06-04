@@ -537,7 +537,7 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
         var runnerDir = Path.GetDirectoryName(runnerExe)!;
         var psi = new ProcessStartInfo(runnerExe)
         {
-            Arguments = $"--input=\"{inputPath}\"",
+            Arguments = $"--input=\"{inputPath}\" --output-dir=\"{snapshotsDirectory}\"",
             WorkingDirectory = runnerDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -558,15 +558,6 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
         {
             var stderr = await proc.StandardError.ReadToEndAsync(cancellationToken);
             return TypedResults.BadRequest(new { error = $"AriaRunner salio con codigo {proc.ExitCode}.", detail = stderr.Trim() });
-        }
-
-        // Copia el resultado más reciente al directorio de snapshots
-        var resultFile = Directory.GetFiles(runnerDir, "aria_results_*.json")
-            .OrderByDescending(f => f).FirstOrDefault();
-        if (resultFile != null)
-        {
-            var dest = Path.Combine(snapshotsDirectory, Path.GetFileName(resultFile));
-            File.Copy(resultFile, dest, overwrite: true);
         }
 
         ranQuery = true;

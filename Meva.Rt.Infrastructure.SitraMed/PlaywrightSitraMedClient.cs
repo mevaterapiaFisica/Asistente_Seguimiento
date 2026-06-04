@@ -995,7 +995,7 @@ public sealed class PlaywrightSitraMedClient
                 if (IsValidTomographTreatment(trimmed[j]))
                 {
                     var stripped = StripSitraMedAlerts(trimmed[j]);
-                    tipoTurno = SitraMedFollowUpExtractor.ClassifyTreatment(stripped);
+                    tipoTurno = TreatmentClassifier.Classify(stripped);
                     if (string.IsNullOrEmpty(tipoTurno)) tipoTurno = stripped;
                     break;
                 }

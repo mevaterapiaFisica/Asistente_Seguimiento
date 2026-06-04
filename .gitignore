@@ -1,0 +1,40 @@
+# ── Build artifacts ──────────────────────────────────────────────────────────
+bin/
+obj/
+
+# ── Runtime data (generado por el servicio — vive en C:\MevaRT\data) ─────────
+**/data/agenda_*.json
+**/data/tomograph_agenda_*.json
+**/data/aria_results_*.json
+**/data/aria_runner_*.log
+**/data/aria_input_tmp.json
+**/data/aria_plans_mock.json
+**/data/aria_test_*.json
+**/data/dashboard_bootstrap.json
+**/data/guid_hc_map.json
+**/data/pacientes.json
+**/data/rt_configuration.json
+**/data/stage_transitions.json
+**/data/weekly_stats.json
+**/data/agenda-captures/
+**/data/diagnostics/
+
+# ── Logs en raiz del repo (corridas de prueba antiguas) ──────────────────────
+aria_runner_*.log
+aria_results_*.json
+
+# ── Secretos y configuracion local ──────────────────────────────────────────
+*.user
+appsettings.Local.json
+appsettings.Development.json
+
+# ── VS / Rider ───────────────────────────────────────────────────────────────
+.vs/
+.idea/
+*.suo
+*.user
+*.userprefs
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store

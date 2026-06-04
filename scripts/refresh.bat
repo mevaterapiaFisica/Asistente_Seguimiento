@@ -22,7 +22,7 @@ REM ============================================================
 
 set MEVA_URL=http://localhost:5062
 set DATA_DIR=C:\MevaRT\data
-set RUNNER_EXE=C:\Pablo\Meva.Rt\Meva.Rt.AriaRunner\bin\Release\net9.0-windows\AriaRunner.exe
+set RUNNER_EXE=C:\MevaRT\AriaRunner\AriaRunner.exe
 
 REM Contrasena del usuario varian en ECL-FISICA2 (cuenta Windows con acceso a ARIAMEVADB-SVR)
 set ARIA_VARIAN_PASSWORD=1e$civres
@@ -53,11 +53,11 @@ curl -s --max-time 120 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/ap
 
 REM ── 5. Agenda equipos ────────────────────────────────────────
 echo [%date% %time%] 5/6 Scrapeando agenda equipos...
-curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/agenda/scrape-upcoming?days=15"
+curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/agenda/scrape-upcoming?days=7"
 
 REM ── 6. Agenda tomografos ─────────────────────────────────────
 echo [%date% %time%] 6/6 Scrapeando agenda tomografos...
-curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/tomograph-agenda/scrape-upcoming?days=15"
+curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/tomograph-agenda/scrape-upcoming?days=7"
 
 echo [%date% %time%] === Actualizacion completada ===
 exit /b 0

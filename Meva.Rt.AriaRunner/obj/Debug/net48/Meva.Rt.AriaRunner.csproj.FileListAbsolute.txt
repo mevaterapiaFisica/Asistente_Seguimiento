@@ -1,5 +1,0 @@
-C:\Pablo\WebScrapSitra\Meva.Rt\Meva.Rt.AriaRunner\obj\Debug\net48\Meva.Rt.AriaRunner.csproj.AssemblyReference.cache
-C:\Pablo\WebScrapSitra\Meva.Rt\Meva.Rt.AriaRunner\obj\Debug\net48\Meva.Rt.AriaRunner.GeneratedMSBuildEditorConfig.editorconfig
-C:\Pablo\WebScrapSitra\Meva.Rt\Meva.Rt.AriaRunner\obj\Debug\net48\Meva.Rt.AriaRunner.AssemblyInfoInputs.cache
-C:\Pablo\WebScrapSitra\Meva.Rt\Meva.Rt.AriaRunner\obj\Debug\net48\Meva.Rt.AriaRunner.AssemblyInfo.cs
-C:\Pablo\WebScrapSitra\Meva.Rt\Meva.Rt.AriaRunner\obj\Debug\net48\Meva.Rt.AriaRunner.csproj.CoreCompileInputs.cache

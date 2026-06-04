@@ -15,20 +15,59 @@
     </header>
 
     <nav class="tabs">
-      <button class="tab-button active" data-tab="followup" type="button">Seguimiento</button>
-      <button class="tab-button" data-tab="agenda" type="button">Agenda</button>
-      <button class="tab-button" data-tab="config" type="button">Configuracion</button>
-      <button type="button" class="ghost-button" id="refreshDashboard" title="Scraping agenda + seguimiento + ARIA + guarda snapshot">Actualizar datos</button>
-      <button type="button" class="ghost-button" id="refreshDashboardNoAria" title="Scraping agenda + seguimiento sin consultar ARIA">Sin ARIA</button>
-      <button type="button" class="ghost-button" id="importAria" title="Importa aria_results_*.json desde la carpeta data/ del servidor">Importar ARIA</button>
-      <span id="importAriaStatus" class="import-result"></span>
-      <span id="generatedAt" class="generated-at"></span>
+      <button class="tab-button active" data-tab="resumen" type="button">Resumen</button>
+      <button class="tab-button" data-tab="followup" type="button">Seguimiento</button>
+      <button class="tab-button" data-tab="tomograph" type="button">Agenda Tomografos</button>
+      <button class="tab-button" data-tab="agenda" type="button">Agenda Equipos</button>
+      <div class="scrape-menu-wrap">
+        <button type="button" class="ghost-button scrape-menu-trigger" id="scrapMenuBtn">
+          <span id="generatedAt">sin datos</span> &#9660;
+        </button>
+        <div class="scrape-menu" id="scrapMenu" hidden>
+          <button type="button" id="actionUpdateSitramed">Actualizar Sitramed</button>
+          <button type="button" id="actionUpdateAria">Actualizar ARIA</button>
+          <button type="button" id="actionUpdateAll">Actualizar todo</button>
+        </div>
+      </div>
+      <button class="tab-button tab-button-dashed" data-tab="fisica" type="button">Fisica</button>
+      <button class="tab-button config-tab-btn" data-tab="config" type="button">Configuracion</button>
     </nav>
 
     <main>
 
+      <!-- ── Resumen ────────────────────────────────────────────────────── -->
+      <section id="tab-resumen" class="tab-panel active">
+        <div class="resumen-layout">
+          <div class="resumen-main">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Estado actual</h2>
+                <p>Pacientes en proceso por centro</p>
+              </div>
+              <div id="resumenEstado" class="resumen-estado-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Tendencias</h2>
+                <p>Promedio de dias por etapa, ultimas 4 semanas</p>
+              </div>
+              <div id="resumenTendencias"></div>
+            </section>
+          </div>
+          <div class="resumen-side">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Alertas</h2>
+                <p>Requieren atencion</p>
+              </div>
+              <div id="resumenAlertas"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Seguimiento ─────────────────────────────────────────────────── -->
-      <section id="tab-followup" class="tab-panel active">
+      <section id="tab-followup" class="tab-panel">
         <div class="filter-bar filter-bar-stacked">
           <div class="filter-row">
             <span class="filter-label">Centro:</span>
@@ -37,6 +76,10 @@
           <div class="filter-row">
             <span class="filter-label">Etapa:</span>
             <div id="stageFilterPills" class="pill-row"></div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Profesional:</span>
+            <div id="profesionalFilterPills" class="pill-row"></div>
           </div>
         </div>
         <div class="two-col-layout">
@@ -53,13 +96,27 @@
         </div>
       </section>
 
-      <!-- ── Agenda ──────────────────────────────────────────────────────── -->
+      <!-- ── Agenda Tomografos ─────────────────────────────────────────── -->
+      <section id="tab-tomograph" class="tab-panel">
+        <div class="filter-bar">
+          <label class="filter-label">Fecha:</label>
+          <select id="tomographDateSelect" class="filter-select"></select>
+          <span id="scrapeTomographStatus" class="agenda-status"></span>
+          <div id="tomographCenterFilterPills" class="pill-row"></div>
+        </div>
+        <div class="two-col-layout">
+          <div class="left-col" id="tomographMachineCards"></div>
+          <div class="right-col" id="tomographDetail">
+            <p class="detail-placeholder">Seleccione un tomografo para ver su agenda.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Agenda Equipos ─────────────────────────────────────────────── -->
       <section id="tab-agenda" class="tab-panel">
         <div class="filter-bar">
           <label class="filter-label">Fecha:</label>
           <select id="agendaDateSelect" class="filter-select"></select>
-          <button id="scrapeUpcomingBtn" class="ghost-button" type="button"
-                  title="Scraping de los proximos 15 dias habiles">Scrapear 15d</button>
           <span id="scrapeStatus" class="agenda-status"></span>
           <div id="agendaCenterFilterPills" class="pill-row"></div>
         </div>
@@ -73,24 +130,46 @@
         </div>
       </section>
 
+      <!-- ── Fisica ─────────────────────────────────────────────────────── -->
+      <section id="tab-fisica" class="tab-panel">
+        <div class="filter-bar">
+          <span class="filter-label">Centro:</span>
+          <div id="fisicaCenterFilterPills" class="pill-row"></div>
+        </div>
+        <div class="two-col-layout">
+          <div class="left-col">
+            <div id="fisicaTaskCards"></div>
+            <div id="fisicaPhysicistPanel"></div>
+          </div>
+          <div class="right-col" id="fisicaDetailPanel">
+            <p class="detail-placeholder">Seleccione una tarea o fisico para ver pacientes.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Configuracion ──────────────────────────────────────────────── -->
       <section id="tab-config" class="tab-panel">
         <div class="layout config-layout">
           <section class="panel">
-            <div class="panel-header"><h2>Etapas</h2><p>Configuracion base</p></div>
+            <div class="panel-header"><h2>General</h2><p>Parametros globales</p></div>
+            <div id="generalConfigSection" class="config-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header"><h2>Etapas</h2><p>Dias esperados por etapa</p></div>
             <div id="stageConfigList" class="config-list"></div>
           </section>
           <section class="panel">
-            <div class="panel-header"><h2>Equipos</h2><p>Mapping y capacidad</p></div>
+            <div class="panel-header"><h2>Equipos</h2><p>Capacidad por equipo</p></div>
             <div id="machineConfigList" class="config-list"></div>
           </section>
           <section class="panel">
-            <div class="panel-header">
-              <h2>API configuracion</h2>
-              <p><code>GET /api/configuration</code> y <code>PUT /api/configuration</code>
-                 persisten <code>data/rt_configuration.json</code>.</p>
-            </div>
+            <div class="panel-header"><h2>Tomografos</h2><p>Capacidad por tomografo</p></div>
+            <div id="tomographConfigList" class="config-list"></div>
           </section>
+        </div>
+        <div class="config-save-bar">
+          <button id="saveConfigBtn" class="tab-button active" type="button">Guardar configuracion</button>
+          <span id="saveConfigStatus" class="agenda-status"></span>
         </div>
         <section class="panel test-panel">
           <div class="panel-header"><h2>Test Scraping</h2><p>Prueba login + descarga de seguimiento</p></div>
@@ -108,6 +187,17 @@
           <div class="test-actions">
             <button id="runAgendaTest" class="tab-button active" type="button">Probar agenda</button>
             <div id="agendaTestResult" class="test-result">Sin ejecutar.</div>
+          </div>
+        </section>
+        <section class="panel test-panel">
+          <div class="panel-header"><h2>Test Tomografo</h2><p>Diagnostico de scraping de tomografos (filas sin filtro de keywords)</p></div>
+          <div class="agenda-test-controls">
+            <select id="tomographTestCenter"></select>
+            <input id="tomographTestDate" type="date" />
+          </div>
+          <div class="test-actions">
+            <button id="runTomographTest" class="tab-button active" type="button">Probar tomografo</button>
+            <div id="tomographTestResult" class="test-result">Sin ejecutar.</div>
           </div>
         </section>
       </section>

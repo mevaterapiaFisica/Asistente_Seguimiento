@@ -19,9 +19,11 @@ public sealed class JsonSnapshotStore : ISnapshotStore
     public async Task SaveAsync<T>(string snapshotName, T data, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_baseDirectory);
-        var path = Path.Combine(_baseDirectory, $"{snapshotName}.json");
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, data, _jsonOptions, cancellationToken);
+        var tmpPath  = Path.Combine(_baseDirectory, $"{snapshotName}.tmp.json");
+        var finalPath = Path.Combine(_baseDirectory, $"{snapshotName}.json");
+        await using (var stream = File.Create(tmpPath))
+            await JsonSerializer.SerializeAsync(stream, data, _jsonOptions, cancellationToken);
+        File.Move(tmpPath, finalPath, overwrite: true);
     }
 
     public async Task<T?> TryLoadAsync<T>(string snapshotName, CancellationToken cancellationToken)
