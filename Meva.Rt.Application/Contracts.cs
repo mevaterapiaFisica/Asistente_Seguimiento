@@ -178,10 +178,7 @@ public sealed class BootstrapService
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var allPatientIds = followUpIds
-                .Concat(agendaByHc.Keys)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var allPatientIds = followUpIds.ToList();
 
             aria = (await _ariaPlanResolver.ResolveAsync(allPatientIds, cancellationToken)).ToList();
             var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);

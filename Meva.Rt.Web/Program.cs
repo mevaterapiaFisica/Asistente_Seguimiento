@@ -400,17 +400,9 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     foreach (var p in data.FollowUpPatients) { p.PlannedMachineDisplayName = null; p.BeamType = null; p.NumberOfFractions = null; p.IrradiationModality = null; p.ExactBeamEnergy = null; }
     foreach (var a in data.AgendaItems) { a.BeamType = null; a.IrradiationModality = null; }
 
-    var followUpApplyIds = data.FollowUpPatients
+    var patientIds = data.FollowUpPatients
         .Select(p => p.PatientId)
-        .Where(id => !string.IsNullOrWhiteSpace(id));
-
-    var agendaApplyIds = data.AgendaItems
-        .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapApply.ContainsKey(a.SitraMedGuid!))
-        .Select(a => guidHcMapApply[a.SitraMedGuid!])
-        .Where(id => !string.IsNullOrWhiteSpace(id));
-
-    var patientIds = followUpApplyIds
-        .Concat(agendaApplyIds)
+        .Where(id => !string.IsNullOrWhiteSpace(id))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToList();
 
@@ -518,10 +510,8 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
                              ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var hcIds = (snapshot?.FollowUpPatients ?? [])
-            .Select(p => p.PatientId ?? "").Where(id => hcRegex.IsMatch(id))
-            .Concat((snapshot?.AgendaItems ?? [])
-                .Where(a => !string.IsNullOrWhiteSpace(a.SitraMedGuid) && guidHcMapQuery.ContainsKey(a.SitraMedGuid!))
-                .Select(a => guidHcMapQuery[a.SitraMedGuid!]).Where(id => hcRegex.IsMatch(id)))
+            .Select(p => p.PatientId ?? "")
+            .Where(id => hcRegex.IsMatch(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
