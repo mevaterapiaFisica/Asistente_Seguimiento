@@ -16,6 +16,7 @@ public static class TreatmentClassifier
             || t.Contains("radiosurgery", StringComparison.OrdinalIgnoreCase)
             || t.Contains("RxCx", StringComparison.OrdinalIgnoreCase)
             || t.Equals("RC", StringComparison.OrdinalIgnoreCase)) return "RC";
+        if (t.Contains("IGRT", StringComparison.OrdinalIgnoreCase)) return "IGRT";
         if (t.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
             || t.Contains("arco", StringComparison.OrdinalIgnoreCase)) return "VMAT";
         if (t.Contains("IMRT", StringComparison.OrdinalIgnoreCase)) return "IMRT";

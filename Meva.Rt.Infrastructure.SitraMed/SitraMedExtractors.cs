@@ -123,7 +123,8 @@ public sealed class SitraMedAgendaExtractor : IAgendaExtractor
                 AgendaDate = source.AgendaDate,
                 StartTime = startTime,
                 EndTime = DecodeAndStrip(row.Groups["horaFin"].Value),
-                Treatment = DecodeAndStrip(row.Groups["tratamiento"].Value)
+                Treatment = DecodeAndStrip(row.Groups["tratamiento"].Value),
+                Priority = int.TryParse(DecodeAndStrip(row.Groups["prioridad"].Value), out var ap) ? ap : (int?)null
             });
         }
 
@@ -240,7 +241,8 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                         DaysInStage = daysInStage,
                         ExpectedDaysInStage = stageDefinition.ExpectedDays,
                         IsDelayed = daysInStage > stageDefinition.ExpectedDays,
-                        SourceCenterName = row.CenterName
+                        SourceCenterName = row.CenterName,
+                        Priority = row.Priority
                     });
                 }
             }
@@ -317,7 +319,8 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     DaysInStage = daysInStage,
                     ExpectedDaysInStage = stageDefinition.ExpectedDays,
                     IsDelayed = daysInStage > stageDefinition.ExpectedDays,
-                    SourceCenterName = centerName
+                    SourceCenterName = centerName,
+                    Priority = int.TryParse(match.Groups["priority"].Value, out var pp) ? pp : (int?)null
                 });
             }
         }

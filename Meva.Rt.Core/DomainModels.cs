@@ -50,6 +50,7 @@ public sealed class ProcessPatientSnapshot
     public string? IrradiationModality { get; set; }
     public string? ExactBeamEnergy { get; set; }
     public string? TreatmentLabel { get; set; }
+    public int? Priority { get; set; }
 }
 
 public sealed class MachineAppointmentSnapshot
@@ -65,6 +66,7 @@ public sealed class MachineAppointmentSnapshot
     public string? BeamType { get; set; }
     public string? IrradiationModality { get; set; }
     public string? TreatmentLabel { get; set; }
+    public int? Priority { get; set; }
 }
 
 public sealed class AriaPlanSnapshot

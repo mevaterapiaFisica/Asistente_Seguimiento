@@ -924,7 +924,8 @@ app.MapGet("/api/agenda", async Task<IResult> (
                     IsEstimated = true,
                     EstimatedFromStage = $"{patient.StageCode} - {patient.StageDisplayName}",
                     EstimatedPatientId = patient.PatientId,
-                    EstimatedSource = estimatedSource
+                    EstimatedSource = estimatedSource,
+                    Priority = patient.Priority
                 });
             }
         }

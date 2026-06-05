@@ -108,6 +108,7 @@ public sealed class AgendaSlotDto
     public string? EstimatedPatientId { get; set; }
     /// <summary>"aria" = equipo desde ARIA, "center" = inferido por equipo único del centro</summary>
     public string? EstimatedSource { get; set; }
+    public int? Priority { get; set; }
 
     public AgendaSlotDto() { }
 
@@ -127,5 +128,6 @@ public sealed class AgendaSlotDto
         TreatmentLabel = src.TreatmentLabel
             ?? TreatmentClassifier.BuildLabel(TreatmentTechnique, IrradiationModality, null, BeamType);
         SitraMedGuid = src.SitraMedGuid;
+        Priority = src.Priority;
     }
 }

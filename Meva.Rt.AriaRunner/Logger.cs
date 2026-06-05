@@ -22,10 +22,15 @@ public sealed class RunnerLogger : IDisposable
     public void Error(string message, Exception ex) =>
         Write("ERROR", $"{message} | {ex.GetType().Name}: {ex.Message}\n         StackTrace: {ex.StackTrace}");
 
+    private readonly object _lock = new();
+
     private void Write(string level, string message)
     {
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
-        _file.WriteLine(line);
+        lock (_lock)
+        {
+            _file.WriteLine(line);
+        }
         if (level == "ERROR")
             Console.WriteLine(line);
     }

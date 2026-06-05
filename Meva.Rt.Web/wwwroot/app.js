@@ -89,6 +89,11 @@ function makePill(label, active, onClick) {
   return btn;
 }
 
+function priorityBadge(priority) {
+  if (!priority) return '';
+  return `<span class="priority-badge priority-p${priority <= 1 ? 1 : 2}">P${priority}</span>`;
+}
+
 function hcTag(patientId) {
   const isHc = patientId && /^\d{1,3}-\d{4,7}-\d{1,3}$/.test(patientId);
   return isHc
@@ -576,9 +581,9 @@ function renderFollowupDetail() {
       const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
-      const nameHtml = p.sitraMedGuid
+      const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-        : `<strong>${p.patientName}</strong>`;
+        : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
         delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
@@ -614,9 +619,9 @@ function renderFollowupDetail() {
       const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
-      const nameHtml = p.sitraMedGuid
+      const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-        : `<strong>${p.patientName}</strong>`;
+        : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
         delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         nameHtml +
@@ -650,9 +655,9 @@ function renderFollowupDetail() {
       const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
-      const nameHtml = p.sitraMedGuid
+      const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-        : `<strong>${p.patientName}</strong>`;
+        : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
         delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
@@ -942,9 +947,9 @@ function renderAgendaDetail() {
       displayName = '<em style="color:var(--muted)">(sin nombre)</em>';
     } else {
       const guid = slot.sitraMedGuid || findPatientGuid(slot.patientName);
-      displayName = guid
+      displayName = priorityBadge(slot.priority) + (guid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
-        : slot.patientName;
+        : slot.patientName);
     }
     let estimatedBadge = '';
     if (slot.isEstimated) {
@@ -1175,9 +1180,9 @@ function renderTomographAgendaDetail() {
       displayName = '<em style="color:var(--muted)">(sin nombre)</em>';
     } else {
       const guid = findPatientGuid(slot.patientName);
-      displayName = guid
+      displayName = priorityBadge(slot.priority) + (guid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
-        : slot.patientName;
+        : slot.patientName);
     }
     row.innerHTML =
       `<span class="slot-time">${slot.startTime || '~'}</span>` +
@@ -1359,9 +1364,9 @@ function renderFisicaDetail() {
       const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
-      const nameHtml = p.sitraMedGuid
+      const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-        : `<strong>${p.patientName}</strong>`;
+        : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
         delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
@@ -1945,7 +1950,7 @@ function _buildPacientesAfectados(equipo, dates, incluirPlanif) {
       if (!patMap.has(mk)) {
         patMap.set(mk, {
           key: `a_${mk}`, source: 'agenda',
-          nombre: slot.patientName || '—', sitraMedGuid: slot.sitraMedGuid || null, hc: null,
+          nombre: slot.patientName || '—', sitraMedGuid: slot.sitraMedGuid || null, hc: null, priority: slot.priority || null,
           fechasTurno: [], horarios: [],
           treatmentLabel: slot.treatmentLabel || slot.treatmentTechnique || slot.treatment || '—',
           etapaDisplay: null, sortOrder: -1, fracciones: null
@@ -1972,7 +1977,7 @@ function _buildPacientesAfectados(equipo, dates, incluirPlanif) {
                    (stageByCode[p.stageCode]?.sortOrder ?? 0) >= f6aSort)
       .map(p => ({
         key: `b_${p.patientId}`, source: 'planificacion',
-        nombre: p.patientName || '—', sitraMedGuid: p.sitraMedGuid || null, hc: p.patientId,
+        nombre: p.patientName || '—', sitraMedGuid: p.sitraMedGuid || null, hc: p.patientId, priority: p.priority || null,
         fechasTurno: null,
         treatmentLabel: p.treatmentLabel || p.treatmentTechnique || '—',
         etapaDisplay: p.stageDisplayName || p.stageCode,
@@ -1993,11 +1998,18 @@ function _renderDerivResult() {
   _renderDerivResumenEquipos();
 }
 
+const _ESTADO_ORDER = { sin_asignar: 0, derivado: 1, suspendido: 2, atendido: 3 };
+function _estadoSort(a, b) {
+  const oa = _ESTADO_ORDER[deriv.asignaciones[a.key]?.estado || 'sin_asignar'] ?? 0;
+  const ob = _ESTADO_ORDER[deriv.asignaciones[b.key]?.estado || 'sin_asignar'] ?? 0;
+  return oa - ob;
+}
+
 function _renderDerivPacientes() {
   const container = document.getElementById('derivPacientesList');
   container.innerHTML = '';
-  const fa = deriv.pacientes.filter(p => p.source === 'agenda');
-  const fb = deriv.pacientes.filter(p => p.source === 'planificacion');
+  const fa = deriv.pacientes.filter(p => p.source === 'agenda').sort(_estadoSort);
+  const fb = deriv.pacientes.filter(p => p.source === 'planificacion').sort(_estadoSort);
   if (!fa.length && !fb.length) {
     container.innerHTML = '<p class="detail-placeholder">No hay pacientes afectados en el período.</p>';
     return;
@@ -2021,13 +2033,15 @@ function _shortName(name) {
 }
 
 // Máquinas compatibles ordenadas: mismo centro primero, luego alfabético
+// Retorna objetos { displayName, centerName, compat: { ok, warn, reason } }
 function _getSortedCompatMachines(treatmentLabel) {
   const caps = state.configData?.machineCapabilities || [];
   const failedCenter = (state.homeData?.configuration?.machines || [])
     .find(m => m.displayName === deriv.equipoFallido)?.centerName;
   return (state.homeData?.configuration?.machines || [])
     .filter(m => m.displayName !== deriv.equipoFallido)
-    .filter(m => _checkCompat(treatmentLabel, caps.find(c => c.machineName === m.displayName)).ok)
+    .map(m => ({ ...m, compat: _checkCompat(treatmentLabel, caps.find(c => c.machineName === m.displayName)) }))
+    .filter(m => m.compat.ok)
     .sort((a,b) => {
       const sa = a.centerName === failedCenter ? 0 : 1;
       const sb = b.centerName === failedCenter ? 0 : 1;
@@ -2040,22 +2054,28 @@ function _buildDerivCard(p) {
   const estado = asig?.estado || 'sin_asignar';
 
   // Horario actual (solo fuente agenda)
+  // Si hay múltiples días incluir la fecha en cada entrada, si es un solo día solo la hora
+  const hasManyDays = new Set((p.horarios || []).map(h => h.split(' ')[0])).size > 1;
   const horariosStr = p.horarios?.length
     ? p.horarios.map(h => {
         const [datePart, timePart] = h.split(' ');
-        return `${_fmtDate(datePart)} ${timePart||''}`.trim();
-      }).join(' · ')
+        return hasManyDays ? `${_fmtDate(datePart)} ${timePart||''}`.trim() : (timePart || '');
+      }).filter(Boolean).join(' · ')
     : null;
 
-  // Fechas / etapa debajo del badge
-  const infoStr = p.fechasTurno
-    ? p.fechasTurno.map(_fmtDate).join(', ')
-    : (p.fracciones ? `${p.etapaDisplay} · ${p.fracciones} fx` : (p.etapaDisplay || '—'));
+  // Fechas / etapa: no mostrar fechas cuando horariosStr ya las incluye (multi-día)
+  const infoStr = hasManyDays
+    ? null
+    : (p.fechasTurno
+      ? p.fechasTurno.map(_fmtDate).join(', ')
+      : (p.fracciones ? `${p.etapaDisplay} · ${p.fracciones} fx` : (p.etapaDisplay || '—')));
 
   const badgeHtml = estado === 'derivado'
     ? `<span class="deriv-badge deriv-badge-ok">→ ${_shortName(asig.equipo)}</span>`
     : estado === 'suspendido'
     ? `<span class="deriv-badge deriv-badge-grey">⊗ Suspendido</span>`
+    : estado === 'atendido'
+    ? `<span class="deriv-badge deriv-badge-atendido">✓ Ya atendido</span>`
     : `<span class="deriv-badge deriv-badge-none">Sin asignar</span>`;
 
   const label = p.treatmentLabel || '—';
@@ -2066,15 +2086,16 @@ function _buildDerivCard(p) {
   const others = compatMachines.slice(3);
   const quickBtns = top3.map(m => {
     const isAssigned = asig?.estado === 'derivado' && asig?.equipo === m.displayName;
-    return `<button class="deriv-quick-btn${isAssigned ? ' active' : ''}"
-              data-machine="${m.displayName}" title="${m.displayName}">
-      ${_shortName(m.displayName)} →
+    const warnTitle = m.compat?.warn && m.compat?.reason ? ` — ${m.compat.reason}` : '';
+    return `<button class="deriv-quick-btn${isAssigned ? ' active' : ''}${m.compat?.warn ? ' warn' : ''}"
+              data-machine="${m.displayName}" title="${m.displayName}${warnTitle}">
+      ${_shortName(m.displayName)} →${m.compat?.warn ? ' ⚠' : ''}
     </button>`;
   }).join('');
   const othersSelect = others.length
     ? `<select class="deriv-others-sel" data-key="${p.key}">
         <option value="">Otros...</option>
-        ${others.map(m => `<option value="${m.displayName}"${asig?.estado === 'derivado' && asig?.equipo === m.displayName ? ' selected' : ''}>${_shortName(m.displayName)}</option>`).join('')}
+        ${others.map(m => `<option value="${m.displayName}"${asig?.estado === 'derivado' && asig?.equipo === m.displayName ? ' selected' : ''}>${_shortName(m.displayName)}${m.compat?.warn ? ' ⚠' : ''}</option>`).join('')}
        </select>`
     : '';
 
@@ -2083,12 +2104,12 @@ function _buildDerivCard(p) {
   card.dataset.key = p.key;
   card.innerHTML = `
     <div class="deriv-card-header">
-      <span class="deriv-card-name">${p.nombre}</span>
+      ${priorityBadge(p.priority)}<span class="deriv-card-name">${p.nombre}</span>
       ${p.hc ? `<span class="deriv-card-hc">${p.hc}</span>` : ''}
     </div>
     <div class="deriv-card-row">
       <span class="treatment-badge ${_derivLabelClass(label)}">${label}</span>
-      <span class="deriv-card-dates">${infoStr}</span>
+      ${infoStr ? `<span class="deriv-card-dates">${infoStr}</span>` : ''}
       ${horariosStr ? `<span class="deriv-card-horario">🕐 ${horariosStr}</span>` : ''}
     </div>
     <div class="deriv-quickbtns">
@@ -2097,10 +2118,14 @@ function _buildDerivCard(p) {
     </div>
     <div class="deriv-card-footer">
       ${badgeHtml}
-      <button class="deriv-suspend-btn${estado === 'suspendido' ? ' active' : ''}"
-              title="${estado === 'suspendido' ? 'Quitar suspension' : 'Suspender'}">
-        ${estado === 'suspendido' ? '↩' : '⊗'}
-      </button>
+      <div class="deriv-card-actions">
+        <button class="deriv-atendido-btn${estado === 'atendido' ? ' active' : ''}"
+                title="${estado === 'atendido' ? 'Quitar ya atendido' : 'Ya atendido hoy'}">✓</button>
+        <button class="deriv-suspend-btn${estado === 'suspendido' ? ' active' : ''}"
+                title="${estado === 'suspendido' ? 'Quitar suspension' : 'Suspender'}">
+          ${estado === 'suspendido' ? '↩' : '⊗'}
+        </button>
+      </div>
     </div>`;
 
   // Quick-assign buttons
@@ -2122,6 +2147,9 @@ function _buildDerivCard(p) {
   card.querySelector('.deriv-suspend-btn').addEventListener('click', e => {
     e.stopPropagation(); _toggleSuspender(p.key);
   });
+  card.querySelector('.deriv-atendido-btn').addEventListener('click', e => {
+    e.stopPropagation(); _toggleAtendido(p.key);
+  });
   return card;
 }
 
@@ -2138,16 +2166,24 @@ function _toggleSuspender(key) {
   const cur = deriv.asignaciones[key];
   if (cur?.estado === 'suspendido') delete deriv.asignaciones[key];
   else deriv.asignaciones[key] = { estado: 'suspendido', equipo: null };
-  _refreshDerivCard(key);
+  _renderDerivPacientes();
+  _renderDerivResumenEquipos();
+  _renderDerivBarra();
+}
+
+function _toggleAtendido(key) {
+  const cur = deriv.asignaciones[key];
+  if (cur?.estado === 'atendido') delete deriv.asignaciones[key];
+  else deriv.asignaciones[key] = { estado: 'atendido', equipo: null };
+  _renderDerivPacientes();
   _renderDerivResumenEquipos();
   _renderDerivBarra();
 }
 
 function _refreshDerivCard(key) {
-  const el = document.querySelector(`.deriv-patient-card[data-key="${CSS.escape(key)}"]`);
-  if (!el) return;
-  const p = deriv.pacientes.find(x => x.key === key);
-  if (p) el.replaceWith(_buildDerivCard(p));
+  _renderDerivPacientes();
+  _renderDerivResumenEquipos();
+  _renderDerivBarra();
 }
 
 // Panel derecho: tarjetas de equipos destino con turnos libres y pacientes derivados
@@ -2230,12 +2266,15 @@ function _renderDerivResumenEquipos() {
 
 function _renderDerivBarra() {
   const total = deriv.pacientes.length;
-  const derivados = Object.values(deriv.asignaciones).filter(a => a.estado === 'derivado').length;
-  const suspendidos = Object.values(deriv.asignaciones).filter(a => a.estado === 'suspendido').length;
-  const sinAsignar = total - derivados - suspendidos;
+  const vals = Object.values(deriv.asignaciones);
+  const derivados   = vals.filter(a => a.estado === 'derivado').length;
+  const suspendidos = vals.filter(a => a.estado === 'suspendido').length;
+  const atendidos   = vals.filter(a => a.estado === 'atendido').length;
+  const sinAsignar  = total - derivados - suspendidos - atendidos;
   document.getElementById('derivStatTotal').textContent = `Total: ${total}`;
   document.getElementById('derivStatDerivados').textContent = `Derivados: ${derivados}`;
   document.getElementById('derivStatSuspendidos').textContent = `Suspendidos: ${suspendidos}`;
+  document.getElementById('derivStatAtendidos').textContent = `Atendidos: ${atendidos}`;
   document.getElementById('derivStatSinAsignar').innerHTML =
     `Sin asignar: <strong${sinAsignar > 0 ? ' style="color:var(--warn)"' : ''}>${sinAsignar}</strong>`;
   document.getElementById('derivExportarBtn').disabled = sinAsignar > 0;
@@ -2247,8 +2286,11 @@ function _checkCompat(label, cap) {
   if (l === 'BQT' || l === 'IORT') return { ok: false, warn: false, reason: 'No aplica a linac' };
   if (l === 'VMAT' || l === 'SBRT - VMAT' || l === 'RC - VMAT')
     return cap?.canDoVMAT ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad VMAT' };
-  if (l === 'IGRT - VMAT')
-    return cap?.canDoVMAT ? { ok: true, warn: true, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad VMAT' };
+  if (l === 'IGRT - VMAT') {
+    if (!cap?.canDoVMAT) return { ok: false, warn: false, reason: 'Sin capacidad VMAT' };
+    const noIgrt = !cap.canDoIGRT;
+    return { ok: true, warn: noIgrt, reason: noIgrt ? 'No hace IGRT' : '' };
+  }
   if (l === 'SBRT' || l === 'SBRT - haz SRS')
     return cap?.canDoSBRT ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin capacidad SBRT' };
   if (l === 'RC' || l === 'RC - haz SRS')
@@ -2263,7 +2305,10 @@ function _checkCompat(label, cap) {
     return cap?.highEnergyBeams?.includes('15X') ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin campo 15X' };
   if (l === '3DC 18X')
     return cap?.highEnergyBeams?.includes('18X') ? { ok: true, warn: false, reason: '' } : { ok: false, warn: false, reason: 'Sin campo 18X' };
-  if (l === 'IGRT' || l === 'IGRT - estático') return { ok: true, warn: true, reason: '' };
+  if (l === 'IGRT' || l === 'IGRT - estático') {
+    const noIgrt = !cap?.canDoIGRT;
+    return { ok: true, warn: noIgrt, reason: noIgrt ? 'No hace IGRT' : '' };
+  }
   return { ok: true, warn: false, reason: '' };
 }
 
@@ -2293,8 +2338,9 @@ function exportarDerivacion(incluirSinAsignar) {
       return ea.localeCompare(eb) || a.nombre.localeCompare(b.nombre);
     });
   const suspendidos = deriv.pacientes.filter(p => deriv.asignaciones[p.key]?.estado === 'suspendido');
-  const sinAsignar = deriv.pacientes.filter(p => !deriv.asignaciones[p.key]);
-  const exportList = [...derivados, ...suspendidos, ...(incluirSinAsignar ? sinAsignar : [])];
+  const atendidos   = deriv.pacientes.filter(p => deriv.asignaciones[p.key]?.estado === 'atendido');
+  const sinAsignar  = deriv.pacientes.filter(p => !deriv.asignaciones[p.key]);
+  const exportList = [...derivados, ...suspendidos, ...atendidos, ...(incluirSinAsignar ? sinAsignar : [])];
 
   const countByEquipo = {};
   derivados.forEach(p => {
@@ -2303,14 +2349,25 @@ function exportarDerivacion(incluirSinAsignar) {
   });
 
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const _exportCaps = state.configData?.machineCapabilities || [];
   const tableRows = exportList.map(p => {
     const asig = deriv.asignaciones[p.key];
     const destino = asig?.estado === 'derivado' ? asig.equipo
       : asig?.estado === 'suspendido' ? 'Suspendido — retoma al reactivar equipo'
+      : asig?.estado === 'atendido' ? 'Ya atendido ese día'
       : 'Sin asignar';
-    const bg = !asig ? 'background:#fff8e1;' : asig.estado === 'suspendido' ? 'background:#f5f5f5;color:#888;' : '';
+    const bg = !asig ? 'background:#fff8e1;'
+      : asig.estado === 'suspendido' ? 'background:#f5f5f5;color:#888;'
+      : asig.estado === 'atendido' ? 'background:#f0faf0;color:#4caf50;'
+      : '';
     const fechas = p.fechasTurno ? p.fechasTurno.map(_fmtDate).join(', ') : (p.etapaDisplay || '—');
-    return `<tr style="${bg}"><td>${esc(p.nombre)}</td><td>${esc(p.hc||'—')}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td><td>${esc(destino)}</td><td></td></tr>`;
+    let obs = '';
+    if (asig?.estado === 'derivado') {
+      const cap = _exportCaps.find(c => c.machineName === asig.equipo);
+      const compat = _checkCompat(p.treatmentLabel, cap);
+      if (compat.warn && compat.reason) obs = compat.reason;
+    }
+    return `<tr style="${bg}"><td>${esc(p.nombre)}</td><td>${esc(p.hc||'—')}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td><td>${esc(destino)}</td><td>${esc(obs)}</td></tr>`;
   }).join('');
 
   const summaryRows = Object.entries(countByEquipo)
@@ -2348,7 +2405,7 @@ tr:nth-child(even) td{background:#fafaf7}
 <table style="width:auto"><thead><tr><th>Equipo destino</th><th>Pacientes derivados</th></tr></thead>
 <tbody>${summaryRows}</tbody></table>
 <div class="note">
-  Total: ${exportList.length}&nbsp;|&nbsp;Derivados: ${derivados.length}&nbsp;|&nbsp;Suspendidos: ${suspendidos.length}${incluirSinAsignar&&sinAsignar.length?'&nbsp;|&nbsp;Sin asignar: '+sinAsignar.length:''}<br>
+  Total: ${exportList.length}&nbsp;|&nbsp;Derivados: ${derivados.length}&nbsp;|&nbsp;Suspendidos: ${suspendidos.length}&nbsp;|&nbsp;Ya atendidos: ${atendidos.length}${incluirSinAsignar&&sinAsignar.length?'&nbsp;|&nbsp;Sin asignar: '+sinAsignar.length:''}<br>
   Este documento es orientativo. Las modificaciones deben realizarse en SitraMed.
 </div>
 </body></html>`;

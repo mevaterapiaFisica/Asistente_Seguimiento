@@ -779,7 +779,8 @@ public sealed class PlaywrightSitraMedClient
                 StartTime = mapped.Value.StartTime,
                 EndTime = mapped.Value.EndTime,
                 Treatment = mapped.Value.Treatment,
-                SitraMedGuid = string.IsNullOrEmpty(agendaGuid) ? null : agendaGuid
+                SitraMedGuid = string.IsNullOrEmpty(agendaGuid) ? null : agendaGuid,
+                Priority = mapped.Value.Priority
             });
         }
 
@@ -799,7 +800,7 @@ public sealed class PlaywrightSitraMedClient
     /// observaciones, institución, tipo, tratamiento, fecha inicio, fecha fin, hora fin, acciones.
     /// La primera columna (signs) tiene innerText vacío aunque contenga HTML; se saltea.
     /// </summary>
-    private static (string PatientName, string StartTime, string EndTime, string Treatment)? MapAgendaCells(string[] cells)
+    private static (string PatientName, string StartTime, string EndTime, string Treatment, int? Priority)? MapAgendaCells(string[] cells)
     {
         if (cells.Length < 2) return null;
 
@@ -816,7 +817,9 @@ public sealed class PlaywrightSitraMedClient
             var patient   = cells[offset + 1];
             var treatment = offset + 7 < cells.Length ? cells[offset + 7] : string.Empty;
             var end       = offset + 10 < cells.Length ? cells[offset + 10] : string.Empty;
-            return (patient, start, end, treatment);
+            var prioStr   = offset + 3 < cells.Length ? cells[offset + 3] : string.Empty;
+            int? priority = int.TryParse(prioStr, out var pv) ? pv : (int?)null;
+            return (patient, start, end, treatment, priority);
         }
 
         if (remaining >= 4)
@@ -833,7 +836,7 @@ public sealed class PlaywrightSitraMedClient
             var start     = patientIdx > offset ? cells[offset] : cells.ElementAtOrDefault(offset + 1) ?? string.Empty;
             var end       = cells.ElementAtOrDefault(cells.Length - 2) ?? string.Empty;
             var treatment = cells.ElementAtOrDefault(Math.Min(offset + 3, cells.Length - 1)) ?? string.Empty;
-            return (patient, start, end, treatment);
+            return (patient, start, end, treatment, null);
         }
 
         return null;
@@ -1556,7 +1559,8 @@ public sealed class PlaywrightSitraMedClient
                 DoctorHc = doctorHc,
                 CenterId = center.Id,
                 CenterName = center.Name,
-                StageCode = stage.Code
+                StageCode = stage.Code,
+                Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null
             });
         }
 
@@ -1594,6 +1598,7 @@ public sealed class FollowUpPatientDomRow
     public string CenterId { get; set; } = string.Empty;
     public string CenterName { get; set; } = string.Empty;
     public string StageCode { get; set; } = string.Empty;
+    public int? Priority { get; set; }
 }
 
 public sealed class ScrapingTestResult
