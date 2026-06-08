@@ -78,7 +78,7 @@ public static class AppConfiguration
             MachineCapabilities =
             {
                 new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 1", CanDoVMAT = true, CanDoSBRT = true, CanDoRC = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 2", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 2", HighEnergyBeams = ["6X"] },
                 new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 3", CanDoElectrons = true, CanDoTSET = true, HighEnergyBeams = ["6X"] },
                 new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 4", HighEnergyBeams = ["6X"] },
                 new RtMachineCapabilities { MachineName = "CETRO - Cetro", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },

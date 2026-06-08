@@ -21,16 +21,23 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
     {
         if (!File.Exists(_configurationPath))
         {
-            return AppConfiguration.BuildDefault();
+            var def = AppConfiguration.BuildDefault();
+            Persist(def);
+            return def;
         }
 
         try
         {
             var json = File.ReadAllText(_configurationPath);
             var config = JsonSerializer.Deserialize<RtSystemConfiguration>(json) ?? AppConfiguration.BuildDefault();
-            // Backfill new fields added after the saved JSON was written
+            // Backfill fields added after the saved JSON was written; persist so next restart is clean
+            bool dirty = false;
             if (config.MachineCapabilities.Count == 0)
+            {
                 config.MachineCapabilities = AppConfiguration.BuildDefault().MachineCapabilities;
+                dirty = true;
+            }
+            if (dirty) Persist(config);
             return config;
         }
         catch
@@ -39,15 +46,15 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
         }
     }
 
+    private void Persist(RtSystemConfiguration configuration) =>
+        File.WriteAllText(_configurationPath, JsonSerializer.Serialize(configuration, _jsonOptions));
+
     public void Save(RtSystemConfiguration configuration)
     {
         var directory = Path.GetDirectoryName(_configurationPath);
         if (!string.IsNullOrEmpty(directory))
-        {
             Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(_configurationPath, JsonSerializer.Serialize(configuration, _jsonOptions));
+        Persist(configuration);
         Configuration = configuration;
     }
 }

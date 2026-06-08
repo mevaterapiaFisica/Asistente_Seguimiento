@@ -1856,11 +1856,26 @@ const deriv = {
 
 let _derivWired = false;
 
+function _limpiarDerivacion() {
+  deriv.equipoFallido = null;
+  deriv.fechaInicio = todayStr();
+  deriv.fechaFin = todayStr();
+  deriv.incluirPlanificacion = false;
+  deriv.agendaSlots = {};
+  deriv.pacientes = [];
+  deriv.asignaciones = {};
+  deriv.seleccionado = null;
+  document.getElementById('derivContent').hidden = true;
+  document.getElementById('derivBarraResumen').hidden = true;
+  _renderDerivConfig();
+}
+
 async function openDerivacion() {
   if (!_derivWired) {
     document.getElementById('derivCalcularBtn').addEventListener('click', _calcularDerivacion);
     document.getElementById('derivExportarBtn').addEventListener('click', () => exportarDerivacion(false));
     document.getElementById('derivExportarIgualBtn').addEventListener('click', () => exportarDerivacion(true));
+    document.getElementById('derivLimpiarBtn').addEventListener('click', _limpiarDerivacion);
     _derivWired = true;
   }
   if (!state.homeData) return;
@@ -1877,7 +1892,7 @@ function _renderDerivConfig() {
   if (!deriv.fechaFin) deriv.fechaFin = today;
 
   const sel = document.getElementById('derivEquipoSelect');
-  const prev = deriv.equipoFallido || sel.value;
+  const prev = deriv.equipoFallido;
   sel.innerHTML = '<option value="">Seleccionar equipo...</option>';
   const byCentre = {};
   machines.forEach(m => (byCentre[m.centerName] = byCentre[m.centerName] || []).push(m));
@@ -2032,6 +2047,24 @@ function _shortName(name) {
   return i >= 0 ? name.slice(i + 3) : name;
 }
 
+const _CENTER_ABBR = {
+  'MEVA-Central':  'Cent',
+  'CETRO':         'Cetro',
+  'RT MEDRANO':    'Medrano',
+  'MEVA-Viamonte': 'VMT',
+  'QUILMES':       'Q',
+  'SAN JUSTO':     'SJ',
+};
+
+// Label para botones de derivación: mismo centro → nombre corto; distinto centro → abreviatura + Eq#
+function _derivMachineLabel(machine, failedCenter) {
+  if (!machine) return '—';
+  if (machine.centerName === failedCenter) return _shortName(machine.displayName);
+  const abbr = _CENTER_ABBR[machine.centerName] || _shortName(machine.displayName);
+  const num = _shortName(machine.displayName).match(/(\d+)$/);
+  return num ? `${abbr} Eq${num[1]}` : abbr;
+}
+
 // Máquinas compatibles ordenadas: mismo centro primero, luego alfabético
 // Retorna objetos { displayName, centerName, compat: { ok, warn, reason } }
 function _getSortedCompatMachines(treatmentLabel) {
@@ -2053,25 +2086,27 @@ function _buildDerivCard(p) {
   const asig = deriv.asignaciones[p.key];
   const estado = asig?.estado || 'sin_asignar';
 
-  // Horario actual (solo fuente agenda)
-  // Si hay múltiples días incluir la fecha en cada entrada, si es un solo día solo la hora
-  const hasManyDays = new Set((p.horarios || []).map(h => h.split(' ')[0])).size > 1;
-  const horariosStr = p.horarios?.length
+  // Horario: siempre mostrar fecha+hora juntas
+  const horariosStr = (p.horarios || []).length
     ? p.horarios.map(h => {
         const [datePart, timePart] = h.split(' ');
-        return hasManyDays ? `${_fmtDate(datePart)} ${timePart||''}`.trim() : (timePart || '');
+        return timePart ? `${_fmtDate(datePart)} ${timePart}` : _fmtDate(datePart);
       }).filter(Boolean).join(' · ')
     : null;
 
-  // Fechas / etapa: no mostrar fechas cuando horariosStr ya las incluye (multi-día)
-  const infoStr = hasManyDays
+  // Info de etapa/fracciones: solo cuando no hay horarios
+  const infoStr = horariosStr
     ? null
     : (p.fechasTurno
       ? p.fechasTurno.map(_fmtDate).join(', ')
       : (p.fracciones ? `${p.etapaDisplay} · ${p.fracciones} fx` : (p.etapaDisplay || '—')));
 
+  const allMachines = state.homeData?.configuration?.machines || [];
+  const failedCenter = allMachines.find(m => m.displayName === deriv.equipoFallido)?.centerName;
+  const assignedMach = asig?.equipo ? allMachines.find(m => m.displayName === asig.equipo) : null;
+
   const badgeHtml = estado === 'derivado'
-    ? `<span class="deriv-badge deriv-badge-ok">→ ${_shortName(asig.equipo)}</span>`
+    ? `<span class="deriv-badge deriv-badge-ok">→ ${_derivMachineLabel(assignedMach, failedCenter)}</span>`
     : estado === 'suspendido'
     ? `<span class="deriv-badge deriv-badge-grey">⊗ Suspendido</span>`
     : estado === 'atendido'
@@ -2089,13 +2124,13 @@ function _buildDerivCard(p) {
     const warnTitle = m.compat?.warn && m.compat?.reason ? ` — ${m.compat.reason}` : '';
     return `<button class="deriv-quick-btn${isAssigned ? ' active' : ''}${m.compat?.warn ? ' warn' : ''}"
               data-machine="${m.displayName}" title="${m.displayName}${warnTitle}">
-      ${_shortName(m.displayName)} →${m.compat?.warn ? ' ⚠' : ''}
+      ${_derivMachineLabel(m, failedCenter)} →${m.compat?.warn ? ' ⚠' : ''}
     </button>`;
   }).join('');
   const othersSelect = others.length
     ? `<select class="deriv-others-sel" data-key="${p.key}">
         <option value="">Otros...</option>
-        ${others.map(m => `<option value="${m.displayName}"${asig?.estado === 'derivado' && asig?.equipo === m.displayName ? ' selected' : ''}>${_shortName(m.displayName)}${m.compat?.warn ? ' ⚠' : ''}</option>`).join('')}
+        ${others.map(m => `<option value="${m.displayName}"${asig?.estado === 'derivado' && asig?.equipo === m.displayName ? ' selected' : ''}>${_derivMachineLabel(m, failedCenter)}${m.compat?.warn ? ' ⚠' : ''}</option>`).join('')}
        </select>`
     : '';
 

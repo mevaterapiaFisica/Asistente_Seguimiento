@@ -454,10 +454,14 @@ h1, h2, p { margin: 0; }
 .deriv-check-label { font-size: 13px; display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .deriv-hint { color: var(--muted); font-size: 11px; }
 
-.deriv-layout { height: calc(100vh - 330px); min-height: 400px; grid-template-columns: 1fr 1fr; }
+.deriv-layout { height: calc(100vh - 395px); min-height: 350px; grid-template-columns: 1fr 1fr; }
+
+/* Limitar columnas al alto del layout para que la barra quede siempre visible debajo */
+#tab-derivacion .left-col,
+#tab-derivacion .right-col { max-height: calc(100vh - 395px); }
 
 .deriv-summary-bar {
-  position: sticky; bottom: 0;
+  position: static;
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
   padding: 10px 16px; margin-top: 10px;
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
