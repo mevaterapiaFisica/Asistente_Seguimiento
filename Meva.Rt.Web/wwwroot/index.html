@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260608g">
 </head>
 <body>
   <div class="page">
@@ -137,13 +138,15 @@
           <span class="filter-label">Centro:</span>
           <div id="fisicaCenterFilterPills" class="pill-row"></div>
         </div>
-        <div class="two-col-layout">
+        <div class="two-col-layout" id="fisicaLayout">
           <div class="left-col">
             <div id="fisicaTaskCards"></div>
             <div id="fisicaPhysicistPanel"></div>
           </div>
           <div class="right-col" id="fisicaDetailPanel">
             <p class="detail-placeholder">Seleccione una tarea o fisico para ver pacientes.</p>
+          </div>
+          <div class="fisica-reco-col" id="fisicaRecoPanel">
           </div>
         </div>
       </section>
@@ -255,6 +258,6 @@
 
     </main>
   </div>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260608g"></script>
 </body>
 </html>

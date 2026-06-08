@@ -4,6 +4,10 @@ using Meva.Rt.Core;
 
 namespace Meva.Rt.Infrastructure.Storage;
 
+// IMPORTANTE: estos archivos solo deben contener transiciones detectadas
+// en tiempo real por BootstrapService. No importar datos históricos de
+// estado puntual — los promedios resultantes no serían comparables con
+// las transiciones futuras.
 public sealed class StageTransitionStore : IStageTransitionStore
 {
     private readonly string _filePath;

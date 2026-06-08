@@ -68,7 +68,14 @@ builder.Services.AddSingleton<BootstrapService>();
 var app = builder.Build();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        if (ctx.File.Name == "index.html")
+            ctx.Context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    }
+});
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 

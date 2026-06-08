@@ -350,6 +350,52 @@ h1, h2, p { margin: 0; }
 /* ── Fisica tab ───────────────────────────────────────────────────────────── */
 
 #tab-fisica .two-col-layout { grid-template-columns: 320px 1fr; }
+#tab-fisica .two-col-layout.fisica-three-col { grid-template-columns: 3fr 5fr 2fr; }
+
+.fisica-reco-col {
+  display: none;
+}
+#tab-fisica .two-col-layout.fisica-three-col .fisica-reco-col {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 12px 10px; max-height: calc(100vh - 240px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.fisica-reco-subtitle {
+  font-size: 11px; color: var(--accent); font-weight: 500; margin: -3px 0 2px;
+}
+.fisica-reco-ambiguous {
+  font-size: 10px; background: #fff3e0; color: var(--orange);
+  border: 1px solid #ffcc80; border-radius: 6px;
+  padding: 3px 8px; text-align: center;
+}
+.fisica-reco-grid {
+  display: grid; grid-template-columns: 1fr; gap: 5px;
+}
+.technique-card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 9px; padding: 7px 8px;
+}
+.technique-card--highlighted { border-left: 3px solid var(--green); }
+.technique-card--unavailable { opacity: 0.55; border-style: dashed; }
+.technique-card-unavailable-msg { font-size: 9px; color: var(--orange); font-style: italic; margin-top: 2px; }
+.technique-card-title {
+  font-size: 10px; font-weight: 700; color: var(--ink);
+  margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.technique-card-divider { border: none; border-top: 1px solid var(--line); margin: 3px 0; }
+.technique-card-machine {
+  display: flex; align-items: baseline; gap: 3px; font-size: 9px; padding: 1px 0;
+}
+.technique-card-rank { font-weight: 700; color: var(--muted); min-width: 13px; }
+.technique-card-mname { flex: 1; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.technique-card-slots { color: var(--muted); white-space: nowrap; }
+.fisica-reco-legend {
+  font-size: 9px; color: var(--muted); font-style: italic;
+  padding-top: 5px; border-top: 1px solid var(--line); margin-top: auto;
+}
+#tab-fisica .patient-row.fisica-pat-selected {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
 
 .detail-subtitle {
   font-size: 12px; font-weight: 600; color: var(--accent);

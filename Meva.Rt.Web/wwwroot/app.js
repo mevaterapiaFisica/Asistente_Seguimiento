@@ -40,7 +40,9 @@ const state = {
   fisica: {
     selectedCenters: new Set(),
     selectedTask: null,
-    selectedPhysicist: null
+    selectedPhysicist: null,
+    selectedPatient: null,
+    recoWeeklyStats: null
   }
 };
 
@@ -142,6 +144,54 @@ const PROFESSIONAL_STAGE_MAP = {
   Fisicos: ['F6A', 'F6B', 'F6F', 'F6G', 'F7A', 'F7C']
 };
 const PHYSICS_STAGES = PROFESSIONAL_STAGE_MAP.Fisicos;
+
+// ── Fisica reco constants ─────────────────────────────────────────────────────
+
+// resolvePlanningTimeSource() es la fuente única de verdad para decidir
+// qué tiempos de referencia usar en toda la aplicación.
+// Usada en: herramienta de selección de equipo, panel de alertas.
+function resolvePlanningTimeSource(weeklyStats) {
+  const CRITICAL_STAGES = ['F6B', 'F6C', 'F6F', 'F6G', 'F7A'];
+  const MIN_WEEKS_REQUIRED = 4;
+  const weeksWithData = new Set(
+    weeklyStats
+      .filter(s => CRITICAL_STAGES.includes(s.stageCode))
+      .map(s => s.weekStart)
+  ).size;
+  return {
+    source: weeksWithData >= MIN_WEEKS_REQUIRED ? 'weekly_stats' : 'expected_days',
+    weeksAvailable: weeksWithData,
+    weeksRequired: MIN_WEEKS_REQUIRED
+  };
+}
+
+const FISICA_TECHNIQUES = [
+  { key: '3DC-6X',        label: '3DC - 6X',
+    centerEnabled: _caps => true,                                              machineEnabled: _cap => true },
+  { key: '3DC-AltaE',     label: '3DC - Alta E',
+    centerEnabled: caps => caps.some(c => c.highEnergyBeams?.length > 0),     machineEnabled: cap => cap.highEnergyBeams?.length > 0 },
+  { key: '3DC-e',         label: '3DC - e⁻',
+    centerEnabled: caps => caps.some(c => c.canDoElectrons),                  machineEnabled: cap => cap.canDoElectrons },
+  { key: 'IMRT-estatico', label: 'IMRT estático',
+    centerEnabled: _caps => true,                                              machineEnabled: _cap => true },
+  { key: 'IMRT-VMAT',     label: 'IMRT VMAT',
+    centerEnabled: caps => caps.some(c => c.canDoVMAT),                       machineEnabled: cap => cap.canDoVMAT },
+  { key: 'IGRT',          label: 'IGRT',
+    centerEnabled: caps => caps.some(c => c.canDoIGRT),                       machineEnabled: cap => cap.canDoIGRT },
+  { key: 'SBRT',          label: 'SBRT',
+    centerEnabled: caps => caps.some(c => c.canDoSBRT),                       machineEnabled: cap => cap.canDoSBRT },
+  { key: 'RC',            label: 'RC',
+    centerEnabled: caps => caps.some(c => c.canDoRC),                         machineEnabled: cap => cap.canDoRC },
+];
+
+const TECH_HIGHLIGHT_MAP = {
+  '3DC':  ['3DC-6X', '3DC-AltaE', '3DC-e'],
+  'IMRT': ['IMRT-estatico', 'IMRT-VMAT'],
+  'VMAT': ['IMRT-VMAT'],
+  'SBRT': ['SBRT'],
+  'RC':   ['RC'],
+  'IGRT': ['IGRT'],
+};
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
@@ -1195,6 +1245,209 @@ function renderTomographAgendaDetail() {
 
 // ── Fisica tab ────────────────────────────────────────────────────────────────
 
+function _addBusinessDays(dateStr, n) {
+  if (!n || n <= 0) return dateStr;
+  const d = new Date(dateStr + 'T12:00:00');
+  let added = 0;
+  while (added < Math.ceil(n)) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() > 0 && d.getDay() < 6) added++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function _fisicaFreeSlots(machineName) {
+  const eq = (state.homeData?.equipments ?? []).find(e => e.displayName === machineName);
+  if (!eq?.standardSlotMinutes || !eq?.workingHours) return null;
+  const total = Math.floor((Number(eq.workingHours) - Number(eq.reservedSpecialHours || 0)) * 60 / eq.standardSlotMinutes);
+  return total - (eq.agendaPatients ?? 0);
+}
+
+async function _fisicaGetStageDays(stages) {
+  if (!state.fisica.recoWeeklyStats) {
+    try {
+      const resp = await fetch('/api/stats/weekly');
+      state.fisica.recoWeeklyStats = resp.ok ? await resp.json() : [];
+    } catch { state.fisica.recoWeeklyStats = []; }
+  }
+  const stats = state.fisica.recoWeeklyStats;
+  const { source, weeksAvailable, weeksRequired } = resolvePlanningTimeSource(stats);
+
+  if (source === 'expected_days') {
+    return {
+      map: Object.fromEntries(stages.map(s => [s.code, s.expectedDays ?? 0])),
+      source: 'expected_days',
+      weeksUsed: weeksAvailable,
+      weeksRequired
+    };
+  }
+
+  const weekStarts = [...new Set(stats.map(s => s.weekStart))].sort().reverse();
+  const N = Math.min(weekStarts.length, 8);
+  const recentWeeks = new Set(weekStarts.slice(0, N));
+  const agg = {};
+  for (const s of stats.filter(s => recentWeeks.has(s.weekStart))) {
+    if (!agg[s.stageCode]) agg[s.stageCode] = { count: 0, sumDays: 0 };
+    agg[s.stageCode].count += s.count;
+    agg[s.stageCode].sumDays += s.sumDays;
+  }
+  const map = {};
+  for (const s of stages) {
+    map[s.code] = agg[s.code]?.count > 0 ? agg[s.code].sumDays / agg[s.code].count : (s.expectedDays ?? 0);
+  }
+  return { map, source: 'weekly_stats', weeksUsed: N, weeksRequired };
+}
+
+async function _fisicaEstimatedDate(fromStageCode) {
+  const stages = state.configData?.stages ?? state.homeData?.stages ?? [];
+  const f6b = stages.find(s => s.code === 'F6B');
+  const f11 = stages.find(s => s.code === 'F11');
+  if (!f11) return { dateStr: null, source: 'expected_days', weeksUsed: 0, breakdown: [] };
+  const from = stages.find(s => s.code === fromStageCode) ?? f6b;
+  const fromSort = from?.sortOrder ?? 0;
+  const rangeStages = stages
+    .filter(s => (s.sortOrder ?? 0) >= fromSort && (s.sortOrder ?? 0) <= (f11.sortOrder ?? 999))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const { map, source, weeksUsed, weeksRequired } = await _fisicaGetStageDays(stages);
+  const breakdown = rangeStages.map(s => ({
+    code: s.code,
+    name: s.displayName ?? s.code,
+    days: map[s.code] ?? s.expectedDays ?? 0,
+    expected: s.expectedDays ?? 0
+  }));
+  const totalDays = breakdown.reduce((sum, b) => sum + b.days, 0);
+  return { dateStr: _addBusinessDays(todayStr(), Math.round(totalDays)), totalDays, source, weeksUsed, weeksRequired, breakdown };
+}
+
+function _fisicaHighlightedKeys(patient) {
+  if (!patient) return [];
+  const label = (patient.treatmentLabel || '').toUpperCase();
+  const tech  = (patient.treatmentTechnique || '').toUpperCase();
+  if (label.startsWith('3DC') || tech === '3DC') return TECH_HIGHLIGHT_MAP['3DC'];
+  if (label.includes('IGRT') && label.includes('VMAT')) return [...TECH_HIGHLIGHT_MAP['IGRT'], ...TECH_HIGHLIGHT_MAP['VMAT']];
+  if (label.startsWith('IGRT') || tech === 'IGRT') return TECH_HIGHLIGHT_MAP['IGRT'];
+  if (label.includes('VMAT') || tech === 'VMAT') return TECH_HIGHLIGHT_MAP['VMAT'];
+  if (label === 'IMRT' || tech === 'IMRT') return TECH_HIGHLIGHT_MAP['IMRT'];
+  if (label.startsWith('SBRT') || tech === 'SBRT' || tech === 'SRS') return TECH_HIGHLIGHT_MAP['SBRT'];
+  if (label.startsWith('RC') || tech === 'RC') return TECH_HIGHLIGHT_MAP['RC'];
+  return [];
+}
+
+function _fisicaPatientRowClickable(row, p) {
+  if (state.fisica.selectedCenters.size !== 1) return;
+  row.style.cursor = 'pointer';
+  row.classList.toggle('fisica-pat-selected', state.fisica.selectedPatient?.patientId === p.patientId);
+  row.addEventListener('click', () => {
+    state.fisica.selectedPatient = state.fisica.selectedPatient?.patientId === p.patientId ? null : p;
+    document.querySelectorAll('#fisicaDetailPanel .patient-row').forEach(r => r.classList.remove('fisica-pat-selected'));
+    if (state.fisica.selectedPatient) row.classList.add('fisica-pat-selected');
+    renderFisicaReco();
+  });
+}
+
+async function renderFisicaReco() {
+  const panel = document.getElementById('fisicaRecoPanel');
+  if (!panel || state.fisica.selectedCenters.size !== 1) return;
+  panel.innerHTML = '<p class="detail-placeholder">Calculando…</p>';
+
+  if (!state.configData) {
+    try {
+      const resp = await fetch('/api/configuration');
+      state.configData = resp.ok ? await resp.json() : null;
+    } catch {}
+  }
+
+  const center = [...state.fisica.selectedCenters][0];
+  const patient = state.fisica.selectedPatient;
+  const allMachines = state.homeData?.configuration?.machines || [];
+  const centerMachines = allMachines.filter(m => m.centerName === center);
+  const allCaps = state.configData?.machineCapabilities || [];
+  const centerCaps = centerMachines.map(m => allCaps.find(c => c.machineName === m.displayName)).filter(Boolean);
+
+  const fromStage = patient?.stageCode ?? 'F6B';
+  const { dateStr, totalDays, source, weeksUsed, weeksRequired, breakdown } = await _fisicaEstimatedDate(fromStage);
+
+  const highlighted = _fisicaHighlightedKeys(patient);
+
+  panel.innerHTML = '';
+  const titleText = patient
+    ? `Recomendación — ${patient.patientName.split(' ').slice(0, 2).join(' ')}`
+    : 'Recomendación de equipo';
+  panel.appendChild(el('div', 'detail-title', titleText));
+
+  if (dateStr) {
+    panel.appendChild(el('div', 'fisica-reco-subtitle',
+      `Inicio estimado: ${_fmtDate(dateStr)}${patient ? ` (desde ${patient.stageCode})` : ' (desde F6B)'}`));
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'fisica-reco-grid';
+
+  const rankMachines = machines => machines
+    .map(m => ({ name: m.displayName, freeSlots: _fisicaFreeSlots(m.displayName) }))
+    .sort((a, b) => (b.freeSlots ?? -1) - (a.freeSlots ?? -1))
+    .slice(0, 2);
+
+  const cardInnerHtml = (tech, ranked) =>
+    `<div class="technique-card-title">${tech.label}</div>` +
+    `<hr class="technique-card-divider">` +
+    ranked.map((m, i) =>
+      `<div class="technique-card-machine">` +
+        `<span class="technique-card-rank">${i === 0 ? '1°' : '2°'}</span>` +
+        `<span class="technique-card-mname">${_shortName(m.name)}</span>` +
+        `<span class="technique-card-slots"${m.freeSlots != null && m.freeSlots < 0 ? ' style="color:var(--red,#c0392b)"' : ''}>${m.freeSlots != null ? `${m.freeSlots} libres` : '?'}</span>` +
+      `</div>`
+    ).join('');
+
+  if (patient && highlighted.length > 0) {
+    // Con paciente: mostrar solo las tarjetas relevantes con equipo disponible
+    for (const tech of FISICA_TECHNIQUES) {
+      if (!highlighted.includes(tech.key)) continue;
+      const enabledMachines = centerMachines.filter(m => {
+        const cap = allCaps.find(c => c.machineName === m.displayName);
+        return cap ? tech.machineEnabled(cap) : false;
+      });
+      if (!enabledMachines.length) continue;
+      const card = document.createElement('div');
+      card.className = 'technique-card technique-card--highlighted';
+      card.innerHTML = cardInnerHtml(tech, rankMachines(enabledMachines));
+      grid.appendChild(card);
+    }
+  } else {
+    // Sin paciente: mostrar todas las tarjetas habilitadas del centro
+    for (const tech of FISICA_TECHNIQUES) {
+      if (!tech.centerEnabled(centerCaps)) continue;
+      const enabledMachines = centerMachines.filter(m => {
+        const cap = allCaps.find(c => c.machineName === m.displayName);
+        return cap ? tech.machineEnabled(cap) : false;
+      });
+      if (!enabledMachines.length) continue;
+      const card = document.createElement('div');
+      card.className = 'technique-card';
+      card.innerHTML = cardInnerHtml(tech, rankMachines(enabledMachines));
+      grid.appendChild(card);
+    }
+  }
+
+  panel.appendChild(grid);
+
+  let legendLine1, legendLine2;
+  if (source === 'weekly_stats') {
+    legendLine1 = `Tiempos basados en estadísticas de las últimas ${weeksUsed} semanas`;
+  } else if (weeksUsed === 0) {
+    legendLine1 = 'Tiempos basados en valores de referencia';
+    legendLine2 = `(sin estadísticas acumuladas aún — se usarán automáticamente al completar ${weeksRequired} semanas)`;
+  } else {
+    legendLine1 = 'Tiempos basados en valores de referencia';
+    legendLine2 = `(${weeksUsed} semana${weeksUsed !== 1 ? 's' : ''} acumulada${weeksUsed !== 1 ? 's' : ''} de ${weeksRequired} necesarias para usar estadísticas)`;
+  }
+  const legendEl = document.createElement('div');
+  legendEl.className = 'fisica-reco-legend';
+  legendEl.innerHTML = legendLine1 + (legendLine2 ? `<br>${legendLine2}` : '') +
+    '<br>(desde F6B — Esperando Planificación)';
+  panel.appendChild(legendEl);
+}
+
 function buildFisicaCenterFilter() {
   const row = document.getElementById('fisicaCenterFilterPills');
   if (!row) return;
@@ -1206,12 +1459,14 @@ function buildFisicaCenterFilter() {
   const todosActive = state.fisica.selectedCenters.size === 0;
   row.appendChild(makePill('Todos', todosActive, () => {
     state.fisica.selectedCenters.clear();
+    state.fisica.selectedPatient = null;
     renderFisicaView();
   }));
   centers.forEach(c => {
     row.appendChild(makePill(c, state.fisica.selectedCenters.has(c), () => {
       if (state.fisica.selectedCenters.has(c)) state.fisica.selectedCenters.delete(c);
       else state.fisica.selectedCenters.add(c);
+      state.fisica.selectedPatient = null;
       renderFisicaView();
     }));
   });
@@ -1334,6 +1589,12 @@ function renderFisicaView() {
   }
 
   renderFisicaDetail();
+
+  // Toggle 3-col layout and reco panel
+  const hasSingleCenter = state.fisica.selectedCenters.size === 1;
+  const fisicaLayout = document.getElementById('fisicaLayout');
+  if (fisicaLayout) fisicaLayout.classList.toggle('fisica-three-col', hasSingleCenter);
+  if (hasSingleCenter) renderFisicaReco();
 }
 
 function renderFisicaDetail() {
@@ -1379,6 +1640,7 @@ function renderFisicaDetail() {
         ariaBadges(p) +
         `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
       panel.appendChild(row);
+      _fisicaPatientRowClickable(row, p);
     });
     return;
   }
@@ -1424,6 +1686,7 @@ function renderFisicaDetail() {
           ariaBadges(p) +
           `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
         panel.appendChild(row);
+        _fisicaPatientRowClickable(row, p);
       });
     });
     return;
