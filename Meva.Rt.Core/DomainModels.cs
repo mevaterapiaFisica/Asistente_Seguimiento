@@ -123,6 +123,13 @@ public sealed class RtMachineCapabilities
     public List<string> HighEnergyBeams { get; set; } = new();
 }
 
+public sealed class TechniqueDurationSetting
+{
+    public string TreatmentLabel { get; set; } = string.Empty;
+    // Normalmente un valor; RC fracción única acepta dos (20 y 45).
+    public List<int> ValidDurationMinutes { get; set; } = new();
+}
+
 public sealed class RtSystemConfiguration
 {
     public List<RtCenter> Centers { get; set; } = new();
@@ -132,8 +139,10 @@ public sealed class RtSystemConfiguration
     public List<MachineCapacitySetting> MachineCapacities { get; set; } = new();
     public List<MachineCapacitySetting> TomographCapacities { get; set; } = new();
     public List<RtMachineCapabilities> MachineCapabilities { get; set; } = new();
+    public List<TechniqueDurationSetting> TechniqueDurations { get; set; } = new();
     public int LongWaitThresholdDays { get; set; } = 40;
     public int UpcomingScrapeDays { get; set; } = 15;
+    public int P1AlertThresholdDays { get; set; } = 5;
 }
 
 public sealed class SitraMedRuntimeOptions

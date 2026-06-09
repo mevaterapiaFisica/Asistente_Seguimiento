@@ -476,6 +476,15 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
             var tech = TreatmentClassifier.Classify(item.Treatment);
             item.TreatmentLabel = TreatmentClassifier.BuildLabel(tech, plan.IrradiationModality, plan.ExactBeamEnergy, plan.BeamType);
         }
+        // RC refinement: fraccionada / fracción única según NumberOfFractions de ARIA
+        if (item.TreatmentLabel?.Contains("RC") == true
+            && ariaByPatient.TryGetValue(hc, out var rcPlan)
+            && rcPlan.NumberOfFractions.HasValue)
+        {
+            item.TreatmentLabel = rcPlan.NumberOfFractions.Value == 1
+                ? "RC fracción única"
+                : "RC fraccionada";
+        }
     }
 
     var stageByCodeApply = configurationProvider.Configuration.Stages

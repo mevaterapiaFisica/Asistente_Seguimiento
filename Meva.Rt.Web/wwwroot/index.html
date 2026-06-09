@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css?v=20260608g">
+  <link rel="stylesheet" href="styles.css?v=20260609a">
 </head>
 <body>
   <div class="page">
@@ -17,6 +17,7 @@
 
     <nav class="tabs">
       <button class="tab-button active" data-tab="resumen" type="button">Resumen</button>
+      <button class="tab-button" data-tab="alertas" type="button">Alertas</button>
       <button class="tab-button" data-tab="followup" type="button">Seguimiento</button>
       <button class="tab-button" data-tab="tomograph" type="button">Agenda Tomografos</button>
       <button class="tab-button" data-tab="agenda" type="button">Agenda Equipos</button>
@@ -36,6 +37,17 @@
     </nav>
 
     <main>
+
+      <!-- ── Alertas ───────────────────────────────────────────────────── -->
+      <section id="tab-alertas" class="tab-panel">
+        <div class="alertas-toolbar">
+          <button id="refreshAlertasBtn" class="tab-button active" type="button">Actualizar alertas</button>
+          <span id="alertasStatus" class="agenda-status"></span>
+        </div>
+        <div id="alertasCentros" class="alertas-section"></div>
+        <div id="alertasEquipos" class="alertas-section"></div>
+        <div id="alertasPacientes" class="alertas-section"></div>
+      </section>
 
       <!-- ── Resumen ────────────────────────────────────────────────────── -->
       <section id="tab-resumen" class="tab-panel active">
@@ -220,6 +232,10 @@
             <div class="panel-header"><h2>Tomografos</h2><p>Capacidad por tomografo</p></div>
             <div id="tomographConfigList" class="config-list"></div>
           </section>
+          <section class="panel">
+            <div class="panel-header"><h2>Tiempos por tecnica</h2><p>Duraciones validas de turno en minutos por etiqueta de tratamiento</p></div>
+            <div id="techniqueDurationList" class="config-list"></div>
+          </section>
         </div>
         <div class="config-save-bar">
           <button id="saveConfigBtn" class="tab-button active" type="button">Guardar configuracion</button>
@@ -258,6 +274,6 @@
 
     </main>
   </div>
-  <script src="app.js?v=20260608g"></script>
+  <script src="app.js?v=20260609a"></script>
 </body>
 </html>

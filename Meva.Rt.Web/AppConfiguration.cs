@@ -102,7 +102,22 @@ public static class AppConfiguration
                 new MachineCapacitySetting { CenterName = "MEVA-Viamonte", MachineName = "MEVA-Viamonte - Tomografo", WorkingHours = 8, StandardSlotMinutes = 30, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "QUILMES",        MachineName = "QUILMES - Tomografo",       WorkingHours = 8, StandardSlotMinutes = 30, ReservedSpecialHours = 0 },
                 new MachineCapacitySetting { CenterName = "SAN JUSTO",      MachineName = "SAN JUSTO - Tomografo",    WorkingHours = 8, StandardSlotMinutes = 30, ReservedSpecialHours = 0 }
-            }
+            },
+            TechniqueDurations =
+            {
+                new TechniqueDurationSetting { TreatmentLabel = "IGRT",              ValidDurationMinutes = { 20 } },
+                new TechniqueDurationSetting { TreatmentLabel = "SBRT",              ValidDurationMinutes = { 30 } },
+                new TechniqueDurationSetting { TreatmentLabel = "RC fraccionada",    ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "RC fracción única", ValidDurationMinutes = { 20, 45 } },
+                new TechniqueDurationSetting { TreatmentLabel = "IMRT - estático",   ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "VMAT",              ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "3DC - 6X",          ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "3DC e-",            ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "3DC 10X",           ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "3DC 15X",           ValidDurationMinutes = { 15 } },
+                new TechniqueDurationSetting { TreatmentLabel = "3DC 18X",           ValidDurationMinutes = { 15 } },
+            },
+            P1AlertThresholdDays = 5
         };
     }
 }

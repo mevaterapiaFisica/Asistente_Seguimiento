@@ -158,7 +158,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly Regex TreatmentZoneRegex = new(
-        @"<td[^>]*>\s*(?<zone>(?=[^<]*(?:Tridimensional|\b3DC?\b|Intensidad(?:\s|&nbsp;)+Modulada|\bSBRT\b|\bIGRT\b|\bTBI\b|Irradiaci[oó]n?(?:\s|&nbsp;)+[Cc]orporal|Radiocirug[ií]a|Braquiterapia|Intraoperatoria|\bIMRT\b|\bIORT\b|\bRXCX\b))[^<]+)\s*</td>",
+        @"<td[^>]*>\s*(?<zone>(?=[^<]*(?:Tridimensional|\b3DC?\b|Intensidad(?:\s|&nbsp;)+Modulada|\bSBRT\b|\bIGRT\b|\bTBI\b|\bVMAT\b|\barco\b|Irradiaci[oó]n?(?:\s|&nbsp;)+[Cc]orporal|Radiocirug[ií]a|Braquiterapia|Intraoperatoria|\bIMRT\b|\bIORT\b|\bRXCX\b))[^<]+)\s*</td>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly string[] DateFormats = ["dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd"];

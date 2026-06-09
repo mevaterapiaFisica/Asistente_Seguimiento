@@ -1525,8 +1525,8 @@ public sealed class PlaywrightSitraMedClient
                     """
                     tr => {
                         const keywords = ['tridimensional', '3d', 'modulada', 'imrt', 'sbrt',
-                                          'igrt', 'tbi', 'irradiaci', 'radiocirug', 'braquiterapia',
-                                          'intraoperatoria', 'iort', 'rxcx'];
+                                          'igrt', 'tbi', 'irradiaci', 'radiocirug', 'vmat', 'arco',
+                                          'braquiterapia', 'intraoperatoria', 'iort', 'rxcx'];
                         const secondary = ['braquiterapia', 'intraoperatoria', 'iort'];
                         const cells = Array.from(tr.querySelectorAll(':scope > td'));
                         let fallback = '';
