@@ -58,8 +58,11 @@ internal static class FollowUpDateParser
             "F4" => "<!-- f3",
             // F5 Marcación: empieza cuando termina F4 (F. TAC)
             "F5" => "<!-- f4",
-            // F6x Planificación: empieza cuando termina F5 (F. Delimitado)
-            "F6A" or "F6B" or "F6C" or "F6F" or "F6G" => "<!-- f5",
+            // F6A Planificación: empieza cuando termina F5 (F. Delimitado)
+            "F6A" => "<!-- f5",
+            // F6B+ (Asignación Físico en adelante): empieza cuando termina F6A (F. Asignación Resp.)
+            // La primera fecha pura en la sección <!-- f6 es exactamente esa fecha.
+            "F6B" or "F6C" or "F6F" or "F6G" => "<!-- f6",
             // F7x: empieza cuando termina F6 (Aprobación / F. Fin Etapa)
             "F7A" or "F7C" => "<!-- f6",
             _ => null
