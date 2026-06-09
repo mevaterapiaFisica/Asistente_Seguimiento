@@ -2852,6 +2852,65 @@ function _computeStageRefMap(weeklyStats, stageDefs) {
   return Object.fromEntries(stageDefs.map(s => [s.code, s.expectedDays ?? 0]));
 }
 
+const ALERT_EXCLUDED_TECHNIQUES = ['TBI', 'TSET', 'BQT', 'IORT'];
+
+// Retorna {ref, source} o null (caller usa expectedDays).
+// source: 'est. semanal' | 'promedio actual'
+function getReferenceForAlerts(stageCode, weeklyStats, eligiblePatients) {
+  const { source } = resolvePlanningTimeSource(weeklyStats || []);
+
+  if (source === 'weekly_stats') {
+    const stageStats = (weeklyStats || []).filter(s => s.stageCode === stageCode);
+    if (stageStats.length > 0) {
+      const recent = [...stageStats]
+        .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+        .slice(0, 8);
+      const totalCount = recent.reduce((s, w) => s + w.count, 0);
+      const totalSum   = recent.reduce((s, w) => s + w.sumDays, 0);
+      if (totalCount > 0) return { ref: totalSum / totalCount, source: 'est. semanal' };
+    }
+  }
+
+  // Fuente 2: promedio de pacientes activos en esa etapa (mínimo 3)
+  const inStage = (eligiblePatients || []).filter(p => p.stageCode === stageCode);
+  if (inStage.length >= 3) {
+    const avg = inStage.reduce((s, p) => s + p.daysInStage, 0) / inStage.length;
+    return { ref: avg, source: 'promedio actual' };
+  }
+
+  return null;  // caller usa expectedDays
+}
+
+// Suma getReferenceForAlerts para cada etapa desde F3 hasta upToStageCode (inclusive)
+function _getAccumReference(upToStageCode, weeklyStats, eligiblePatients, stageDefs, stageMap) {
+  const F3_SORT = stageDefs.find(s => s.code === 'F3')?.sortOrder ?? 10;
+  const upSort  = stageMap[upToStageCode]?.sortOrder ?? 0;
+  const stagesUpTo = stageDefs
+    .filter(s => (s.sortOrder ?? 0) >= F3_SORT && (s.sortOrder ?? 0) <= upSort)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  let total = 0, dominantSource = 'referencia';
+  for (const stage of stagesUpTo) {
+    const result = getReferenceForAlerts(stage.code, weeklyStats, eligiblePatients);
+    if (result !== null) {
+      total += result.ref;
+      if (result.source === 'est. semanal') dominantSource = 'est. semanal';
+      else if (dominantSource === 'referencia') dominantSource = 'promedio actual';
+    } else {
+      total += stage.expectedDays ?? 0;
+    }
+  }
+  return { total, source: dominantSource };
+}
+
+function _alertasSourceLegend(source, weeksAvailable) {
+  if (source === 'est. semanal')
+    return `<p class="alertas-legend">Referencias basadas en estadísticas de las últimas ${weeksAvailable} semanas.</p>`;
+  if (source === 'promedio actual')
+    return `<p class="alertas-legend">Referencias basadas en el promedio actual de pacientes en cada etapa. Se usarán estadísticas semanales al completar 4 semanas.</p>`;
+  return `<p class="alertas-legend">Referencias basadas en valores de referencia de configuración — algunas etapas sin datos suficientes.</p>`;
+}
+
 function _lastNBusinessDays(n) {
   const days = [];
   const d = new Date();
@@ -2892,10 +2951,12 @@ function _buildAlertasCentros(patients, stageDefs, stageRefMap) {
   const alerts = [];
 
   // A1: Etapas demoradas por centro
+  const excluded = new Set(ALERT_EXCLUDED_TECHNIQUES);
   const stageMap = Object.fromEntries(stageDefs.map(s => [s.code, s]));
   const byCenterStage = {};
   for (const p of patients) {
     if (p.isLongWait) continue;
+    if (excluded.has(p.treatmentTechnique)) continue;
     const key = `${p.centerName}||${p.stageCode}`;
     if (!byCenterStage[key]) byCenterStage[key] = [];
     byCenterStage[key].push(p.daysInStage);
@@ -2950,20 +3011,34 @@ function _renderAlertasCentros(patients, stageDefs, stageRefMap) {
 // ── Sección B: Equipos ────────────────────────────────────────────────────────
 
 function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDurations, availableDates) {
-  const realSlots = (agendaItems || []);
+  const excludedTech = new Set(ALERT_EXCLUDED_TECHNIQUES);
+  const allSlots  = (agendaItems || []);
+  // Para B1/B2 excluir técnicas especiales; para B3 usar todos
+  const stdSlots  = allSlots.filter(s => !excludedTech.has(
+    (s.treatmentLabel || '').split(/[\s\-]/)[0].toUpperCase() === 'TBI' ? 'TBI'
+    : (s.treatmentLabel || '').toUpperCase().includes('TSET') ? 'TSET'
+    : (s.treatmentLabel || '').toUpperCase().includes('BQT')  ? 'BQT'
+    : (s.treatmentLabel || '').toUpperCase().includes('IORT') ? 'IORT'
+    : ''
+  ));
 
-  // Agrupar por equipo y fecha
-  const byMachDate = {};
-  for (const s of realSlots) {
-    const date = typeof s.agendaDate === 'string' ? s.agendaDate : String(s.agendaDate);
-    const key = `${s.machineName}||${date}`;
-    if (!byMachDate[key]) byMachDate[key] = [];
-    byMachDate[key].push(s);
+  // Agrupar por equipo y fecha (dos grupos: estándar y todos)
+  const byMachDateStd = {}, byMachDateAll = {};
+  const dateOf = s => typeof s.agendaDate === 'string' ? s.agendaDate : String(s.agendaDate);
+  for (const s of stdSlots) {
+    const key = `${s.machineName}||${dateOf(s)}`;
+    if (!byMachDateStd[key]) byMachDateStd[key] = [];
+    byMachDateStd[key].push(s);
+  }
+  for (const s of allSlots) {
+    const key = `${s.machineName}||${dateOf(s)}`;
+    if (!byMachDateAll[key]) byMachDateAll[key] = [];
+    byMachDateAll[key].push(s);
   }
 
-  // B1: Sobrecarga
+  // B1: Sobrecarga (solo turnos estándar vs capacidad)
   const b1 = [];
-  for (const [key, slots] of Object.entries(byMachDate)) {
+  for (const [key, slots] of Object.entries(byMachDateStd)) {
     const [machine, date] = key.split('||');
     const cap = machineCapacities?.find(c => c.machineName === machine);
     if (!cap) continue;
@@ -2972,23 +3047,22 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
       b1.push({ machine, date, real: slots.length, capacity, excess: slots.length - capacity });
   }
 
-  // B2: Duración incorrecta
+  // B2: Duración incorrecta (solo turnos estándar)
   const b2 = [];
-  for (const s of realSlots) {
+  for (const s of stdSlots) {
     const err = validateSlotDuration(s, techniqueDurations);
     if (err) {
-      const date = typeof s.agendaDate === 'string' ? s.agendaDate : String(s.agendaDate);
-      b2.push({ machine: s.machineName, date, time: s.startTime, patient: s.patientName, label: s.treatmentLabel, actual: err.actualMinutes, valid: err.validMinutes });
+      b2.push({ machine: s.machineName, date: dateOf(s), time: s.startTime, patient: s.patientName, label: s.treatmentLabel, actual: err.actualMinutes, valid: err.validMinutes });
     }
   }
 
-  // B3: Superposición
+  // B3: Superposición (todos los turnos, incluyendo TBI/BQT etc.)
   const b3 = [];
-  for (const [key, slots] of Object.entries(byMachDate)) {
+  for (const [key, slots] of Object.entries(byMachDateAll)) {
     const [machine, date] = key.split('||');
     const sorted = [...slots].filter(s => s.startTime && s.endTime).sort((a, b) => (parseTime(a.startTime) ?? 0) - (parseTime(b.startTime) ?? 0));
     for (let i = 0; i < sorted.length - 1; i++) {
-      const endI  = parseTime(sorted[i].endTime);
+      const endI   = parseTime(sorted[i].endTime);
       const startJ = parseTime(sorted[i+1].startTime);
       if (endI !== null && startJ !== null && endI > startJ)
         b3.push({ machine, date, t1: `${sorted[i].startTime}-${sorted[i].endTime} ${sorted[i].patientName}`, t2: `${sorted[i+1].startTime}-${sorted[i+1].endTime} ${sorted[i+1].patientName}`, overlap: endI - startJ });
@@ -3003,7 +3077,7 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
     if (machine.toLowerCase().includes('viamonte')) continue;
     const hasRecent = last3.some(d => {
       const key = `${machine}||${d}`;
-      return byMachDate[key]?.length > 0 || (availableDates || []).includes(d);
+      return byMachDateAll[key]?.length > 0 || (availableDates || []).includes(d);
     });
     if (!hasRecent)
       b4.push({ machine, days: last3.join(', ') });
@@ -3042,33 +3116,20 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
 
 // ── Sección C: Pacientes ──────────────────────────────────────────────────────
 
-function _renderAlertasPacientes(patients, stageDefs, stageRefMap, p1Threshold) {
-  const stageMap = Object.fromEntries(stageDefs.map(s => [s.code, s]));
-  const F6A_SORT = stageDefs.find(s => s.code === 'F6A')?.sortOrder ?? 40;
-  const F3_SORT  = stageDefs.find(s => s.code === 'F3')?.sortOrder ?? 10;
+function _renderAlertasPacientes(patients, stageDefs, weeklyStats, p1Threshold) {
+  const excludedTech = new Set(ALERT_EXCLUDED_TECHNIQUES);
+  const stageMap  = Object.fromEntries(stageDefs.map(s => [s.code, s]));
+  const F6A_SORT  = stageDefs.find(s => s.code === 'F6A')?.sortOrder ?? 40;
+  const F3_SORT   = stageDefs.find(s => s.code === 'F3')?.sortOrder ?? 10;
+  const { weeksAvailable } = resolvePlanningTimeSource(weeklyStats || []);
 
-  // Acumulado esperado desde F3 hasta cada etapa (inclusive)
-  const sortedStages = [...stageDefs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const accumExpected = {};  // stageCode → total expected days F3..that stage
-  let acc = 0;
-  for (const s of sortedStages) {
-    if ((s.sortOrder ?? 0) >= F3_SORT) {
-      acc += stageRefMap[s.code] ?? s.expectedDays ?? 0;
-      accumExpected[s.code] = acc;
-    }
-  }
-  // Acumulado hasta (excluido) cada etapa — suma de etapas previas a la actual
-  const accumBefore = {};  // stageCode → expected days from F3 up to but not including this stage
-  let accB = 0;
-  for (const s of sortedStages) {
-    if ((s.sortOrder ?? 0) >= F3_SORT) {
-      accumBefore[s.code] = accB;
-      accB += stageRefMap[s.code] ?? s.expectedDays ?? 0;
-    }
-  }
+  // Pacientes elegibles para C1/C2/C3 (excluye IsLongWait y técnicas especiales)
+  const eligible = patients.filter(p =>
+    !p.isLongWait && !excludedTech.has(p.treatmentTechnique)
+  );
 
-  // C1: P1 con demora
-  const c1 = patients.filter(p =>
+  // C1: P1 con demora (aplica exclusiones igual que el resto)
+  const c1 = eligible.filter(p =>
     p.priority === 1 &&
     (stageMap[p.stageCode]?.sortOrder ?? 0) >= F6A_SORT &&
     p.daysInStage > (p1Threshold ?? 5)
@@ -3078,20 +3139,47 @@ function _renderAlertasPacientes(patients, stageDefs, stageRefMap, p1Threshold) 
     days: p.daysInStage, threshold: p1Threshold ?? 5
   }));
 
-  // C2: Demora por etapa individual
-  const c2 = patients.filter(p => !p.isLongWait).flatMap(p => {
-    const ref = stageRefMap[p.stageCode] ?? stageMap[p.stageCode]?.expectedDays ?? 0;
+  // C2: Demora por etapa individual — referencia dinámica
+  let c2DominantSource = 'referencia';
+  const c2 = eligible.flatMap(p => {
+    const result = getReferenceForAlerts(p.stageCode, weeklyStats, eligible);
+    const ref    = result?.ref ?? stageMap[p.stageCode]?.expectedDays ?? 0;
+    const src    = result ? result.source : 'referencia';
     if (ref <= 0 || p.daysInStage <= ref * 2) return [];
-    return [{ center: p.centerName, name: p.patientName, hc: p.patientId, stage: stageMap[p.stageCode]?.displayName ?? p.stageCode, days: p.daysInStage, ref: Math.round(ref), desv: Math.round(p.daysInStage - ref) }];
+    if (src === 'est. semanal') c2DominantSource = 'est. semanal';
+    else if (c2DominantSource === 'referencia' && src === 'promedio actual') c2DominantSource = 'promedio actual';
+    return [{ center: p.centerName, name: p.patientName, hc: p.patientId,
+      stage: stageMap[p.stageCode]?.displayName ?? p.stageCode,
+      days: p.daysInStage, ref: Math.round(ref), src, desv: Math.round(p.daysInStage - ref) }];
   });
 
-  // C3: Demora acumulada (F3 en adelante)
-  const c3 = patients.filter(p => !p.isLongWait && (stageMap[p.stageCode]?.sortOrder ?? 0) >= F3_SORT).flatMap(p => {
-    const before = accumBefore[p.stageCode] ?? 0;
+  // C3: Demora acumulada desde F3
+  let c3DominantSource = 'referencia';
+  const c3 = eligible.filter(p =>
+    (stageMap[p.stageCode]?.sortOrder ?? 0) >= F3_SORT
+  ).flatMap(p => {
+    // Acumulado "antes" de la etapa actual: suma de referencias F3..etapa anterior
+    const F3_SORT_V = F3_SORT;
+    const curSort   = stageMap[p.stageCode]?.sortOrder ?? 0;
+    const prevStages = stageDefs.filter(s =>
+      (s.sortOrder ?? 0) >= F3_SORT_V && (s.sortOrder ?? 0) < curSort
+    );
+    let before = 0;
+    for (const s of prevStages) {
+      const r = getReferenceForAlerts(s.code, weeklyStats, eligible);
+      before += r !== null ? r.ref : (s.expectedDays ?? 0);
+    }
     const diasDesdeF3 = p.daysInStage + before;
-    const refAcum = accumExpected[p.stageCode] ?? 0;
+
+    const { total: refAcum, source: acumSrc } =
+      _getAccumReference(p.stageCode, weeklyStats, eligible, stageDefs, stageMap);
     if (refAcum <= 0 || diasDesdeF3 <= refAcum * 2) return [];
-    return [{ center: p.centerName, name: p.patientName, hc: p.patientId, stage: stageMap[p.stageCode]?.displayName ?? p.stageCode, acum: Math.round(diasDesdeF3), refAcum: Math.round(refAcum), desv: Math.round(diasDesdeF3 - refAcum) }];
+    if (acumSrc === 'est. semanal') c3DominantSource = 'est. semanal';
+    else if (c3DominantSource === 'referencia' && acumSrc === 'promedio actual') c3DominantSource = 'promedio actual';
+    return [{ center: p.centerName, name: p.patientName, hc: p.patientId,
+      stage: stageMap[p.stageCode]?.displayName ?? p.stageCode,
+      acum: Math.round(diasDesdeF3), refAcum: Math.round(refAcum),
+      desv: Math.round(diasDesdeF3 - refAcum) }];
   });
 
   const totalC = c1.length + c2.length + c3.length;
@@ -3109,14 +3197,23 @@ function _renderAlertasPacientes(patients, stageDefs, stageRefMap, p1Threshold) 
 
   const c2Html = _alertasSectionHtml('c2', 'C2 — Demora por etapa individual', c2, rows =>
     _alertasTable(['Centro', 'Paciente', 'HC', 'Etapa', 'Días', 'Referencia', 'Desvío'],
-      rows.map(r => `<tr><td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td><td>${esc(r.stage)}</td><td>${r.days}</td><td>${r.ref}</td><td class="alertas-red">+${r.desv}</td></tr>`)
-    )
+      rows.map(r => `<tr>
+        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td>
+        <td>${esc(r.stage)}</td><td>${r.days}</td>
+        <td>${r.ref} días <span class="alertas-src">(${r.src})</span></td>
+        <td class="alertas-red">+${r.desv}</td>
+      </tr>`)
+    ) + _alertasSourceLegend(c2DominantSource, weeksAvailable)
   );
 
   const c3Html = _alertasSectionHtml('c3', 'C3 — Demora acumulada (desde F3)', c3, rows =>
     _alertasTable(['Centro', 'Paciente', 'HC', 'Etapa actual', 'Días acumulados', 'Referencia acum.', 'Desvío'],
-      rows.map(r => `<tr><td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td><td>${esc(r.stage)}</td><td>${r.acum}</td><td>${r.refAcum}</td><td class="alertas-red">+${r.desv}</td></tr>`)
-    )
+      rows.map(r => `<tr>
+        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td>
+        <td>${esc(r.stage)}</td><td>${r.acum}</td><td>${r.refAcum}</td>
+        <td class="alertas-red">+${r.desv}</td>
+      </tr>`)
+    ) + _alertasSourceLegend(c3DominantSource, weeksAvailable)
   );
 
   const container = document.getElementById('alertasPacientes');
@@ -3156,7 +3253,7 @@ async function loadAlertasTab() {
 
   _renderAlertasCentros(patients, stageDefs, stageRefMap);
   _renderAlertasEquipos(agendaItems, machCaps, techDurs, availDates);
-  _renderAlertasPacientes(patients, stageDefs, stageRefMap, p1Thresh);
+  _renderAlertasPacientes(patients, stageDefs, state.alertas.weeklyStats, p1Thresh);
 
   state.alertas.loaded = true;
   statusEl.textContent = `Actualizado ${new Date().toLocaleTimeString()}`;
