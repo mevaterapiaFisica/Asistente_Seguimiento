@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css?v=20260609b">
+  <link rel="stylesheet" href="styles.css?v=20260609i">
 </head>
 <body>
   <div class="page">
@@ -16,11 +16,13 @@
     </header>
 
     <nav class="tabs">
-      <button class="tab-button active" data-tab="resumen" type="button">Resumen</button>
-      <button class="tab-button" data-tab="alertas" type="button">Alertas</button>
+      <button class="tab-button active" data-tab="alertas" type="button">Alertas</button>
       <button class="tab-button" data-tab="followup" type="button">Seguimiento</button>
       <button class="tab-button" data-tab="tomograph" type="button">Agenda Tomografos</button>
       <button class="tab-button" data-tab="agenda" type="button">Agenda Equipos</button>
+      <button class="tab-button" data-tab="derivacion" type="button">Derivacion</button>
+      <button class="tab-button" data-tab="resumen" type="button">Tendencias</button>
+      <button class="tab-button" data-tab="fisica" type="button">Fisica</button>
       <div class="scrape-menu-wrap">
         <button type="button" class="ghost-button scrape-menu-trigger" id="scrapMenuBtn">
           <span id="generatedAt">sin datos</span> &#9660;
@@ -31,15 +33,13 @@
           <button type="button" id="actionUpdateAll">Actualizar todo</button>
         </div>
       </div>
-      <button class="tab-button tab-button-dashed" data-tab="fisica" type="button">Fisica</button>
-      <button class="tab-button tab-button-dashed" data-tab="derivacion" type="button">Derivacion</button>
       <button class="tab-button config-tab-btn" data-tab="config" type="button">Configuracion</button>
     </nav>
 
     <main>
 
       <!-- ── Alertas ───────────────────────────────────────────────────── -->
-      <section id="tab-alertas" class="tab-panel">
+      <section id="tab-alertas" class="tab-panel active">
         <div class="alertas-toolbar">
           <button id="refreshAlertasBtn" class="tab-button active" type="button">Actualizar alertas</button>
           <span id="alertasStatus" class="agenda-status"></span>
@@ -49,34 +49,16 @@
         <div id="alertasPacientes" class="alertas-section"></div>
       </section>
 
-      <!-- ── Resumen ────────────────────────────────────────────────────── -->
-      <section id="tab-resumen" class="tab-panel active">
+      <!-- ── Tendencias ───────────────────────────────────────────────────── -->
+      <section id="tab-resumen" class="tab-panel">
         <div class="resumen-layout">
-          <div class="resumen-main">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Estado actual</h2>
-                <p>Pacientes en proceso por centro</p>
-              </div>
-              <div id="resumenEstado" class="resumen-estado-grid"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Tendencias</h2>
-                <p>Promedio de dias por etapa, ultimas 4 semanas</p>
-              </div>
-              <div id="resumenTendencias"></div>
-            </section>
-          </div>
-          <div class="resumen-side">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Alertas</h2>
-                <p>Requieren atencion</p>
-              </div>
-              <div id="resumenAlertas"></div>
-            </section>
-          </div>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Tendencias</h2>
+              <p>Promedio de dias por etapa, ultimas 4 semanas</p>
+            </div>
+            <div id="resumenTendencias"></div>
+          </section>
         </div>
       </section>
 
@@ -274,6 +256,6 @@
 
     </main>
   </div>
-  <script src="app.js?v=20260609b"></script>
+  <script src="app.js?v=20260609i"></script>
 </body>
 </html>

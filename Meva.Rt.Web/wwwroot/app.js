@@ -1,7 +1,7 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  activeTab: 'resumen',
+  activeTab: 'alertas',
   homeData: null,
 
   followup: {
@@ -102,11 +102,20 @@ function priorityBadge(priority) {
   return `<span class="priority-badge priority-p${priority <= 1 ? 1 : 2}">P${priority}</span>`;
 }
 
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function hcTag(patientId) {
-  const isHc = patientId && /^\d{1,3}-\d{4,7}-\d{1,3}$/.test(patientId);
+  if (!patientId || GUID_RE.test(patientId))
+    return `<span class="hc-tag muted-italic">Sin HC</span>`;
+  const isHc = /^\d{1,3}-\d{4,7}-\d{1,3}$/.test(patientId);
   return isHc
     ? `<span class="hc-tag">HC ${patientId}</span>`
-    : `<span class="hc-tag muted-italic">HC: No asignada</span>`;
+    : `<span class="hc-tag muted-italic">${patientId}</span>`;
+}
+
+function fmtHc(hc) {
+  if (!hc || GUID_RE.test(hc)) return 'Sin HC';
+  return hc;
 }
 
 function renderTreatmentLabel(item) {
@@ -420,7 +429,7 @@ function renderHome(data) {
   buildFisicaCenterFilter();
   renderFisicaView();
   populateAgendaTestControls(data);
-  renderResumen();
+  loadAlertasTab();
 }
 
 // ── Seguimiento tab ───────────────────────────────────────────────────────────
@@ -1345,20 +1354,30 @@ function _fisicaHighlightedKeys(patient) {
 }
 
 function _fisicaPatientRowClickable(row, p) {
-  if (state.fisica.selectedCenters.size !== 1) return;
   row.style.cursor = 'pointer';
   row.classList.toggle('fisica-pat-selected', state.fisica.selectedPatient?.patientId === p.patientId);
   row.addEventListener('click', () => {
     state.fisica.selectedPatient = state.fisica.selectedPatient?.patientId === p.patientId ? null : p;
     document.querySelectorAll('#fisicaDetailPanel .patient-row').forEach(r => r.classList.remove('fisica-pat-selected'));
     if (state.fisica.selectedPatient) row.classList.add('fisica-pat-selected');
+    // Activar columna de reco aunque no haya un centro explícito seleccionado
+    const fisicaLayout = document.getElementById('fisicaLayout');
+    if (fisicaLayout) fisicaLayout.classList.toggle('fisica-three-col', !!state.fisica.selectedPatient);
     renderFisicaReco();
   });
 }
 
 async function renderFisicaReco() {
   const panel = document.getElementById('fisicaRecoPanel');
-  if (!panel || state.fisica.selectedCenters.size !== 1) return;
+  if (!panel) return;
+
+  const patient = state.fisica.selectedPatient;
+  // Centro: selección explícita (1 centro) o inferido del paciente seleccionado
+  const center = state.fisica.selectedCenters.size === 1
+    ? [...state.fisica.selectedCenters][0]
+    : (patient?.centerName ?? null);
+  if (!center) { panel.innerHTML = ''; return; }
+
   panel.innerHTML = '<p class="detail-placeholder">Calculando…</p>';
 
   if (!state.configData) {
@@ -1367,9 +1386,6 @@ async function renderFisicaReco() {
       state.configData = resp.ok ? await resp.json() : null;
     } catch {}
   }
-
-  const center = [...state.fisica.selectedCenters][0];
-  const patient = state.fisica.selectedPatient;
   const allMachines = state.homeData?.configuration?.machines || [];
   const centerMachines = allMachines.filter(m => m.centerName === center);
   const allCaps = state.configData?.machineCapabilities || [];
@@ -1603,9 +1619,11 @@ function renderFisicaView() {
 
   // Toggle 3-col layout and reco panel
   const hasSingleCenter = state.fisica.selectedCenters.size === 1;
+  const hasPatient = !!state.fisica.selectedPatient;
+  const showReco = hasSingleCenter || hasPatient;
   const fisicaLayout = document.getElementById('fisicaLayout');
-  if (fisicaLayout) fisicaLayout.classList.toggle('fisica-three-col', hasSingleCenter);
-  if (hasSingleCenter) renderFisicaReco();
+  if (fisicaLayout) fisicaLayout.classList.toggle('fisica-three-col', showReco);
+  if (showReco) renderFisicaReco();
 }
 
 function renderFisicaDetail() {
@@ -1936,137 +1954,7 @@ function last4Weeks() {
 }
 
 function renderResumen() {
-  renderResumenEstado();
-  renderResumenAlertas();
   renderResumenTendencias();
-}
-
-function renderResumenEstado() {
-  const container = document.getElementById('resumenEstado');
-  if (!state.homeData) { container.innerHTML = '<p class="detail-placeholder">Sin datos.</p>'; return; }
-
-  const centers = [...new Set(
-    (state.homeData.configuration?.machineCapacities ?? []).map(c => c.centerName)
-  )].sort();
-
-  const summaryByCenter = new Map();
-  (state.homeData.stageSummary ?? []).forEach(s => {
-    if (!summaryByCenter.has(s.centerName)) summaryByCenter.set(s.centerName, []);
-    summaryByCenter.get(s.centerName).push(s);
-  });
-
-  const equipsByCenter = new Map();
-  (state.homeData.equipments ?? []).forEach(e => {
-    if (!equipsByCenter.has(e.centerName)) equipsByCenter.set(e.centerName, []);
-    equipsByCenter.get(e.centerName).push(e);
-  });
-
-  container.innerHTML = '';
-  centers.forEach(centerName => {
-    const stages = summaryByCenter.get(centerName) ?? [];
-    const totalInProcess = stages.reduce((s, r) => s + (r.patientCount ?? 0) - (r.longWaitCount ?? 0), 0);
-    const totalDelayed  = stages.reduce((s, r) => s + (r.delayedCount ?? 0), 0);
-    const equips = equipsByCenter.get(centerName) ?? [];
-
-    let machineHtml = '';
-    if (equips.length > 0) {
-      machineHtml = '<div class="resumen-machine-sep">';
-      equips.forEach(eq => {
-        const totalSlots = Math.floor((Number(eq.workingHours) - Number(eq.reservedSpecialHours)) * 60 / eq.standardSlotMinutes);
-        const freeSlots  = Math.max(0, totalSlots - eq.agendaPatients);
-        const pct = eq.agendaPatients / Math.max(totalSlots, 1);
-        const valCls = pct > 0.9 ? 'mv-full' : pct > 0.7 ? 'mv-warn' : '';
-        const shortName = eq.displayName.replace(/^[^-]+ - /, '');
-        machineHtml +=
-          `<div class="resumen-machine-row">` +
-            `<span>${shortName}</span>` +
-            `<span class="${valCls}">${freeSlots}/${totalSlots}</span>` +
-          `</div>`;
-      });
-      machineHtml += '</div>';
-    }
-
-    const card = document.createElement('div');
-    card.className = 'resumen-center-card';
-    card.innerHTML =
-      `<div class="resumen-center-name">${centerName}</div>` +
-      `<div class="resumen-stat">` +
-        `<span class="resumen-stat-label">En proceso</span>` +
-        `<span class="resumen-stat-value">${totalInProcess}</span>` +
-      `</div>` +
-      `<div class="resumen-stat">` +
-        `<span class="resumen-stat-label">Demorados</span>` +
-        `<span class="resumen-stat-value ${totalDelayed > 0 ? 'sv-warn' : 'sv-ok'}">${totalDelayed}</span>` +
-      `</div>` +
-      machineHtml;
-    container.appendChild(card);
-  });
-
-  if (centers.length === 0)
-    container.innerHTML = '<p class="detail-placeholder">Sin centros configurados.</p>';
-}
-
-function renderResumenAlertas() {
-  const container = document.getElementById('resumenAlertas');
-  if (!state.homeData) { container.innerHTML = '<p class="detail-placeholder">Sin datos.</p>'; return; }
-
-  const alertas = [];
-  const summary = state.homeData.stageSummary ?? [];
-
-  // Etapas con promedio actual > expectedDays * 1.5
-  summary.forEach(s => {
-    const exp = s.expectedDays ?? 0;
-    if (exp > 0 && (s.patientCount ?? 0) > 0 && s.averageDaysInStage > exp * 1.5)
-      alertas.push({
-        level: 'error',
-        text: `${s.centerName} · ${s.stageCode}: promedio ${s.averageDaysInStage.toFixed(1)}d (esp. ${exp}d)`
-      });
-  });
-
-  // Centros con F6B acumulado > RESUMEN_F6B_ALERT
-  const f6bByCenter = {};
-  summary.filter(s => s.stageCode === 'F6B').forEach(s => {
-    f6bByCenter[s.centerName] = (f6bByCenter[s.centerName] ?? 0) + (s.patientCount ?? 0);
-  });
-  Object.entries(f6bByCenter).forEach(([center, count]) => {
-    if (count > RESUMEN_F6B_ALERT)
-      alertas.push({
-        level: 'warn',
-        text: `${center}: ${count} pacientes en F6B (umbral ${RESUMEN_F6B_ALERT})`
-      });
-  });
-
-  // Equipos con ocupacion > 90% hoy (desde equipments del home)
-  (state.homeData.equipments ?? []).forEach(eq => {
-    const totalSlots = Math.floor((Number(eq.workingHours) - Number(eq.reservedSpecialHours)) * 60 / eq.standardSlotMinutes);
-    if (totalSlots === 0) return;
-    const pct = eq.agendaPatients / totalSlots;
-    if (pct > 0.9) {
-      const shortName = eq.displayName.replace(/^[^-]+ - /, '');
-      alertas.push({
-        level: pct >= 1 ? 'error' : 'warn',
-        text: `${shortName} (hoy): ${eq.agendaPatients}/${totalSlots} turnos (${Math.round(pct * 100)}%)`
-      });
-    }
-  });
-
-  container.innerHTML = '';
-  if (alertas.length === 0) {
-    container.appendChild(el('p', 'detail-placeholder', 'Sin alertas activas.'));
-    return;
-  }
-
-  const list = document.createElement('div');
-  list.className = 'alerta-list';
-  alertas.forEach(a => {
-    const item = document.createElement('div');
-    item.className = `alerta-item alerta-${a.level}`;
-    item.innerHTML =
-      `<span class="dot ${a.level === 'error' ? 'dot-red' : 'dot-yellow'}"></span>` +
-      `<span class="alerta-text">${a.text}</span>`;
-    list.appendChild(item);
-  });
-  container.appendChild(list);
 }
 
 async function loadWeeklyStats() {
@@ -2121,10 +2009,7 @@ function renderResumenTendencias() {
     const expected = def?.expectedDays ?? 0;
 
     const tr = document.createElement('tr');
-    let cells =
-      `<td><strong>${code}</strong>` +
-      (def ? ` <span class="tend-stage-name">${def.displayName}</span>` : '') +
-      `</td>`;
+    let cells = `<td><strong>${def?.displayName ?? code}</strong></td>`;
 
     weeks.forEach(week => {
       const a = agg.get(`${week}|${code}`);
@@ -2454,7 +2339,7 @@ function _buildDerivCard(p) {
   card.innerHTML = `
     <div class="deriv-card-header">
       ${priorityBadge(p.priority)}<span class="deriv-card-name">${p.nombre}</span>
-      ${p.hc ? `<span class="deriv-card-hc">${p.hc}</span>` : ''}
+      ${fmtHc(p.hc) !== '—' ? `<span class="deriv-card-hc">${fmtHc(p.hc)}</span>` : ''}
     </div>
     <div class="deriv-card-row">
       <span class="treatment-badge ${_derivLabelClass(label)}">${label}</span>
@@ -2726,7 +2611,7 @@ function exportarDerivacion(incluirSinAsignar) {
       const compat = _checkCompat(p.treatmentLabel, cap);
       if (compat.warn && compat.reason) obs = compat.reason;
     }
-    return `<tr style="${bg}"><td>${esc(p.nombre)}</td><td>${esc(p.hc||'—')}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td><td>${esc(destino)}</td><td>${esc(obs)}</td></tr>`;
+    return `<tr style="${bg}"><td>${esc(p.nombre)}</td><td>${esc(fmtHc(p.hc))}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td><td>${esc(destino)}</td><td>${esc(obs)}</td></tr>`;
   }).join('');
 
   const summaryRows = Object.entries(countByEquipo)
@@ -2948,9 +2833,7 @@ function _alertasTable(headers, rows) {
 // ── Sección A: Centros ────────────────────────────────────────────────────────
 
 function _buildAlertasCentros(patients, stageDefs, stageRefMap) {
-  const alerts = [];
-
-  // A1: Etapas demoradas por centro
+  // A1: alertas por (centro, etapa)
   const excluded = new Set(ALERT_EXCLUDED_TECHNIQUES);
   const stageMap = Object.fromEntries(stageDefs.map(s => [s.code, s]));
   const byCenterStage = {};
@@ -2961,60 +2844,80 @@ function _buildAlertasCentros(patients, stageDefs, stageRefMap) {
     if (!byCenterStage[key]) byCenterStage[key] = [];
     byCenterStage[key].push(p.daysInStage);
   }
+  const alertsFlat = [];
   for (const [key, days] of Object.entries(byCenterStage)) {
     const [center, code] = key.split('||');
     const ref = stageRefMap[code] ?? stageMap[code]?.expectedDays ?? 0;
     if (ref <= 0) continue;
     const avg = days.reduce((a, b) => a + b, 0) / days.length;
-    if (avg > ref * 2) {
-      alerts.push({ center, stage: stageMap[code]?.displayName ?? code, avg: Math.round(avg), ref: Math.round(ref), desv: Math.round(avg - ref) });
-    }
+    if (avg > ref * 2)
+      alertsFlat.push({ center, stage: stageMap[code]?.displayName ?? code, avg: Math.round(avg), ref: Math.round(ref) });
   }
 
-  // A2: Tiempo tomografía → inicio por centro
-  const F4_CODE = 'F4', F11_CODE = 'F11';
-  const f4Sort = stageDefs.find(s => s.code === F4_CODE)?.sortOrder ?? 0;
-  const f11Sort = stageDefs.find(s => s.code === F11_CODE)?.sortOrder ?? 999;
+  return { alertsFlat };
+}
+
+function _renderAlertasCentros(patients, stageDefs, stageRefMap, weeklyStats) {
+  const { alertsFlat } = _buildAlertasCentros(patients, stageDefs, stageRefMap);
+
+  // Agrupar A1 por centro
+  const byCenter = {};
+  for (const a of alertsFlat) {
+    if (!byCenter[a.center]) byCenter[a.center] = [];
+    byCenter[a.center].push(a);
+  }
+  const centrosConAlerta = Object.keys(byCenter).length;
+  const a1BadgeCls = centrosConAlerta > 0 ? 'alertas-badge-red' : 'alertas-badge-green';
+
+  // Centros únicos de pacientes
+  const allCenters = [...new Set(patients.map(p => p.centerName))].sort();
+
+  // Rango F4→F11 para A2 per centro
+  const f4Sort  = stageDefs.find(s => s.code === 'F4')?.sortOrder ?? 0;
+  const f11Sort = stageDefs.find(s => s.code === 'F11')?.sortOrder ?? 999;
   const pathStages = stageDefs
     .filter(s => (s.sortOrder ?? 0) >= f4Sort && (s.sortOrder ?? 0) <= f11Sort)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const totalPathDays = pathStages.reduce((sum, s) => sum + (stageRefMap[s.code] ?? s.expectedDays ?? 0), 0);
 
-  return { a1: alerts, a2: { totalDays: Math.round(totalPathDays), stages: pathStages.length } };
-}
+  // HTML: una tarjeta por centro (todos), con delays A1 + A2 al pie
+  const a1CardContent = allCenters.length === 0
+    ? '<p class="alertas-ok">Sin centros</p>'
+    : (() => {
+        const cards = allCenters.map(center => {
+          const centerAlerts = byCenter[center] || [];
+          const stageRows = centerAlerts
+            .map(a => `<div class="alertas-stage-row"><span>${esc(a.stage)}</span><span class="alertas-red">${a.avg}&thinsp;d <small style="color:var(--muted);font-weight:400">(ref&nbsp;${a.ref})</small></span></div>`)
+            .join('');
+          // A2 calculado con estadísticas propias del centro
+          const centerStats = (weeklyStats || []).filter(s => s.centerName === center);
+          const centerRefMap = _computeStageRefMap(centerStats, stageDefs);
+          const a2Days = Math.round(pathStages.reduce((sum, s) => sum + (centerRefMap[s.code] ?? s.expectedDays ?? 0), 0));
+          const a2Row = `<div class="alertas-a2-value">Tomo → Inicio estimado: <strong>${a2Days}&thinsp;días</strong></div>`;
+          return `<div class="alertas-center-card"><div class="alertas-center-name">${esc(center)}</div>${stageRows}${a2Row}</div>`;
+        }).join('');
+        return `<div class="alertas-center-grid">${cards}</div>`;
+      })();
 
-function _renderAlertasCentros(patients, stageDefs, stageRefMap) {
-  const { a1, a2 } = _buildAlertasCentros(patients, stageDefs, stageRefMap);
-
-  const a1Html = _alertasSectionHtml('a1', 'A1 — Etapas demoradas por centro', a1, rows =>
-    _alertasTable(
-      ['Centro', 'Etapa', 'Promedio actual', 'Referencia', 'Desvío'],
-      rows.map(r => `<tr>
-        <td>${esc(r.center)}</td><td>${esc(r.stage)}</td>
-        <td>${r.avg} días</td><td>${r.ref} días</td>
-        <td class="alertas-red">+${r.desv} días</td>
-      </tr>`)
-    )
-  );
-
-  const a2Html = `<details class="alertas-details" open>
-    <summary class="alertas-summary">A2 — Tiempo Tomografía → Inicio estimado</summary>
-    <div class="alertas-content">
-      <p class="alertas-info">Tiempo estimado Tomosimulación → Inicio de tratamiento: <strong>${a2.totalDays} días hábiles</strong> (${a2.stages} etapas)</p>
-    </div>
+  const a1Html = `<details class="alertas-details"${centrosConAlerta > 0 ? ' open' : ''}>
+    <summary class="alertas-summary">Etapas demoradas y tiempo estimado por centro <span class="alertas-badge ${a1BadgeCls}">${centrosConAlerta} con alertas</span></summary>
+    <div class="alertas-content">${a1CardContent}</div>
   </details>`;
 
   const container = document.getElementById('alertasCentros');
-  container.innerHTML = `<h3 class="alertas-group-title">Centros <span class="alertas-badge ${a1.length > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${a1.length}</span></h3>${a1Html}${a2Html}`;
+  container.innerHTML =
+    `<h3 class="alertas-group-title">Centros <span class="alertas-badge ${a1BadgeCls}">${centrosConAlerta}</span></h3>` +
+    a1Html;
 }
 
 // ── Sección B: Equipos ────────────────────────────────────────────────────────
 
-function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDurations, availableDates) {
+function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDurations) {
   const excludedTech = new Set(ALERT_EXCLUDED_TECHNIQUES);
-  const allSlots  = (agendaItems || []);
-  // Para B1/B2 excluir técnicas especiales; para B3 usar todos
-  const stdSlots  = allSlots.filter(s => !excludedTech.has(
+  const allSlots = (agendaItems || []);
+  const dateOf = s => typeof s.agendaDate === 'string' ? s.agendaDate : String(s.agendaDate);
+
+  // Para B2 excluir técnicas especiales; para B3 usar todos
+  const stdSlots = allSlots.filter(s => !excludedTech.has(
     (s.treatmentLabel || '').split(/[\s\-]/)[0].toUpperCase() === 'TBI' ? 'TBI'
     : (s.treatmentLabel || '').toUpperCase().includes('TSET') ? 'TSET'
     : (s.treatmentLabel || '').toUpperCase().includes('BQT')  ? 'BQT'
@@ -3022,74 +2925,61 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
     : ''
   ));
 
-  // Agrupar por equipo y fecha (dos grupos: estándar y todos)
-  const byMachDateStd = {}, byMachDateAll = {};
-  const dateOf = s => typeof s.agendaDate === 'string' ? s.agendaDate : String(s.agendaDate);
-  for (const s of stdSlots) {
-    const key = `${s.machineName}||${dateOf(s)}`;
-    if (!byMachDateStd[key]) byMachDateStd[key] = [];
-    byMachDateStd[key].push(s);
-  }
+  // ── B1: Tarjetas de capacidad por equipo ──────────────────────────────────
+  // Contar turnos reales por equipo (todos los slots del bootstrap, sin filtro de fecha)
+  const slotsByMachine = {};
   for (const s of allSlots) {
-    const key = `${s.machineName}||${dateOf(s)}`;
-    if (!byMachDateAll[key]) byMachDateAll[key] = [];
-    byMachDateAll[key].push(s);
+    slotsByMachine[s.machineName] = (slotsByMachine[s.machineName] ?? 0) + 1;
   }
 
-  // B1: Sobrecarga (solo turnos estándar vs capacidad)
-  const b1 = [];
-  for (const [key, slots] of Object.entries(byMachDateStd)) {
-    const [machine, date] = key.split('||');
-    const cap = machineCapacities?.find(c => c.machineName === machine);
-    if (!cap) continue;
-    const capacity = Math.floor((Number(cap.workingHours) - Number(cap.reservedSpecialHours || 0)) * 60 / cap.standardSlotMinutes);
-    if (slots.length > capacity)
-      b1.push({ machine, date, real: slots.length, capacity, excess: slots.length - capacity });
+  const caps = machineCapacities || [];
+  let b1OverloadCount = 0;
+
+  // Agrupar máquinas por centro preservando el orden de configuración
+  const b1CenterOrder = [];
+  const b1MachByCenter = {};
+  for (const cap of caps) {
+    const cn = cap.centerName;
+    if (!b1MachByCenter[cn]) { b1MachByCenter[cn] = []; b1CenterOrder.push(cn); }
+    b1MachByCenter[cn].push(cap);
   }
 
-  // B2: Duración incorrecta (solo turnos estándar)
+  const b1CenterCards = b1CenterOrder.map(centerName => {
+    const machines = b1MachByCenter[centerName];
+    const machineRows = machines.map(cap => {
+      const shortName = cap.machineName.replace(/^[^-]+ - /, '');
+      const real     = slotsByMachine[cap.machineName] ?? 0;
+      const capacity = Math.floor((Number(cap.workingHours) - Number(cap.reservedSpecialHours || 0)) * 60 / cap.standardSlotMinutes);
+      const pct = capacity > 0 ? real / capacity : 0;
+      const cls = pct > 0.9 ? 'mv-full' : pct > 0.7 ? 'mv-warn' : '';
+      if (pct > 0.9) b1OverloadCount++;
+      return `<div class="alertas-stage-row">` +
+        `<span>${esc(shortName)}</span>` +
+        `<span class="alertas-equipo-slots ${cls}">${real}&thinsp;/&thinsp;${capacity}</span>` +
+      `</div>`;
+    }).join('');
+    return `<div class="alertas-center-card">` +
+      `<div class="alertas-center-name">${esc(centerName)}</div>` +
+      machineRows +
+    `</div>`;
+  }).join('');
+
+  const b1BadgeCls = b1OverloadCount > 0 ? 'alertas-badge-red' : 'alertas-badge-green';
+  const b1Html = `<details class="alertas-details"${b1OverloadCount > 0 ? ' open' : ''}>
+    <summary class="alertas-summary">Agenda por equipo <span class="alertas-badge ${b1BadgeCls}">${b1OverloadCount} sobrecargados</span></summary>
+    <div class="alertas-content">
+      ${caps.length === 0 ? '<p class="alertas-ok">Sin equipos configurados</p>' : `<div class="alertas-center-grid">${b1CenterCards}</div>`}
+    </div>
+  </details>`;
+
+  // ── B2: Duración incorrecta (tabla, sin cambios) ──────────────────────────
   const b2 = [];
   for (const s of stdSlots) {
     const err = validateSlotDuration(s, techniqueDurations);
-    if (err) {
+    if (err)
       b2.push({ machine: s.machineName, date: dateOf(s), time: s.startTime, patient: s.patientName, label: s.treatmentLabel, actual: err.actualMinutes, valid: err.validMinutes });
-    }
   }
-
-  // B3: Superposición (todos los turnos, incluyendo TBI/BQT etc.)
-  const b3 = [];
-  for (const [key, slots] of Object.entries(byMachDateAll)) {
-    const [machine, date] = key.split('||');
-    const sorted = [...slots].filter(s => s.startTime && s.endTime).sort((a, b) => (parseTime(a.startTime) ?? 0) - (parseTime(b.startTime) ?? 0));
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const endI   = parseTime(sorted[i].endTime);
-      const startJ = parseTime(sorted[i+1].startTime);
-      if (endI !== null && startJ !== null && endI > startJ)
-        b3.push({ machine, date, t1: `${sorted[i].startTime}-${sorted[i].endTime} ${sorted[i].patientName}`, t2: `${sorted[i+1].startTime}-${sorted[i+1].endTime} ${sorted[i+1].patientName}`, overlap: endI - startJ });
-    }
-  }
-
-  // B4: Sin agenda reciente (últimos 3 días hábiles)
-  const last3 = _lastNBusinessDays(3);
-  const b4 = [];
-  const allMachines = [...new Set((machineCapacities || []).map(c => c.machineName))];
-  for (const machine of allMachines) {
-    if (machine.toLowerCase().includes('viamonte')) continue;
-    const hasRecent = last3.some(d => {
-      const key = `${machine}||${d}`;
-      return byMachDateAll[key]?.length > 0 || (availableDates || []).includes(d);
-    });
-    if (!hasRecent)
-      b4.push({ machine, days: last3.join(', ') });
-  }
-
-  const totalB = b1.length + b2.length + b3.length + b4.length;
-  const b1Html = _alertasSectionHtml('b1', 'B1 — Sobrecarga de agenda', b1, rows =>
-    _alertasTable(['Equipo', 'Fecha', 'Turnos reales', 'Capacidad', 'Exceso'],
-      rows.map(r => `<tr><td>${esc(r.machine)}</td><td>${_fmtDate(r.date)}</td><td>${r.real}</td><td>${r.capacity}</td><td class="alertas-red">+${r.excess}</td></tr>`)
-    )
-  );
-  const b2Html = _alertasSectionHtml('b2', 'B2 — Duración de turno incorrecta', b2, rows =>
+  const b2Html = _alertasSectionHtml('b2', 'Duración de turno incorrecta', b2, rows =>
     _alertasTable(['Equipo', 'Fecha', 'Hora', 'Paciente', 'Técnica', 'Duración real', 'Esperado'],
       rows.map(r => `<tr>
         <td>${esc(r.machine)}</td><td>${_fmtDate(r.date)}</td><td>${esc(r.time||'—')}</td>
@@ -3099,19 +2989,61 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
       </tr>`)
     )
   );
-  const b3Html = _alertasSectionHtml('b3', 'B3 — Turnos superpuestos', b3, rows =>
-    _alertasTable(['Equipo', 'Fecha', 'Turno 1', 'Turno 2', 'Superposición'],
-      rows.map(r => `<tr><td>${esc(r.machine)}</td><td>${_fmtDate(r.date)}</td><td>${esc(r.t1)}</td><td>${esc(r.t2)}</td><td class="alertas-red">${r.overlap} min</td></tr>`)
-    )
-  );
-  const b4Html = _alertasSectionHtml('b4', 'B4 — Equipos sin agenda reciente', b4, rows =>
-    _alertasTable(['Equipo', 'Últimos días sin datos'],
-      rows.map(r => `<tr><td>${esc(r.machine)}</td><td class="alertas-red">${esc(r.days)}</td></tr>`)
-    )
-  );
 
+  // ── B3: Superposición — tarjetas por equipo ───────────────────────────────
+  const byMachDateAll = {};
+  for (const s of allSlots) {
+    const key = `${s.machineName}||${dateOf(s)}`;
+    if (!byMachDateAll[key]) byMachDateAll[key] = [];
+    byMachDateAll[key].push(s);
+  }
+
+  // Detectar superposiciones y agrupar por equipo
+  const b3ByMachine = {};
+  for (const [key, slots] of Object.entries(byMachDateAll)) {
+    const [machine] = key.split('||');
+    const sorted = [...slots].filter(s => s.startTime && s.endTime)
+      .sort((a, b) => (parseTime(a.startTime) ?? 0) - (parseTime(b.startTime) ?? 0));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const endI   = parseTime(sorted[i].endTime);
+      const startJ = parseTime(sorted[i+1].startTime);
+      if (endI !== null && startJ !== null && endI > startJ) {
+        if (!b3ByMachine[machine]) b3ByMachine[machine] = [];
+        b3ByMachine[machine].push({
+          line1: `${sorted[i].startTime}-${sorted[i].endTime} ${sorted[i].patientName}`,
+          line2: `${sorted[i+1].startTime}-${sorted[i+1].endTime} ${sorted[i+1].patientName}`
+        });
+      }
+    }
+  }
+
+  const b3Machines = Object.keys(b3ByMachine);
+  const b3PairCount = Object.values(b3ByMachine).reduce((sum, arr) => sum + arr.length, 0);
+  const b3BadgeCls = b3PairCount > 0 ? 'alertas-badge-red' : 'alertas-badge-green';
+  const b3CardContent = b3Machines.length === 0
+    ? '<p class="alertas-ok">Sin alertas</p>'
+    : `<div class="alertas-equipo-grid">${
+        b3Machines.sort().map(machine => {
+          const rows = b3ByMachine[machine].map(t =>
+            `<div class="alertas-overlap-pair">` +
+              `<div class="alertas-overlap-line">${esc(t.line1)}</div>` +
+              `<div class="alertas-overlap-line">${esc(t.line2)}</div>` +
+            `</div>`
+          ).join('');
+          return `<div class="alertas-equipo-card alertas-b3-card"><div class="alertas-equipo-name">${esc(machine)}</div>${rows}</div>`;
+        }).join('')
+      }</div>`;
+
+  const b3Html = `<details class="alertas-details"${b3PairCount > 0 ? ' open' : ''}>
+    <summary class="alertas-summary">Turnos superpuestos <span class="alertas-badge ${b3BadgeCls}">${b3PairCount}</span></summary>
+    <div class="alertas-content">${b3CardContent}</div>
+  </details>`;
+
+  const totalB = b1OverloadCount + b2.length + b3PairCount;
   const container = document.getElementById('alertasEquipos');
-  container.innerHTML = `<h3 class="alertas-group-title">Equipos <span class="alertas-badge ${totalB > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${totalB}</span></h3>${b1Html}${b2Html}${b3Html}${b4Html}`;
+  container.innerHTML =
+    `<h3 class="alertas-group-title">Equipos <span class="alertas-badge ${totalB > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${totalB}</span></h3>` +
+    b1Html + b2Html + b3Html;
 }
 
 // ── Sección C: Pacientes ──────────────────────────────────────────────────────
@@ -3185,20 +3117,20 @@ function _renderAlertasPacientes(patients, stageDefs, weeklyStats, p1Threshold) 
   const totalC = c1.length + c2.length + c3.length;
 
   const c1Html = c1.length === 0
-    ? _alertasSectionHtml('c1', 'C1 — Pacientes P1 con demora en planificación', [], () => '')
-    : `<details class="alertas-details alertas-p1" open>
-        <summary class="alertas-summary">C1 — Pacientes P1 con demora en planificación <span class="alertas-badge alertas-badge-red">${c1.length}</span></summary>
+    ? _alertasSectionHtml('c1', 'Pacientes P1 con demora', [], () => '')
+    : `<details class="alertas-details" open>
+        <summary class="alertas-summary">Pacientes P1 con demora <span class="alertas-badge alertas-badge-red">${c1.length}</span></summary>
         <div class="alertas-content">
           ${_alertasTable(['Centro', 'Paciente', 'HC', 'Etapa', 'Días en etapa', 'Umbral P1'],
-            c1.map(r => `<tr><td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td><td>${esc(r.stage)}</td><td class="alertas-red">${r.days}</td><td>${r.threshold}</td></tr>`)
+            c1.map(r => `<tr><td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(fmtHc(r.hc))}</td><td>${esc(r.stage)}</td><td class="alertas-red">${r.days}</td><td>${r.threshold}</td></tr>`)
           )}
         </div>
       </details>`;
 
-  const c2Html = _alertasSectionHtml('c2', 'C2 — Demora por etapa individual', c2, rows =>
+  const c2Html = _alertasSectionHtml('c2', 'Demora por etapa individual', c2, rows =>
     _alertasTable(['Centro', 'Paciente', 'HC', 'Etapa', 'Días', 'Referencia', 'Desvío'],
       rows.map(r => `<tr>
-        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td>
+        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(fmtHc(r.hc))}</td>
         <td>${esc(r.stage)}</td><td>${r.days}</td>
         <td>${r.ref} días <span class="alertas-src">(${r.src})</span></td>
         <td class="alertas-red">+${r.desv}</td>
@@ -3206,10 +3138,11 @@ function _renderAlertasPacientes(patients, stageDefs, weeklyStats, p1Threshold) 
     ) + _alertasSourceLegend(c2DominantSource, weeksAvailable)
   );
 
-  const c3Html = _alertasSectionHtml('c3', 'C3 — Demora acumulada (desde F3)', c3, rows =>
+  const f3DisplayName = stageMap['F3']?.displayName ?? 'F3';
+  const c3Html = _alertasSectionHtml('c3', `Demora acumulada (desde ${f3DisplayName})`, c3, rows =>
     _alertasTable(['Centro', 'Paciente', 'HC', 'Etapa actual', 'Días acumulados', 'Referencia acum.', 'Desvío'],
       rows.map(r => `<tr>
-        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(r.hc||'—')}</td>
+        <td>${esc(r.center)}</td><td>${esc(r.name)}</td><td>${esc(fmtHc(r.hc))}</td>
         <td>${esc(r.stage)}</td><td>${r.acum}</td><td>${r.refAcum}</td>
         <td class="alertas-red">+${r.desv}</td>
       </tr>`)
@@ -3251,8 +3184,8 @@ async function loadAlertasTab() {
   const stageRefMap = _computeStageRefMap(state.alertas.weeklyStats, stageDefs);
   const availDates  = state.agenda.availableDates ?? [];
 
-  _renderAlertasCentros(patients, stageDefs, stageRefMap);
-  _renderAlertasEquipos(agendaItems, machCaps, techDurs, availDates);
+  _renderAlertasCentros(patients, stageDefs, stageRefMap, state.alertas.weeklyStats);
+  _renderAlertasEquipos(agendaItems, machCaps, techDurs);
   _renderAlertasPacientes(patients, stageDefs, state.alertas.weeklyStats, p1Thresh);
 
   state.alertas.loaded = true;

@@ -37,6 +37,16 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
                 config.MachineCapabilities = AppConfiguration.BuildDefault().MachineCapabilities;
                 dirty = true;
             }
+            if (config.TechniqueDurations.Count == 0)
+            {
+                config.TechniqueDurations = AppConfiguration.BuildDefault().TechniqueDurations;
+                dirty = true;
+            }
+            if (config.P1AlertThresholdDays == 0)
+            {
+                config.P1AlertThresholdDays = AppConfiguration.BuildDefault().P1AlertThresholdDays;
+                dirty = true;
+            }
             if (dirty) Persist(config);
             return config;
         }
