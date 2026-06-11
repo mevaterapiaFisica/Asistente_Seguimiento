@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AriaQ;
 
 namespace Meva.Rt.AriaRunner;
@@ -37,7 +38,151 @@ public sealed class AriaQuery
     }
 
     /// <summary>
-    /// Busca un paciente por PatientId y extrae toda la información relevante.
+    /// Consulta todos los pacientes en 5 queries bulk (WHERE PatientId IN (...)) y ensambla
+    /// los resultados en memoria. Reduce de ~938 round-trips a ~6 queries totales.
+    /// </summary>
+    public List<PatientResult> QueryAllPatients(IReadOnlyList<string> patientIds)
+    {
+        var ids = patientIds
+            .Select(id => (id ?? string.Empty).Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sw = Stopwatch.StartNew();
+        _log.Info($"Modo bulk: {ids.Count} pacientes en {Math.Ceiling(ids.Count / 500.0)} lote(s)");
+
+        try
+        {
+            using var ctx = CreateContext();
+
+            // ── 1. Pacientes + médicos ────────────────────────────────────────────
+            _log.Info("  [1/5] Cargando pacientes y médicos...");
+            var patients = QueryInBatches(ids, chunk =>
+                ctx.Patients
+                   .Include("PatientDoctors.Doctor")
+                   .Where(p => chunk.Contains(p.PatientId))
+                   .ToList());
+            _log.Info($"         {patients.Count} pacientes encontrados ({sw.Elapsed.TotalSeconds:F1}s)");
+
+            var patientByPatientId = patients.ToDictionary(p => p.PatientId, StringComparer.OrdinalIgnoreCase);
+            var patientSerList = patients.Select(p => p.PatientSer).ToList();
+
+            // ── 2. Cursos ─────────────────────────────────────────────────────────
+            _log.Info("  [2/5] Cargando cursos...");
+            var courses = QueryInBatches(patientSerList, chunk =>
+                ctx.Courses
+                   .Where(c => chunk.Contains(c.PatientSer))
+                   .ToList());
+            _log.Info($"         {courses.Count} cursos encontrados ({sw.Elapsed.TotalSeconds:F1}s)");
+
+            var coursesByPatientSer = courses.ToLookup(c => c.PatientSer);
+            var courseSerList = courses.Select(c => c.CourseSer).ToList();
+
+            // ── 3. Planes (excluye Rejected) con Prescription y RTPlans ──────────
+            _log.Info("  [3/5] Cargando planes...");
+            var planSetups = QueryInBatches(courseSerList, chunk =>
+                ctx.PlanSetups
+                   .Include("Prescription")
+                   .Include("RTPlans")
+                   .Where(ps => chunk.Contains(ps.CourseSer) && ps.Status != "Rejected")
+                   .ToList());
+            _log.Info($"         {planSetups.Count} planes encontrados ({sw.Elapsed.TotalSeconds:F1}s)");
+
+            var plansByCourseSer = planSetups.ToLookup(ps => ps.CourseSer);
+            var planSerList = planSetups.Select(ps => ps.PlanSetupSer).ToList();
+
+            // ── 4a. Radiaciones sin ControlPoints (el Include de CPs genera JOIN cartesiano enorme) ──
+            _log.Info("  [4/6] Cargando radiaciones...");
+            var radiations = QueryInBatches(planSerList, chunk =>
+                ctx.Radiations
+                   .Include("RadiationDevice.Machine")
+                   .Include("ExternalFieldCommon.EnergyMode")
+                   .Include("ExternalFieldCommon.Technique")
+                   .Where(r => chunk.Contains(r.PlanSetupSer))
+                   .ToList());
+            _log.Info($"         {radiations.Count} radiaciones encontradas ({sw.Elapsed.TotalSeconds:F1}s)");
+
+            var radiationsByPlanSer = radiations.ToLookup(r => r.PlanSetupSer);
+            var radiationSerList = radiations.Select(r => r.RadiationSer).ToList();
+
+            // ── 4b. Conteo de ControlPoints por RadiationSer (GROUP BY, sin cargar los CPs) ──
+            _log.Info("  [5/6] Contando control points...");
+            var cpCounts = QueryInBatches(radiationSerList, chunk =>
+                ctx.ExternalFieldCommons
+                   .Where(ef => chunk.Contains(ef.RadiationSer))
+                   .Select(ef => new { ef.RadiationSer, CpCount = ef.ControlPoints.Count() })
+                   .ToList())
+                .ToDictionary(x => x.RadiationSer, x => x.CpCount);
+            _log.Info($"         {cpCounts.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
+
+            // ── 6. Ensamblar resultados en el orden original ───────────────────────
+            _log.Info("  [6/6] Ensamblando resultados...");
+            var results = new List<PatientResult>(ids.Count);
+
+            foreach (var id in patientIds
+                .Select(x => (x ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                var result = new PatientResult { PatientId = id };
+
+                if (!patientByPatientId.TryGetValue(id, out var patient))
+                {
+                    result.Found = false;
+                    results.Add(result);
+                    continue;
+                }
+
+                result.Found = true;
+                result.FirstName = patient.FirstName?.Trim();
+                result.LastName = patient.LastName?.Trim();
+                result.DateOfBirth = patient.DateOfBirth?.ToString("yyyy-MM-dd");
+                result.Sex = patient.Sex?.Trim();
+
+                var oncologist = patient.PatientDoctors?
+                    .Where(pd => pd.OncologistFlag == 1 || pd.PrimaryFlag == 1)
+                    .Select(pd => pd.Doctor)
+                    .FirstOrDefault(d => d != null);
+                if (oncologist != null)
+                    result.Oncologist = $"{oncologist.LastName?.Trim()}, {oncologist.FirstName?.Trim()}"
+                        .Trim(',', ' ');
+
+                var patCourses = coursesByPatientSer[patient.PatientSer]
+                    .Where(c => c.CourseId != null
+                        && c.CourseId.IndexOf("qa", StringComparison.OrdinalIgnoreCase) < 0
+                        && c.CourseId.IndexOf("fisica", StringComparison.OrdinalIgnoreCase) < 0
+                        && c.CourseId.IndexOf("física", StringComparison.OrdinalIgnoreCase) < 0)
+                    .ToList();
+
+                var allPlans = new List<PlanResult>();
+                foreach (var course in patCourses)
+                {
+                    foreach (var plan in plansByCourseSer[course.CourseSer])
+                    {
+                        var planRads = radiationsByPlanSer[plan.PlanSetupSer].ToList();
+                        allPlans.Add(BuildPlanResult(course, plan, planRads, cpCounts));
+                    }
+                }
+
+                result.AllPlans = allPlans;
+                result.ActivePlan = SelectActivePlan(allPlans);
+                results.Add(result);
+            }
+
+            var found = results.Count(r => r.Found);
+            var notFound = results.Count(r => !r.Found);
+            _log.Info($"Bulk completado en {sw.Elapsed.TotalSeconds:F1}s — {found} encontrados, {notFound} no encontrados");
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Error en consulta bulk", ex);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Busca un único paciente. Útil para pruebas y consultas individuales.
     /// </summary>
     public PatientResult QueryPatient(string patientId)
     {
@@ -70,19 +215,14 @@ public sealed class AriaQuery
             result.DateOfBirth = patient.DateOfBirth?.ToString("yyyy-MM-dd");
             result.Sex = patient.Sex?.Trim();
 
-            // Oncólogo: OncologistFlag y PrimaryFlag son int (1 = sí)
             var oncologist = patient.PatientDoctors?
                 .Where(pd => pd.OncologistFlag == 1 || pd.PrimaryFlag == 1)
                 .Select(pd => pd.Doctor)
                 .FirstOrDefault(d => d != null);
-
             if (oncologist != null)
-            {
                 result.Oncologist = $"{oncologist.LastName?.Trim()}, {oncologist.FirstName?.Trim()}"
                     .Trim(',', ' ');
-            }
 
-            // Todos los planes (excluyendo cursos de QA/Física)
             var courses = patient.Courses?
                 .Where(c => c.CourseId != null
                     && c.CourseId.IndexOf("qa", StringComparison.OrdinalIgnoreCase) < 0
@@ -98,7 +238,7 @@ public sealed class AriaQuery
                     .ToList() ?? [];
 
                 foreach (var plan in planSetups)
-                    allPlans.Add(BuildPlanResult(course, plan));
+                    allPlans.Add(BuildPlanResult(course, plan, plan.Radiations));
             }
 
             result.AllPlans = allPlans;
@@ -119,7 +259,25 @@ public sealed class AriaQuery
         return result;
     }
 
-    private static PlanResult BuildPlanResult(Course course, PlanSetup plan)
+    // Ejecuta query en lotes de batchSize para no superar el límite de 2100 parámetros de SQL Server.
+    private static List<TResult> QueryInBatches<TKey, TResult>(
+        IReadOnlyList<TKey> keys,
+        Func<List<TKey>, List<TResult>> query,
+        int batchSize = 500)
+    {
+        var all = new List<TResult>();
+        for (var i = 0; i < keys.Count; i += batchSize)
+        {
+            var batch = keys.Skip(i).Take(batchSize).ToList();
+            all.AddRange(query(batch));
+        }
+        return all;
+    }
+
+    // radiations: para QueryAllPatients viene del lookup; para QueryPatient viene de plan.Radiations.
+    // cpCounts: conteo de ControlPoints por RadiationSer (solo en bulk); null = usar navigation property.
+    private static PlanResult BuildPlanResult(Course course, PlanSetup plan, ICollection<Radiation>? radiations,
+        Dictionary<long, int>? cpCounts = null)
     {
         var statusDateStr = plan.StatusDate == default ? null : plan.StatusDate.ToString("yyyy-MM-dd");
         var creationDateStr = plan.CreationDate == default ? null : plan.CreationDate.ToString("yyyy-MM-dd");
@@ -142,29 +300,23 @@ public sealed class AriaQuery
             pr.PrescriptionTechnique = plan.Prescription.Technique?.Trim();
         }
 
-        // Fallback: RTPlan (DICOM export) always has NoFractions when plan is complete
         if (pr.NumberOfFractions == null)
             pr.NumberOfFractions = plan.RTPlans?.OrderByDescending(r => r.CreationDate).FirstOrDefault()?.NoFractions;
 
-        var firstRadiation = plan.Radiations?.FirstOrDefault();
+        var firstRadiation = radiations?.FirstOrDefault();
         if (firstRadiation?.RadiationDevice?.Machine != null)
         {
             pr.MachineAriaId = firstRadiation.RadiationDevice.Machine.MachineId?.Trim();
             pr.MachineName = firstRadiation.RadiationDevice.Machine.MachineName?.Trim();
         }
 
-        // EnergyMode de ExternalFieldCommon tiene RadiationType y Energy reales.
-        // Radiation.RadiationType == "BeamLinac" para todos los haces de linac — no útil para clasificar.
-        // BeamType e IrradiationModality se derivan del primer campo (técnica y tecnología).
-        // ExactBeamEnergy usa el máximo sobre todos los campos: si al menos uno es 10X/15X/18X
-        // se etiqueta con esa energía aunque otros campos sean 6X.
         if (firstRadiation != null)
         {
             var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
             var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
             pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
-            pr.IrradiationModality = Modalidad(plan);
-            pr.ExactBeamEnergy = DetermineExactBeamEnergy(plan.Radiations);
+            pr.IrradiationModality = Modalidad(firstRadiation, cpCounts);
+            pr.ExactBeamEnergy = DetermineExactBeamEnergy(radiations);
         }
 
         return pr;
@@ -192,19 +344,24 @@ public sealed class AriaQuery
         return null;
     }
 
-    private static string Modalidad(PlanSetup plan)
+    private static string Modalidad(Radiation firstRadiation, Dictionary<long, int>? cpCounts = null)
     {
-        var firstRad = plan.Radiations?.FirstOrDefault();
-        if (firstRad?.ExternalFieldCommon?.Technique == null)
+        if (firstRadiation.ExternalFieldCommon?.Technique == null)
             return "Indefinido";
 
-        var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
+        var techId = firstRadiation.ExternalFieldCommon.Technique.TechniqueId;
 
         if (techId == "ARC")
             return "VMAT";
 
         if (techId == "STATIC")
-            return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";
+        {
+            // cpCounts viene del bulk query (GROUP BY); ControlPoints viene del single query.
+            var count = cpCounts != null
+                ? (cpCounts.TryGetValue(firstRadiation.RadiationSer, out var n) ? n : 0)
+                : (firstRadiation.ExternalFieldCommon.ControlPoints?.Count ?? 0);
+            return count > 40 ? "IMRT" : "3DC";
+        }
 
         return "Indefinido";
     }
@@ -213,13 +370,11 @@ public sealed class AriaQuery
     {
         if (radiations == null || radiations.Count == 0) return "Indefinido";
 
-        // Electrones: si algún campo es electrones
         if (radiations.Any(r =>
             string.Equals(r.ExternalFieldCommon?.EnergyMode?.RadiationType?.Trim(), "E",
                 StringComparison.OrdinalIgnoreCase)))
             return "Electrones";
 
-        // Máxima energía fotónica sobre todos los campos
         var maxKev = radiations
             .Select(r => r.ExternalFieldCommon?.EnergyMode?.Energy)
             .Where(e => e.HasValue)

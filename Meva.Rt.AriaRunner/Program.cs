@@ -1,9 +1,6 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using Newtonsoft.Json;
 
@@ -84,14 +81,14 @@ class Program
             log.Info("Impersonación activa — las conexiones de red usarán ECL-FISICA2\\varian.");
             using var safeHandle = new SafeAccessTokenHandle(tokenHandle);
             return WindowsIdentity.RunImpersonated(safeHandle,
-                () => RunQueries(input, resultsPath, log, args));
+                () => RunQueries(input, resultsPath, log));
         }
 
         log.Warn("ARIA_VARIAN_PASSWORD no definida — conectando con usuario de Windows actual.");
-        return RunQueries(input, resultsPath, log, args);
+        return RunQueries(input, resultsPath, log);
     }
 
-    static int RunQueries(RunnerInput input, string resultsPath, RunnerLogger log, string[] args)
+    static int RunQueries(RunnerInput input, string resultsPath, RunnerLogger log)
     {
         // ─── Test de conexión ─────────────────────────────────────────────────────
         log.Info(new string('-', 60));
@@ -103,45 +100,15 @@ class Program
             return 1;
         }
 
-        // ─── Búsqueda por paciente ────────────────────────────────────────────────
+        // ─── Búsqueda bulk ────────────────────────────────────────────────────────
         var output = new RunnerOutput { TotalRequested = input.PatientIds.Count };
-        var workersArg = ResolveArgValue(args, "--workers");
-        var maxWorkers = int.TryParse(workersArg, out var w) && w >= 1 ? w : 1;
 
         log.Info(new string('-', 60));
-        log.Info($"Buscando {input.PatientIds.Count} pacientes ({maxWorkers} worker{(maxWorkers == 1 ? "" : "s")} en paralelo)...");
+        log.Info($"Iniciando consulta bulk de {input.PatientIds.Count} pacientes...");
 
         var sw = Stopwatch.StartNew();
-        var counter = 0;
-        var bag = new ConcurrentBag<PatientResult>();
-
-        Parallel.ForEach(
-            input.PatientIds,
-            new ParallelOptions { MaxDegreeOfParallelism = maxWorkers },
-            id =>
-            {
-                var trimmedId = (id ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(trimmedId))
-                {
-                    log.Warn("ID vacío ignorado");
-                    return;
-                }
-                var n = Interlocked.Increment(ref counter);
-                log.Info($"[{n}/{input.PatientIds.Count}] {trimmedId}");
-                bag.Add(query.QueryPatient(trimmedId));
-            });
-
+        output.Patients = query.QueryAllPatients(input.PatientIds);
         sw.Stop();
-        log.Info($"Tiempo de consulta: {sw.Elapsed.TotalMinutes:F1} min ({sw.Elapsed.TotalSeconds:F0}s)");
-
-        // Reconstruir en el orden original para comparabilidad con runs secuenciales
-        var byId = bag.ToDictionary(r => r.PatientId, r => r);
-        output.Patients = input.PatientIds
-            .Select(id => (id ?? string.Empty).Trim())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => byId.TryGetValue(id, out var r) ? r : null)
-            .Where(r => r != null)
-            .ToList()!;
 
         output.TotalFound = output.Patients.Count(p => p.Found && p.Error == null);
         output.TotalNotFound = output.Patients.Count(p => !p.Found);
@@ -157,7 +124,7 @@ class Program
         log.Info($"  Encontrados:    {output.TotalFound}/{output.TotalRequested}");
         log.Info($"  No encontrados: {output.TotalNotFound}");
         log.Info($"  Con errores:    {output.TotalErrors}");
-        log.Info($"  Tiempo total:   {sw.Elapsed.TotalMinutes:F1} min ({sw.Elapsed.TotalSeconds:F0}s con {maxWorkers} workers)");
+        log.Info($"  Tiempo total:   {sw.Elapsed.TotalMinutes:F1} min ({sw.Elapsed.TotalSeconds:F0}s)");
         log.Info($"Resultados: {resultsPath}");
         log.Info($"Log:        {log.LogPath}");
 

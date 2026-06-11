@@ -100,8 +100,12 @@ public sealed class BootstrapService
 
     public async Task<DashboardBootstrapData> BuildAsync(CancellationToken cancellationToken, bool skipAria = false)
     {
-        var agenda = await _agendaExtractor.ExtractAsync(cancellationToken);
-        var followUp = await _followUpExtractor.ExtractAsync(cancellationToken);
+        // Agenda y seguimiento usan browsers independientes → pueden correr en paralelo.
+        var agendaTask = _agendaExtractor.ExtractAsync(cancellationToken);
+        var followUpTask = _followUpExtractor.ExtractAsync(cancellationToken);
+        await Task.WhenAll(agendaTask, followUpTask);
+        var agenda = agendaTask.Result;
+        var followUp = followUpTask.Result;
 
         var longWaitThreshold = _configurationProvider.Configuration.LongWaitThresholdDays;
         foreach (var patient in followUp)
@@ -282,6 +286,27 @@ public sealed class BootstrapService
         var previousBootstrap = await _snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
         if (previousBootstrap is not null)
         {
+            // Preservar TomographyDate y ResponsibleDoctor del snapshot previo si el refresh no los encontró.
+            var previousTomoDate = previousBootstrap.FollowUpPatients
+                .Where(p => p.TomographyDate.HasValue && !string.IsNullOrEmpty(p.PatientId))
+                .GroupBy(p => p.PatientId!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().TomographyDate!.Value, StringComparer.OrdinalIgnoreCase);
+            var previousDoctor = previousBootstrap.FollowUpPatients
+                .Where(p => !string.IsNullOrEmpty(p.ResponsibleDoctor) && !string.IsNullOrEmpty(p.PatientId))
+                .GroupBy(p => p.PatientId!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().ResponsibleDoctor!, StringComparer.OrdinalIgnoreCase);
+            foreach (var patient in data.FollowUpPatients)
+            {
+                if (patient.TomographyDate == null
+                    && !string.IsNullOrEmpty(patient.PatientId)
+                    && previousTomoDate.TryGetValue(patient.PatientId, out var prev))
+                    patient.TomographyDate = prev;
+                if (patient.ResponsibleDoctor == null
+                    && !string.IsNullOrEmpty(patient.PatientId)
+                    && previousDoctor.TryGetValue(patient.PatientId, out var prevDoc))
+                    patient.ResponsibleDoctor = prevDoc;
+            }
+
             var today = DateOnly.FromDateTime(DateTime.Today);
             var previousByPatient = new Dictionary<string, ProcessPatientSnapshot>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in previousBootstrap.FollowUpPatients)

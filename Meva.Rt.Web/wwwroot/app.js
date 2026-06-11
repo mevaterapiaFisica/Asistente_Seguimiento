@@ -48,6 +48,12 @@ const state = {
   alertas: {
     weeklyStats: null,
     loaded: false
+  },
+
+  especiales: {
+    techniqueFilter: null,
+    stageFilter: null,
+    sort: { col: null, dir: 'asc' }
   }
 };
 
@@ -224,6 +230,7 @@ function wireTabs() {
       if (state.activeTab === 'tomograph') refreshTomographAgendaView();
       if (state.activeTab === 'config') loadConfigData();
       if (state.activeTab === 'fisica') renderFisicaView();
+      if (state.activeTab === 'especiales') renderEspeciales();
       if (state.activeTab === 'derivacion') openDerivacion();
     });
   });
@@ -428,6 +435,8 @@ function renderHome(data) {
   renderFollowUp();
   buildFisicaCenterFilter();
   renderFisicaView();
+  buildEspecialesFilters(data);
+  renderEspeciales();
   populateAgendaTestControls(data);
   loadAlertasTab();
 }
@@ -3190,6 +3199,158 @@ async function loadAlertasTab() {
 
   state.alertas.loaded = true;
   statusEl.textContent = `Actualizado ${new Date().toLocaleTimeString()}`;
+}
+
+// ── Técnicas Especiales tab ───────────────────────────────────────────────────
+
+const ESPECIALES_TECHNIQUES = ['SBRT', 'RC'];
+
+const ESPECIALES_STAGES = ['F4B', 'F5', 'F6A', 'F6B', 'F6C', 'F7A', 'F7C', 'F11'];
+
+const _STAGE_ORDER = [
+  'F1','F2A','F2B','F3','F4','F4B','F5',
+  'F6A','F6B','F6C','F6D','F6E','F6F','F6G',
+  'F7A','F7B','F7C','F8','F9','F10','F11'
+];
+const _ESPECIALES_MIN_IDX = _STAGE_ORDER.indexOf('F4B');
+
+function _especialesPatients() {
+  return (state.homeData?.patients ?? []).filter(p =>
+    (p.treatmentTechnique === 'SBRT' || p.treatmentTechnique === 'RC') &&
+    _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase()) >= _ESPECIALES_MIN_IDX
+  );
+}
+
+function buildEspecialesFilters(data) {
+  const techRow = document.getElementById('especiales-tech-pills');
+  if (!techRow) return;
+  techRow.innerHTML = '';
+  techRow.appendChild(makePill('Todas', state.especiales.techniqueFilter === null, () => {
+    state.especiales.techniqueFilter = null; renderEspeciales();
+  }));
+  ESPECIALES_TECHNIQUES.forEach(t => techRow.appendChild(
+    makePill(t, state.especiales.techniqueFilter === t, () => {
+      state.especiales.techniqueFilter = t; renderEspeciales();
+    })
+  ));
+
+  const stageRow = document.getElementById('especiales-stage-pills');
+  stageRow.innerHTML = '';
+  stageRow.appendChild(makePill('Todas', state.especiales.stageFilter === null, () => {
+    state.especiales.stageFilter = null; renderEspeciales();
+  }));
+  const stageDefs = (data.stages ?? []).filter(s => ESPECIALES_STAGES.includes(s.code));
+  stageDefs.forEach(s => stageRow.appendChild(
+    makePill(s.displayName, state.especiales.stageFilter === s.code, () => {
+      state.especiales.stageFilter = s.code; renderEspeciales();
+    })
+  ));
+}
+
+function _especialesDaysClass(days, expected, isLongWait) {
+  if (isLongWait) return 'spec-days-gray';
+  if (days <= expected) return 'spec-days-ok';
+  if (days <= expected * 2) return 'spec-days-warn';
+  return 'spec-days-crit';
+}
+
+function renderEspeciales() {
+  const wrap = document.getElementById('especiales-table-wrap');
+  if (!wrap) return;
+
+  if (state.homeData) buildEspecialesFilters(state.homeData);
+
+  let patients = _especialesPatients();
+  if (state.especiales.techniqueFilter)
+    patients = patients.filter(p => p.treatmentTechnique === state.especiales.techniqueFilter);
+  if (state.especiales.stageFilter)
+    patients = patients.filter(p => p.stageCode === state.especiales.stageFilter);
+
+  // Sort
+  const { col, dir } = state.especiales.sort;
+  const mult = dir === 'asc' ? 1 : -1;
+  patients = patients.slice().sort((a, b) => {
+    if (col === 'hc') return mult * (a.patientId ?? '').localeCompare(b.patientId ?? '');
+    if (col === 'name') return mult * (a.patientName ?? '').localeCompare(b.patientName ?? '');
+    if (col === 'technique') return mult * (a.treatmentTechnique ?? '').localeCompare(b.treatmentTechnique ?? '');
+    if (col === 'tomo') {
+      const ta = a.tomographyDate ?? '', tb = b.tomographyDate ?? '';
+      return mult * (ta < tb ? -1 : ta > tb ? 1 : 0);
+    }
+    if (col === 'stage') return mult * ((a.stageCode ?? '').localeCompare(b.stageCode ?? ''));
+    if (col === 'days') return mult * (a.daysInStage - b.daysInStage);
+    if (col === 'doctor') return mult * (a.responsibleDoctor ?? '').localeCompare(b.responsibleDoctor ?? '');
+    if (col === 'physicist') return mult * (a.assignedPhysicist ?? '').localeCompare(b.assignedPhysicist ?? '');
+    // Default: priority ASC nulls-last → stageCode sortOrder → daysInStage DESC
+    const pa = a.priority ?? 999, pb = b.priority ?? 999;
+    if (pa !== pb) return pa - pb;
+    const stageDefs = state.homeData?.stages ?? [];
+    const sa = stageDefs.find(s => s.code === a.stageCode)?.sortOrder ?? 999;
+    const sb = stageDefs.find(s => s.code === b.stageCode)?.sortOrder ?? 999;
+    if (sa !== sb) return sa - sb;
+    return b.daysInStage - a.daysInStage;
+  });
+
+  function thSort(label, key) {
+    const active = col === key;
+    const arrow = active ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+    return `<th class="spec-th-sort${active ? ' active' : ''}" data-col="${key}">${label}${arrow}</th>`;
+  }
+
+  const rows = patients.map(p => {
+    const daysClass = _especialesDaysClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
+    const tomoStr = p.tomographyDate
+      ? p.tomographyDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1')
+      : '<span class="muted-italic">—</span>';
+    const doctorStr = esc(p.responsibleDoctor ?? '—');
+    const physicistStr = esc(p.assignedPhysicist ?? '—');
+    const techCssKey = p.treatmentTechnique ?? '';
+    const techBadge = techCssKey
+      ? `<span class="treatment-badge tt-${techCssKey}">${techCssKey}</span>`
+      : '—';
+    const nameHtml = priorityBadge(p.priority) +
+      (p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/follow_up_patients/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer">${esc(p.patientName)}</a>`
+        : esc(p.patientName));
+    return `<tr>
+      <td>${esc(fmtHc(p.patientId))}</td>
+      <td>${nameHtml}</td>
+      <td>${techBadge}</td>
+      <td>${tomoStr}</td>
+      <td>${esc(p.stageDisplayName ?? p.stageCode)}</td>
+      <td class="${daysClass}">${p.daysInStage}</td>
+      <td>${doctorStr}</td>
+      <td>${physicistStr}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<table class="spec-table">
+    <thead><tr>
+      ${thSort('HC', 'hc')}
+      ${thSort('Nombre', 'name')}
+      ${thSort('Técnica', 'technique')}
+      ${thSort('Fecha Tomo', 'tomo')}
+      ${thSort('Etapa actual', 'stage')}
+      ${thSort('Días en etapa', 'days')}
+      ${thSort('Médico', 'doctor')}
+      ${thSort('Físico asignado', 'physicist')}
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+  </table>`;
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('.spec-th-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.col;
+      if (state.especiales.sort.col === key) {
+        state.especiales.sort.dir = state.especiales.sort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.especiales.sort.col = key;
+        state.especiales.sort.dir = 'asc';
+      }
+      renderEspeciales();
+    });
+  });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

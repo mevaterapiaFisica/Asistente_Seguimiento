@@ -14,6 +14,8 @@ public sealed class PlaywrightSitraMedClient
     public const string MachineAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/machine";
     public const string TomographAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/tomograph";
 
+    private const int MaxParallelPages = 4;
+
     private readonly SitraMedRuntimeOptions _options;
 
     public PlaywrightSitraMedClient(SitraMedRuntimeOptions options)
@@ -32,33 +34,43 @@ public sealed class PlaywrightSitraMedClient
         CancellationToken cancellationToken)
     {
         if (!CanUseRemoteScraping())
-        {
             return Array.Empty<FollowUpHtmlSnapshot>();
-        }
 
-        await using var page = await CreateLoggedPageAsync(cancellationToken);
+        var combos = centers
+            .SelectMany(c => stages.Where(s => s.Enabled).Select(s => (center: c, stage: s)))
+            .ToList();
 
-        var results = new List<FollowUpHtmlSnapshot>();
-        foreach (var center in centers)
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+
+        // Todas las páginas comparten el mismo contexto (cookies de sesión) — un solo login.
+        var sem = new SemaphoreSlim(MaxParallelPages);
+        var tasks = combos.Select(async combo =>
         {
-            foreach (var stage in stages.Where(x => x.Enabled))
+            await sem.WaitAsync(cancellationToken);
+            var page = await session.Context.NewPageAsync();
+            page.SetDefaultTimeout(_options.TimeoutSeconds * 1000);
+            page.SetDefaultNavigationTimeout(_options.TimeoutSeconds * 1000);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var download = await DownloadFollowUpAsync(page.Page, center, stage, cancellationToken);
-
-                results.Add(new FollowUpHtmlSnapshot
+                var download = await DownloadFollowUpAsync(page, combo.center, combo.stage, cancellationToken);
+                return new FollowUpHtmlSnapshot
                 {
-                    CenterId = center.Id,
-                    CenterName = center.Name,
-                    StageCode = stage.Code,
-                    StageMicroStatus = stage.SitraMicroStatus,
+                    CenterId = combo.center.Id,
+                    CenterName = combo.center.Name,
+                    StageCode = combo.stage.Code,
+                    StageMicroStatus = combo.stage.SitraMicroStatus,
                     Html = download.Html,
                     DomRows = download.DomRows.Count > 0 ? download.DomRows : null
-                });
+                };
             }
-        }
+            finally
+            {
+                await page.CloseAsync();
+                sem.Release();
+            }
+        });
 
-        return results;
+        return await Task.WhenAll(tasks);
     }
 
     public async Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<AgendaHtmlSnapshot>>> DownloadAgendaPagesForDatesAsync(
@@ -69,34 +81,43 @@ public sealed class PlaywrightSitraMedClient
         if (!CanUseRemoteScraping() || dates.Count == 0 || machines.Count == 0)
             return new Dictionary<DateOnly, IReadOnlyList<AgendaHtmlSnapshot>>();
 
-        await using var page = await CreateLoggedPageAsync(cancellationToken);
-        var result = new Dictionary<DateOnly, IReadOnlyList<AgendaHtmlSnapshot>>();
+        var combos = dates
+            .SelectMany(d => machines.Select(m => (date: d, machine: m)))
+            .ToList();
 
-        foreach (var date in dates)
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+
+        var sem = new SemaphoreSlim(MaxParallelPages);
+        var tasks = combos.Select(async combo =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var dateResults = new List<AgendaHtmlSnapshot>();
-
-            foreach (var machine in machines)
+            await sem.WaitAsync(cancellationToken);
+            var page = await session.Context.NewPageAsync();
+            page.SetDefaultTimeout(_options.TimeoutSeconds * 1000);
+            page.SetDefaultNavigationTimeout(_options.TimeoutSeconds * 1000);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var html = await DownloadAgendaHtmlAsync(page.Page, machine, date, cancellationToken);
-                var domSnapshots = await TryExtractAgendaDomAsync(page.Page, machine, date, cancellationToken);
-
-                dateResults.Add(new AgendaHtmlSnapshot
+                var html = await DownloadAgendaHtmlAsync(page, combo.machine, combo.date, cancellationToken);
+                var domSnapshots = await TryExtractAgendaDomAsync(page, combo.machine, combo.date, cancellationToken);
+                return new AgendaHtmlSnapshot
                 {
-                    CenterName = machine.CenterName,
-                    MachineDisplayName = machine.DisplayName,
-                    AgendaDate = date,
+                    CenterName = combo.machine.CenterName,
+                    MachineDisplayName = combo.machine.DisplayName,
+                    AgendaDate = combo.date,
                     Html = html,
                     DomSnapshots = domSnapshots.Count > 0 ? domSnapshots : null
-                });
+                };
             }
+            finally
+            {
+                await page.CloseAsync();
+                sem.Release();
+            }
+        });
 
-            result[date] = dateResults;
-        }
-
-        return result;
+        var all = await Task.WhenAll(tasks);
+        return all
+            .GroupBy(s => s.AgendaDate)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AgendaHtmlSnapshot>)g.ToList());
     }
 
     public async Task<IReadOnlyList<AgendaHtmlSnapshot>> DownloadAgendaPagesAsync(
@@ -105,30 +126,38 @@ public sealed class PlaywrightSitraMedClient
         CancellationToken cancellationToken)
     {
         if (!CanUseRemoteScraping())
-        {
             return Array.Empty<AgendaHtmlSnapshot>();
-        }
 
-        await using var page = await CreateLoggedPageAsync(cancellationToken);
-        var results = new List<AgendaHtmlSnapshot>();
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
 
-        foreach (var machine in machines)
+        var sem = new SemaphoreSlim(MaxParallelPages);
+        var tasks = machines.Select(async machine =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var html = await DownloadAgendaHtmlAsync(page.Page, machine, date, cancellationToken);
-            var domSnapshots = await TryExtractAgendaDomAsync(page.Page, machine, date, cancellationToken);
-
-            results.Add(new AgendaHtmlSnapshot
+            await sem.WaitAsync(cancellationToken);
+            var page = await session.Context.NewPageAsync();
+            page.SetDefaultTimeout(_options.TimeoutSeconds * 1000);
+            page.SetDefaultNavigationTimeout(_options.TimeoutSeconds * 1000);
+            try
             {
-                CenterName = machine.CenterName,
-                MachineDisplayName = machine.DisplayName,
-                AgendaDate = date,
-                Html = html,
-                DomSnapshots = domSnapshots.Count > 0 ? domSnapshots : null
-            });
-        }
+                var html = await DownloadAgendaHtmlAsync(page, machine, date, cancellationToken);
+                var domSnapshots = await TryExtractAgendaDomAsync(page, machine, date, cancellationToken);
+                return new AgendaHtmlSnapshot
+                {
+                    CenterName = machine.CenterName,
+                    MachineDisplayName = machine.DisplayName,
+                    AgendaDate = date,
+                    Html = html,
+                    DomSnapshots = domSnapshots.Count > 0 ? domSnapshots : null
+                };
+            }
+            finally
+            {
+                await page.CloseAsync();
+                sem.Release();
+            }
+        });
 
-        return results;
+        return await Task.WhenAll(tasks);
     }
 
     public async Task<IReadOnlyList<TomographAgendaHtmlSnapshot>> DownloadTomographAgendaPagesAsync(
@@ -1454,6 +1483,14 @@ public sealed class PlaywrightSitraMedClient
                 ? FollowUpDateParser.ExtractStageEntryDate(rowHtml, stage.Code)
                 : null;
 
+            var tomographyDate = rowHtml != null
+                ? FollowUpDateParser.ExtractTomographyDate(rowHtml)
+                : null;
+
+            var responsibleDoctor = rowHtml != null
+                ? FollowUpDateParser.ExtractResponsibleDoctor(rowHtml)
+                : null;
+
             var firstConsultDate = stageEntryDate.HasValue
                 ? stageEntryDate.Value.ToString("dd-MM-yyyy")
                 : (await cells.Nth(1).InnerTextAsync()).Trim();
@@ -1560,6 +1597,8 @@ public sealed class PlaywrightSitraMedClient
                 CenterId = center.Id,
                 CenterName = center.Name,
                 StageCode = stage.Code,
+                TomographyDate = tomographyDate,
+                ResponsibleDoctor = responsibleDoctor,
                 Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null
             });
         }
@@ -1598,6 +1637,8 @@ public sealed class FollowUpPatientDomRow
     public string CenterId { get; set; } = string.Empty;
     public string CenterName { get; set; } = string.Empty;
     public string StageCode { get; set; } = string.Empty;
+    public DateOnly? TomographyDate { get; set; }
+    public string? ResponsibleDoctor { get; set; }
     public int? Priority { get; set; }
 }
 

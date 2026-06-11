@@ -5,68 +5,164 @@ namespace Meva.Rt.Infrastructure.SitraMed;
 
 /// <summary>
 /// Extrae la fecha de inicio de etapa desde el HTML de una fila de seguimiento de SitraMed.
-/// La tabla muestra todas las etapas en columnas. Los comentarios HTML delimitan cada sección
-/// (p. ej. &lt;!-- f5 Marcación --&gt;). La fecha de inicio de la etapa actual = primera fecha
-/// en la sección de la etapa PREVIA (cuando esa etapa se completó).
+///
+/// Estrategia: cada etapa mapea a un comentario de sección (<!-- fX -->) y al N-ésimo
+/// &lt;td&gt; dentro de esa sección. Si la fecha no existe, se retrocede por el orden
+/// natural de etapas hasta encontrar una.
 /// </summary>
 internal static class FollowUpDateParser
 {
-    private static readonly Regex PureDateTdRegex = new(
-        @"<td[^>]*>\s*(\d{2}[-/]\d{2}[-/]\d{4})\s*</td>",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // dd-MM-yyyy, dd/MM/yyyy, yyyy-MM-dd, yyyy/MM/dd
+    private static readonly Regex DateInCellRegex = new(
+        @"\b(\d{2}[-/]\d{2}[-/]\d{4}|\d{4}[-/]\d{2}[-/]\d{2})\b",
+        RegexOptions.Compiled);
 
-    private static readonly Regex NextFCommentRegex = new(
+    // "DD/MM/YYYY HH:MMhs - TECNICA - Estado"
+    private static readonly Regex TurnoEntryRegex = new(
+        @"(\d{2}/\d{2}/\d{4})\s+\d{2}:\d{2}hs\s+-\s+\S+\s+-\s+(\w+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex NextSectionRegex = new(
         @"<!--\s*f\d",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly string[] DateFormats =
         ["dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd"];
 
+    // Orden natural de etapas (usado para fallback)
+    private static readonly string[] StageOrder =
+    [
+        "F1", "F2A", "F2B", "F3", "F4", "F4B", "F5",
+        "F6A", "F6B", "F6C", "F6D", "F6E", "F6F", "F6G",
+        "F7A", "F7B", "F7C", "F8", "F9", "F10", "F11"
+    ];
+
     /// <summary>
-    /// Devuelve la fecha en que el paciente entró a <paramref name="stageCode"/>
-    /// buscando el primer &lt;td&gt; con fecha pura en la sección HTML de la etapa anterior.
+    /// Devuelve la fecha en que el paciente entró a <paramref name="stageCode"/>.
+    /// Si no existe fecha para esa etapa, retrocede por el orden natural hasta encontrar una.
     /// </summary>
     public static DateOnly? ExtractStageEntryDate(string rowHtml, string stageCode)
     {
-        var sectionMarker = GetPrecedingSectionMarker(stageCode);
-        if (sectionMarker == null) return null;
+        var code = stageCode.ToUpperInvariant();
+        var idx = Array.IndexOf(StageOrder, code);
+        if (idx < 0) return null;
 
-        var markerIdx = rowHtml.IndexOf(sectionMarker, StringComparison.OrdinalIgnoreCase);
+        for (var i = idx; i >= 0; i--)
+        {
+            var date = ExtractDateForStage(rowHtml, StageOrder[i]);
+            if (date.HasValue) return date;
+        }
+        return null;
+    }
+
+    private static DateOnly? ExtractDateForStage(string rowHtml, string stageCode)
+    {
+        var info = GetColumnInfo(stageCode);
+        if (info.SectionMarker == null) return null;
+
+        var markerIdx = rowHtml.IndexOf(info.SectionMarker, StringComparison.OrdinalIgnoreCase);
         if (markerIdx < 0) return null;
 
-        // Acotar la sección hasta el siguiente comentario de etapa
-        var afterMarker = markerIdx + sectionMarker.Length;
-        var nextComment = NextFCommentRegex.Match(rowHtml, afterMarker);
-        var sectionEnd = nextComment.Success ? nextComment.Index : rowHtml.Length;
-        var section = rowHtml.Substring(markerIdx, sectionEnd - markerIdx);
+        var afterMarker = markerIdx + info.SectionMarker.Length;
+        var nextSection = NextSectionRegex.Match(rowHtml, afterMarker);
+        var sectionEnd = nextSection.Success ? nextSection.Index : rowHtml.Length;
+        var sectionHtml = rowHtml.Substring(afterMarker, sectionEnd - afterMarker);
 
-        // Primera <td> que contiene SOLO una fecha (no texto adicional)
-        var m = PureDateTdRegex.Match(section);
+        var cellContent = GetNthTdContent(sectionHtml, info.TdIndex);
+        if (cellContent == null) return null;
+
+        return info.TurnoStatus != null
+            ? ExtractTurnoDate(cellContent, info.TurnoStatus)
+            : ExtractFirstDate(cellContent);
+    }
+
+    /// <summary>
+    /// Extrae el contenido interno del N-ésimo &lt;td&gt; en el HTML dado (1-based).
+    /// No maneja tablas anidadas; funciona correctamente mientras las celdas
+    /// anteriores al target no contengan &lt;td&gt; anidados.
+    /// </summary>
+    private static string? GetNthTdContent(string html, int n)
+    {
+        var count = 0;
+        var pos = 0;
+        while (pos < html.Length)
+        {
+            var tdStart = html.IndexOf("<td", pos, StringComparison.OrdinalIgnoreCase);
+            if (tdStart < 0) return null;
+
+            var tagEnd = html.IndexOf('>', tdStart);
+            if (tagEnd < 0) return null;
+
+            count++;
+            if (count == n)
+            {
+                var contentStart = tagEnd + 1;
+                var tdClose = html.IndexOf("</td>", contentStart, StringComparison.OrdinalIgnoreCase);
+                return tdClose < 0 ? null : html.Substring(contentStart, tdClose - contentStart);
+            }
+
+            pos = tagEnd + 1;
+        }
+        return null;
+    }
+
+    private static DateOnly? ExtractFirstDate(string cellContent)
+    {
+        var m = DateInCellRegex.Match(cellContent);
         return m.Success ? ParseDateOnly(m.Groups[1].Value) : null;
     }
 
     /// <summary>
-    /// Retorna el marcador HTML del comentario de la sección cuyo FIN coincide con el
-    /// INICIO de <paramref name="stageCode"/>.
+    /// Para la columna "Turnos Asignados": extrae el turno más reciente con el estado dado
+    /// (Pendiente para F4B, Atendido para F5).
     /// </summary>
-    private static string? GetPrecedingSectionMarker(string stageCode) =>
-        stageCode.ToUpperInvariant() switch
+    private static DateOnly? ExtractTurnoDate(string cellContent, string status)
+    {
+        DateOnly? latest = null;
+        foreach (Match m in TurnoEntryRegex.Matches(cellContent))
         {
-            // F3 Ingreso: la fecha es "F. Ingreso" en la propia sección f3
-            "F3" => "<!-- f3",
-            // F4 TurnoTomosim: empieza cuando termina F3 (F. Ingreso)
-            "F4" => "<!-- f3",
-            // F5 Marcación: empieza cuando termina F4 (F. TAC)
-            "F5" => "<!-- f4",
-            // F6A Planificación: empieza cuando termina F5 (F. Delimitado)
-            "F6A" => "<!-- f5",
-            // F6B+ (Asignación Físico en adelante): empieza cuando termina F6A (F. Asignación Resp.)
-            // La primera fecha pura en la sección <!-- f6 es exactamente esa fecha.
-            "F6B" or "F6C" or "F6F" or "F6G" => "<!-- f6",
-            // F7x: empieza cuando termina F6 (Aprobación / F. Fin Etapa)
-            "F7A" or "F7C" => "<!-- f6",
-            _ => null
-        };
+            if (!m.Groups[2].Value.Equals(status, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var date = ParseDateOnly(m.Groups[1].Value);
+            if (date.HasValue && (!latest.HasValue || date.Value > latest.Value))
+                latest = date;
+        }
+        return latest;
+    }
+
+    /// <summary>
+    /// Extrae la fecha del turno de tomografía de simulación (entrada "Atendido" más reciente
+    /// en la columna "Turnos Asignados"). Válido para cualquier etapa — el dato existe en el
+    /// HTML aunque el paciente ya haya avanzado más allá de F5.
+    /// </summary>
+    public static DateOnly? ExtractTomographyDate(string rowHtml)
+        => ExtractDateForStage(rowHtml, "F5");
+
+    /// <summary>
+    /// Extrae el médico responsable: 4º &lt;td&gt; en la sección &lt;!-- f1 --&gt;
+    /// (columna "Usuario" de la fila de definición de conducta).
+    /// </summary>
+    public static string? ExtractResponsibleDoctor(string rowHtml)
+        => ExtractCellText(rowHtml, "<!-- f1", 4);
+
+    private static string? ExtractCellText(string rowHtml, string sectionMarker, int tdIndex)
+    {
+        var markerIdx = rowHtml.IndexOf(sectionMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIdx < 0) return null;
+
+        var afterMarker = markerIdx + sectionMarker.Length;
+        var nextSection = NextSectionRegex.Match(rowHtml, afterMarker);
+        var sectionEnd = nextSection.Success ? nextSection.Index : rowHtml.Length;
+        var sectionHtml = rowHtml.Substring(afterMarker, sectionEnd - afterMarker);
+
+        var cellContent = GetNthTdContent(sectionHtml, tdIndex);
+        if (string.IsNullOrWhiteSpace(cellContent)) return null;
+
+        // Strip HTML tags and decode basic entities
+        var text = System.Text.RegularExpressions.Regex.Replace(cellContent, "<[^>]+>", "").Trim();
+        text = System.Net.WebUtility.HtmlDecode(text);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
 
     public static DateOnly? ParseDateOnly(string value)
     {
@@ -75,4 +171,49 @@ internal static class FollowUpDateParser
             return parsed;
         return null;
     }
+
+    // Mapeo etapa → (comentario de sección HTML, índice de <td> 1-based, estado turno)
+    // Columnas determinadas del <thead> de la tabla de seguimiento:
+    //   f0: F.PrimeraConsulta(1) Nombre(2) Institucion(3) MédicoHC(4) ComunIntern(5)
+    //   f1: F.Solicitud(1) Usuario(2) F.DefConduct(3) Usuario(4)
+    //   f2: F.Pedido(1) F.Recepción(2) F.Autorizac(3) F.Pospuesto(4) Acciones(5)
+    //   f3: Nro.HC(1) F.Ingreso(2) Tratam-Zona(3)
+    //   f4: Pospuesto(1) F.TAC(2) Contraste(3) Físico(4) Médico(5) Técnico(6)
+    //       MarcóISO(7) CentroAderivar(8) TurnosAsignados(9) Acciones(10)
+    //   f5: Patologia(1) Delimitado(2) F.Delimitado(3) Acciones(4)
+    //   f6: Etapa(1) F.FinEtapa(2) ReplanifResp(3) F.AsignaciónResp(4) FísicoP(5)
+    //       F.Realización(6) AprobaciónMédico(7) SistemaModulación(8)
+    //       QAPaciente(9) Replanificación(10) AprobaciónFísico(11) Acciones(12)
+    //   f7: Físico(1) F.Cálculo(2) NoCorresp(3) Acciones(4)
+    //   f8: Físico(1) F.Chequeo(2) RespProtecciones(3) F.Protecciones(4)
+    //   f12: F.Turno(1) Equipo(2) Acciones(3)
+    //   f13: MédicoCorrección(1) FechaCorrección(2) MédicoAprueba(3) FechaOK(4)
+    private record ColumnInfo(string? SectionMarker, int TdIndex, string? TurnoStatus);
+
+    private static ColumnInfo GetColumnInfo(string stageCode) =>
+        stageCode switch
+        {
+            "F1"  => new("<!-- f0",  1, null),
+            "F2A" => new("<!-- f1",  3, null),
+            "F2B" => new("<!-- f2",  1, null),
+            "F3"  => new("<!-- f2",  2, null),
+            "F4"  => new("<!-- f3",  2, null),
+            "F4B" => new("<!-- f4",  9, "Pendiente"),
+            "F5"  => new("<!-- f4",  9, "Atendido"),
+            "F6A" => new("<!-- f5",  3, null),
+            "F6B" => new("<!-- f6",  4, null),
+            "F6C" => new("<!-- f6",  6, null),
+            "F6D" => new("<!-- f6",  7, null),
+            "F6E" => new("<!-- f6",  7, null),
+            "F6F" => new("<!-- f6",  8, null),
+            "F6G" => new("<!-- f6",  9, null),
+            "F7A" => new("<!-- f7",  2, null),
+            "F7B" => new("<!-- f6", 11, null),
+            "F7C" => new("<!-- f6", 11, null),
+            "F8"  => new("<!-- f8",  2, null),
+            "F9"  => new("<!-- f8",  2, null),
+            "F10" => new("<!-- f12", 1, null),
+            "F11" => new("<!-- f13", 4, null),
+            _     => new(null, 0, null)
+        };
 }

@@ -35,6 +35,8 @@ public sealed class ProcessPatientSnapshot
     public string StageDisplayName { get; set; } = string.Empty;
     public string StageGroupName { get; set; } = string.Empty;
     public DateOnly? StageStartDate { get; set; }
+    public DateOnly? TomographyDate { get; set; }
+    public string? ResponsibleDoctor { get; set; }
     public int DaysInStage { get; set; }
     public int ExpectedDaysInStage { get; set; }
     public bool IsDelayed { get; set; }

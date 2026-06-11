@@ -229,7 +229,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     {
                         PatientId = row.SitraMedId,
                         SitraMedGuid = string.IsNullOrWhiteSpace(row.SitraMedGuid) ? null : row.SitraMedGuid,
-                        AssignedPhysicist = string.IsNullOrWhiteSpace(row.AssignedPhysicist) ? null : row.AssignedPhysicist,
+                        AssignedPhysicist = NormalizePhysicist(row.AssignedPhysicist),
                         TreatmentType = TreatmentClassifier.Classify(row.TreatmentZone),
                         TreatmentTechnique = TreatmentClassifier.Classify(row.TreatmentZone),
                         PatientName = row.PatientName,
@@ -238,6 +238,8 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                         StageDisplayName = stageDefinition.DisplayName,
                         StageGroupName = stageDefinition.GroupName,
                         StageStartDate = stageStartDate,
+                        TomographyDate = row.TomographyDate,
+                        ResponsibleDoctor = row.ResponsibleDoctor,
                         DaysInStage = daysInStage,
                         ExpectedDaysInStage = stageDefinition.ExpectedDays,
                         IsDelayed = daysInStage > stageDefinition.ExpectedDays,
@@ -293,6 +295,8 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                 var centerName = ResolveCenterName(segment);
                 var stageStartDate = FollowUpDateParser.ExtractStageEntryDate(segment, stageDefinition.Code)
                                      ?? ParseDate(match.Groups["date"].Value);
+                var tomographyDate = FollowUpDateParser.ExtractTomographyDate(segment);
+                var responsibleDoctor = FollowUpDateParser.ExtractResponsibleDoctor(segment);
 
                 if (string.IsNullOrWhiteSpace(patientName) || string.IsNullOrWhiteSpace(patientId))
                 {
@@ -307,7 +311,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                 {
                     PatientId = patientId,
                     SitraMedGuid = sitraMedGuid,
-                    AssignedPhysicist = string.IsNullOrWhiteSpace(assignedPhysicist) ? null : assignedPhysicist,
+                    AssignedPhysicist = NormalizePhysicist(assignedPhysicist),
                     TreatmentType = TreatmentClassifier.Classify(treatmentZone),
                     TreatmentTechnique = TreatmentClassifier.Classify(treatmentZone),
                     PatientName = patientName,
@@ -316,6 +320,8 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     StageDisplayName = stageDefinition.DisplayName,
                     StageGroupName = stageDefinition.GroupName,
                     StageStartDate = stageStartDate,
+                    TomographyDate = tomographyDate,
+                    ResponsibleDoctor = responsibleDoctor,
                     DaysInStage = daysInStage,
                     ExpectedDaysInStage = stageDefinition.ExpectedDays,
                     IsDelayed = daysInStage > stageDefinition.ExpectedDays,
@@ -370,6 +376,14 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
         }
 
         return string.Empty;
+    }
+
+    private static string? NormalizePhysicist(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        // El select muestra "-- Seleccione una opción --" cuando no hay físico asignado
+        if (value.Contains("Seleccione") || value.StartsWith("--")) return null;
+        return value;
     }
 
     private static DateOnly? ParseDate(string value)

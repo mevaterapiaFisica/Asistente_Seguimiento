@@ -23,6 +23,7 @@
       <button class="tab-button" data-tab="derivacion" type="button">Derivacion</button>
       <button class="tab-button" data-tab="resumen" type="button">Tendencias</button>
       <button class="tab-button" data-tab="fisica" type="button">Fisica</button>
+      <button class="tab-button" data-tab="especiales" type="button">Técnicas Especiales</button>
       <div class="scrape-menu-wrap">
         <button type="button" class="ghost-button scrape-menu-trigger" id="scrapMenuBtn">
           <span id="generatedAt">sin datos</span> &#9660;
@@ -143,6 +144,21 @@
           <div class="fisica-reco-col" id="fisicaRecoPanel">
           </div>
         </div>
+      </section>
+
+      <!-- ── Técnicas Especiales ──────────────────────────────────────── -->
+      <section id="tab-especiales" class="tab-panel">
+        <div class="filter-bar filter-bar-stacked" id="especiales-filters">
+          <div class="filter-row">
+            <span class="filter-label">Técnica:</span>
+            <div id="especiales-tech-pills" class="pill-row"></div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Etapa:</span>
+            <div id="especiales-stage-pills" class="pill-row"></div>
+          </div>
+        </div>
+        <div id="especiales-table-wrap" class="table-wrap"></div>
       </section>
 
       <!-- ── Derivacion ────────────────────────────────────────────────── -->

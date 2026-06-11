@@ -737,3 +737,27 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .alertas-overlap-pair { padding: 3px 0 7px; border-bottom: 1px solid var(--line); }
 .alertas-overlap-pair:last-child { border-bottom: none; padding-bottom: 0; }
 .alertas-overlap-line { font-size: 12px; color: var(--ink); padding: 1px 0; }
+
+/* ── Técnicas Especiales tab ──────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+
+.spec-table {
+  width: 100%; border-collapse: collapse; font-size: 13px; min-width: 800px;
+}
+.spec-table th {
+  text-align: left; padding: 7px 10px;
+  background: var(--bg); border-bottom: 2px solid var(--border);
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+}
+.spec-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.spec-table tr:last-child td { border-bottom: none; }
+.spec-table tr:hover td { background: var(--panel); }
+
+.spec-th-sort { cursor: pointer; user-select: none; }
+.spec-th-sort:hover { color: var(--accent); }
+.spec-th-sort.active { color: var(--accent); }
+
+.spec-days-ok   { color: var(--green); font-weight: 600; }
+.spec-days-warn { color: var(--orange); font-weight: 600; }
+.spec-days-crit { color: var(--red); font-weight: 600; }
+.spec-days-gray { color: var(--muted); }
