@@ -14,7 +14,7 @@ public sealed class PlaywrightSitraMedClient
     public const string MachineAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/machine";
     public const string TomographAgendaUrl = "https://sitramed.mevaterapia.com.ar/reception/appointments/tomograph";
 
-    private const int MaxParallelPages = 4;
+    private const int MaxParallelPages = 2;
 
     private readonly SitraMedRuntimeOptions _options;
 
@@ -63,6 +63,18 @@ public sealed class PlaywrightSitraMedClient
                     DomRows = download.DomRows.Count > 0 ? download.DomRows : null
                 };
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.Error.WriteLine($"[SitraMed] Seguimiento falló {combo.center.Name}/{combo.stage.Code}: {ex.Message}");
+                return new FollowUpHtmlSnapshot
+                {
+                    CenterId = combo.center.Id,
+                    CenterName = combo.center.Name,
+                    StageCode = combo.stage.Code,
+                    StageMicroStatus = combo.stage.SitraMicroStatus,
+                    Html = string.Empty
+                };
+            }
             finally
             {
                 await page.CloseAsync();
@@ -107,6 +119,18 @@ public sealed class PlaywrightSitraMedClient
                     DomSnapshots = domSnapshots.Count > 0 ? domSnapshots : null
                 };
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.Error.WriteLine($"[SitraMed] Agenda falló {combo.machine.DisplayName}/{combo.date}: {ex.Message}");
+                return new AgendaHtmlSnapshot
+                {
+                    CenterName = combo.machine.CenterName,
+                    MachineDisplayName = combo.machine.DisplayName,
+                    AgendaDate = combo.date,
+                    Html = string.Empty,
+                    HasScrapingError = true
+                };
+            }
             finally
             {
                 await page.CloseAsync();
@@ -148,6 +172,18 @@ public sealed class PlaywrightSitraMedClient
                     AgendaDate = date,
                     Html = html,
                     DomSnapshots = domSnapshots.Count > 0 ? domSnapshots : null
+                };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.Error.WriteLine($"[SitraMed] Agenda falló {machine.DisplayName}/{date}: {ex.Message}");
+                return new AgendaHtmlSnapshot
+                {
+                    CenterName = machine.CenterName,
+                    MachineDisplayName = machine.DisplayName,
+                    AgendaDate = date,
+                    Html = string.Empty,
+                    HasScrapingError = true
                 };
             }
             finally
@@ -684,6 +720,19 @@ public sealed class PlaywrightSitraMedClient
             "#search_center_id",
             "select[name='search[center_id]']"
         }, machine.CenterName);
+
+        // Esperar que el dropdown de equipo se popule vía AJAX antes de seleccionar.
+        // Sin este wait, la selección de centro dispara el request AJAX pero el dropdown
+        // todavía está vacío cuando intentamos seleccionar el equipo → opción no encontrada
+        // → form se submitea sin equipo → 0 pacientes.
+        try
+        {
+            await page.WaitForFunctionAsync(
+                "sel => (document.querySelector(sel)?.options?.length ?? 0) > 1",
+                "#search_machine_id",
+                new PageWaitForFunctionOptions { Timeout = 5000 });
+        }
+        catch (TimeoutException) { }
 
         await SelectFirstByLabelAsync(page, new[]
         {
@@ -1386,7 +1435,9 @@ public sealed class PlaywrightSitraMedClient
             await page.WaitForTimeoutAsync(250);
         }
 
-        throw new TimeoutException("Se seleccionaron filtros pero no se detectó efecto de búsqueda en seguimiento.");
+        // Timeout expirado sin detectar cambio en el HTML. Continúa con el HTML actual
+        // en lugar de lanzar — el extractor downstream manejará HTML vacío o parcial.
+        Console.Error.WriteLine("[SitraMed] WaitForFollowUpSearchEffect: timeout, continuando con HTML actual.");
     }
 
     private static async Task<string?> SafeGetContentAsync(IPage page)
@@ -1665,6 +1716,7 @@ public sealed class AgendaHtmlSnapshot
     public string MachineDisplayName { get; set; } = string.Empty;
     public DateOnly AgendaDate { get; set; }
     public string Html { get; set; } = string.Empty;
+    public bool HasScrapingError { get; set; }
 
     /// <summary>Filas parseadas desde el DOM con Playwright; si hay datos se prefieren al regex sobre HTML.</summary>
     public List<MachineAppointmentSnapshot>? DomSnapshots { get; set; }

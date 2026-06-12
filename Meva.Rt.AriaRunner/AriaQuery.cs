@@ -149,9 +149,9 @@ public sealed class AriaQuery
 
                 var patCourses = coursesByPatientSer[patient.PatientSer]
                     .Where(c => c.CourseId != null
-                        && c.CourseId.IndexOf("qa", StringComparison.OrdinalIgnoreCase) < 0
-                        && c.CourseId.IndexOf("fisica", StringComparison.OrdinalIgnoreCase) < 0
-                        && c.CourseId.IndexOf("física", StringComparison.OrdinalIgnoreCase) < 0)
+                        && !c.CourseId.Contains("qa", StringComparison.OrdinalIgnoreCase)
+                        && !c.CourseId.Contains("fisica", StringComparison.OrdinalIgnoreCase)
+                        && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
                 var allPlans = new List<PlanResult>();
@@ -225,9 +225,9 @@ public sealed class AriaQuery
 
             var courses = patient.Courses?
                 .Where(c => c.CourseId != null
-                    && c.CourseId.IndexOf("qa", StringComparison.OrdinalIgnoreCase) < 0
-                    && c.CourseId.IndexOf("fisica", StringComparison.OrdinalIgnoreCase) < 0
-                    && c.CourseId.IndexOf("física", StringComparison.OrdinalIgnoreCase) < 0)
+                    && !c.CourseId.Contains("qa", StringComparison.OrdinalIgnoreCase)
+                    && !c.CourseId.Contains("fisica", StringComparison.OrdinalIgnoreCase)
+                    && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase))
                 .ToList() ?? [];
 
             var allPlans = new List<PlanResult>();
@@ -331,8 +331,8 @@ public sealed class AriaQuery
         if (string.Equals(emRadiationType, "E", StringComparison.OrdinalIgnoreCase))
             return "Electrones";
 
-        if (techniqueLabel.IndexOf("SRS", StringComparison.OrdinalIgnoreCase) >= 0
-            || techniqueLabel.IndexOf("STEREO", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (techniqueLabel.Contains("SRS", StringComparison.OrdinalIgnoreCase)
+            || techniqueLabel.Contains("STEREO", StringComparison.OrdinalIgnoreCase))
             return "SRS";
 
         if (string.Equals(emRadiationType, "X", StringComparison.OrdinalIgnoreCase))

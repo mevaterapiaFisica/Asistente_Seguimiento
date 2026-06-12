@@ -156,7 +156,7 @@ class Program
         foreach (var arg in args)
         {
             if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return arg.Substring(prefix.Length).Trim('"', '\'');
+                return arg[prefix.Length..].Trim('"', '\'');
         }
         return null;
     }

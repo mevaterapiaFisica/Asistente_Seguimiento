@@ -2,15 +2,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net48;net9.0-windows</TargetFrameworks>
+    <TargetFramework>net9.0-windows</TargetFramework>
     <RootNamespace>Meva.Rt.AriaRunner</RootNamespace>
     <AssemblyName>AriaRunner</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <!-- net48: corre en Windows 7 SP1+ con .NET Framework 4.8 -->
-    <!-- Para publicar net48: dotnet publish -f net48 -c Release -o publish\net48 -->
-    <!-- Para publicar net9 self-contained: dotnet publish -f net9.0 -r win-x64 -p:SelfContained=true -c Release -o publish\net9 -->
   </PropertyGroup>
 
   <ItemGroup>

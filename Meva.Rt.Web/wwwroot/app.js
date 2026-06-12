@@ -19,6 +19,7 @@ const state = {
     centerFilter: null,
     activeMachine: null,
     slots: [],
+    scrapingErrors: [],
     loading: false
   },
 
@@ -869,14 +870,19 @@ async function loadAgendaForSelectedDate() {
   const isFuture = date > today;
   st.textContent = isFuture ? 'Scraping en tiempo real...' : 'Cargando...';
   state.agenda.loading = true;
+  state.agenda.scrapingErrors = [];
 
   try {
     const resp = await fetch(`/api/agenda?date=${date}`);
     if (resp.ok) {
-      state.agenda.slots = await resp.json();
+      const data = await resp.json();
+      state.agenda.slots = data.slots ?? data;
+      state.agenda.scrapingErrors = data.scrapingErrors ?? [];
       const scraped = state.agenda.slots.filter(s => !s.isEstimated).length;
       const estimated = state.agenda.slots.filter(s => s.isEstimated).length;
-      st.textContent = `${scraped} en agenda${estimated > 0 ? ` + ${estimated} estimados` : ''}`;
+      const errCount = state.agenda.scrapingErrors.length;
+      st.textContent = `${scraped} en agenda${estimated > 0 ? ` + ${estimated} estimados` : ''}` +
+        (errCount > 0 ? ` · ⚠ ${errCount} equipo${errCount > 1 ? 's' : ''} sin datos` : '');
     } else {
       const err = await resp.json().catch(() => ({}));
       st.textContent = err.detail ?? `Error ${resp.status}`;
@@ -951,13 +957,14 @@ function renderAgendaMachineCards() {
     grid.className = 'agenda-machines-grid';
 
     machines.forEach(cap => {
+      const hasError = state.agenda.scrapingErrors.includes(cap.machineName);
       const slots = state.agenda.slots.filter(s => s.machineName === cap.machineName);
       const scraped = slots.filter(s => !s.isEstimated).length;
       const estimated = slots.filter(s => s.isEstimated).length;
       const freeMin = freeMinutes(cap, scraped);
       const totalSlots = Math.floor((Number(cap.workingHours) - Number(cap.reservedSpecialHours)) * 60 / cap.standardSlotMinutes);
       const freeSlots = Math.floor(freeMin / cap.standardSlotMinutes);
-      const capCls = capacityClass(freeSlots, totalSlots);
+      const capCls = hasError ? 'cap-scrape-error' : capacityClass(freeSlots, totalSlots);
       const isActive = state.agenda.activeMachine === cap.machineName;
       const shortName = cap.machineName.replace(/^[^-]+ - /, '');
 
@@ -965,11 +972,13 @@ function renderAgendaMachineCards() {
       card.className = `machine-card ${capCls}${isActive ? ' active' : ''}`;
       card.innerHTML =
         `<div class="machine-card-name">${shortName}</div>` +
-        `<div class="machine-card-stats">` +
-          `<span>${scraped} pac</span>` +
-          (estimated > 0 ? `<span class="est-badge">+${estimated} est.</span>` : '') +
-        `</div>` +
-        `<div class="machine-card-free">${formatMinutes(freeMin)} libre · ${freeSlots} t.</div>`;
+        (hasError
+          ? `<div class="machine-card-scrape-error">⚠ Error de scraping</div>`
+          : `<div class="machine-card-stats">` +
+              `<span>${scraped} pac</span>` +
+              (estimated > 0 ? `<span class="est-badge">+${estimated} est.</span>` : '') +
+            `</div>` +
+            `<div class="machine-card-free">${formatMinutes(freeMin)} libre · ${freeSlots} t.</div>`);
 
       card.addEventListener('click', () => {
         state.agenda.activeMachine = isActive ? null : cap.machineName;
@@ -3162,12 +3171,65 @@ function _renderAlertasPacientes(patients, stageDefs, weeklyStats, p1Threshold) 
   container.innerHTML = `<h3 class="alertas-group-title">Pacientes <span class="alertas-badge ${totalC > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${totalC}</span></h3>${c1Html}${c2Html}${c3Html}`;
 }
 
+// ── Sección C4: Eventos recientes de proceso ──────────────────────────────────
+
+function _renderAlertasEventos(events) {
+  const container = document.getElementById('alertasEventos');
+  if (!container) return;
+
+  const fmt = dt => new Date(dt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const byType = t => (events || []).filter(e => e.eventType === t);
+  const tecnica   = byType('TechniqueChanged');
+  const retroceso = byType('StageRegressed');
+  const total = tecnica.length + retroceso.length;
+
+  const tecnicaHtml = _alertasSectionHtml('c4a', 'Cambios de técnica', tecnica, rows =>
+    _alertasTable(
+      ['Fecha', 'Centro', 'Paciente', 'HC', 'Técnica anterior', 'Técnica nueva', 'Etapa al cambiar'],
+      rows.map(r => {
+        const stage = (r.notes || '').replace('Etapa al momento del cambio: ', '');
+        return `<tr>
+          <td>${fmt(r.detectedAtUtc)}</td>
+          <td>${esc(r.centerName)}</td><td>${esc(r.patientName)}</td><td>${esc(fmtHc(r.patientId))}</td>
+          <td>${esc(r.previousValue ?? '—')}</td>
+          <td><strong>${esc(r.newValue ?? '—')}</strong></td>
+          <td>${esc(stage)}</td>
+        </tr>`;
+      })
+    )
+  );
+
+  const retrocesoHtml = _alertasSectionHtml('c4b', 'Retrocesos de etapa', retroceso, rows =>
+    _alertasTable(
+      ['Fecha', 'Centro', 'Paciente', 'HC', 'Etapa anterior', 'Etapa nueva', 'Días en etapa anterior'],
+      rows.map(r => {
+        const diasStr = (r.notes || '').replace('Días en etapa anterior: ', '');
+        return `<tr>
+          <td>${fmt(r.detectedAtUtc)}</td>
+          <td>${esc(r.centerName)}</td><td>${esc(r.patientName)}</td><td>${esc(fmtHc(r.patientId))}</td>
+          <td>${esc(r.previousValue ?? '—')}</td>
+          <td class="alertas-red"><strong>${esc(r.newValue ?? '—')}</strong></td>
+          <td>${esc(diasStr)}</td>
+        </tr>`;
+      })
+    )
+  );
+
+  container.innerHTML =
+    `<h3 class="alertas-group-title">Eventos recientes de proceso` +
+    ` <span class="alertas-badge ${total > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${total}</span>` +
+    ` <span class="alertas-legend" style="font-size:11px;font-weight:400">(últimos 30 días)</span></h3>` +
+    tecnicaHtml + retrocesoHtml;
+}
+
 // ── Cargador principal de Alertas ─────────────────────────────────────────────
 
 async function loadAlertasTab() {
   if (!state.homeData) {
-    ['alertasCentros','alertasEquipos','alertasPacientes'].forEach(id => {
-      document.getElementById(id).innerHTML = '<p class="alertas-info">Sin datos. Actualice primero.</p>';
+    ['alertasCentros','alertasEquipos','alertasPacientes','alertasEventos'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<p class="alertas-info">Sin datos. Actualice primero.</p>';
     });
     return;
   }
@@ -3184,6 +3246,13 @@ async function loadAlertasTab() {
     } catch { state.alertas.weeklyStats = []; }
   }
 
+  // Cargar eventos de proceso
+  let processEvents = [];
+  try {
+    const resp = await fetch('/api/patient-events?days=30');
+    processEvents = resp.ok ? await resp.json() : [];
+  } catch { processEvents = []; }
+
   const patients  = state.homeData.patients ?? [];
   const stageDefs = state.homeData.stages ?? state.configData?.stages ?? [];
   const agendaItems = state.homeData.agenda ?? [];
@@ -3191,11 +3260,11 @@ async function loadAlertasTab() {
   const techDurs  = state.configData?.techniqueDurations ?? [];
   const p1Thresh  = state.configData?.p1AlertThresholdDays ?? 5;
   const stageRefMap = _computeStageRefMap(state.alertas.weeklyStats, stageDefs);
-  const availDates  = state.agenda.availableDates ?? [];
 
   _renderAlertasCentros(patients, stageDefs, stageRefMap, state.alertas.weeklyStats);
   _renderAlertasEquipos(agendaItems, machCaps, techDurs);
   _renderAlertasPacientes(patients, stageDefs, state.alertas.weeklyStats, p1Thresh);
+  _renderAlertasEventos(processEvents);
 
   state.alertas.loaded = true;
   statusEl.textContent = `Actualizado ${new Date().toLocaleTimeString()}`;
@@ -3310,7 +3379,7 @@ function renderEspeciales() {
       : '—';
     const nameHtml = priorityBadge(p.priority) +
       (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/follow_up_patients/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer">${esc(p.patientName)}</a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer">${esc(p.patientName)}</a>`
         : esc(p.patientName));
     return `<tr>
       <td>${esc(fmtHc(p.patientId))}</td>
@@ -3353,6 +3422,24 @@ function renderEspeciales() {
   });
 }
 
+// ── Feriados alert ────────────────────────────────────────────────────────────
+
+async function checkFeriadosAlert() {
+  try {
+    const resp = await fetch('/api/alerts/feriados');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const banner = document.getElementById('feriados-alert-banner');
+    if (!banner) return;
+    if (data.show) {
+      banner.textContent = `⚠ Faltan menos de 10 días para terminar el año. Actualizar feriados.txt con los feriados de ${data.year}.`;
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  } catch { }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 wireTabs();
@@ -3361,3 +3448,4 @@ loadAvailableDates();
 loadAvailableTomographDates();
 loadHome();
 loadWeeklyStats();
+checkFeriadosAlert();

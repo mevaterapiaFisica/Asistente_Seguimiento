@@ -58,14 +58,19 @@ public sealed class SitraMedAgendaExtractor : IAgendaExtractor
         return result;
     }
 
-    public async Task<IReadOnlyList<MachineAppointmentSnapshot>> ExtractForDateAsync(DateOnly date, CancellationToken cancellationToken)
+    public async Task<AgendaExtractionResult> ExtractForDateAsync(DateOnly date, CancellationToken cancellationToken)
     {
         var machines = _configurationProvider.Configuration.Machines;
         var client = new PlaywrightSitraMedClient(_options);
         var remotePages = await client.DownloadAgendaPagesAsync(machines, date, cancellationToken);
         if (remotePages.Count > 0)
         {
-            return remotePages
+            var errors = remotePages
+                .Where(s => s.HasScrapingError)
+                .Select(s => s.MachineDisplayName)
+                .ToList();
+            var slots = remotePages
+                .Where(s => !s.HasScrapingError)
                 .SelectMany(snapshot =>
                 {
                     if (snapshot.DomSnapshots is { Count: > 0 })
@@ -73,8 +78,9 @@ public sealed class SitraMedAgendaExtractor : IAgendaExtractor
                     return ParseAgendaSnapshots(snapshot);
                 })
                 .ToList();
+            return new AgendaExtractionResult { Slots = slots, ScrapingErrors = errors };
         }
-        return Array.Empty<MachineAppointmentSnapshot>();
+        return new AgendaExtractionResult { Slots = [] };
     }
 
     public async Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<MachineAppointmentSnapshot>>> ExtractForDatesAsync(
@@ -165,11 +171,13 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
 
     private readonly IRtSystemConfigurationProvider _configurationProvider;
     private readonly SitraMedRuntimeOptions _options;
+    private readonly BusinessDayCalculator _bdCalc;
 
-    public SitraMedFollowUpExtractor(IRtSystemConfigurationProvider configurationProvider, SitraMedRuntimeOptions options)
+    public SitraMedFollowUpExtractor(IRtSystemConfigurationProvider configurationProvider, SitraMedRuntimeOptions options, BusinessDayCalculator bdCalc)
     {
         _configurationProvider = configurationProvider;
         _options = options;
+        _bdCalc = bdCalc;
     }
 
     public async Task<IReadOnlyList<ProcessPatientSnapshot>> ExtractAsync(CancellationToken cancellationToken)
@@ -221,8 +229,9 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     if (string.IsNullOrWhiteSpace(row.PatientName)) continue;
 
                     var stageStartDate = ParseDate(row.FirstConsultDate);
+                    var today = DateOnly.FromDateTime(DateTime.Today);
                     var daysInStage = stageStartDate.HasValue
-                        ? Math.Max(0, DateOnly.FromDateTime(DateTime.Today).DayNumber - stageStartDate.Value.DayNumber)
+                        ? _bdCalc.CountBusinessDays(stageStartDate.Value, today)
                         : 0;
 
                     result.Add(new ProcessPatientSnapshot
@@ -303,8 +312,9 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     continue;
                 }
 
+                var today = DateOnly.FromDateTime(DateTime.Today);
                 var daysInStage = stageStartDate.HasValue
-                    ? Math.Max(0, (DateOnly.FromDateTime(DateTime.Today).DayNumber - stageStartDate.Value.DayNumber))
+                    ? _bdCalc.CountBusinessDays(stageStartDate.Value, today)
                     : 0;
 
                 result.Add(new ProcessPatientSnapshot

@@ -55,6 +55,7 @@ builder.Services.AddSingleton(businessDayCalc);
 builder.Services.AddSingleton<ISnapshotStore>(_ => new JsonSnapshotStore(snapshotsDirectory));
 builder.Services.AddSingleton<IStageTransitionStore>(_ => new StageTransitionStore(snapshotsDirectory));
 builder.Services.AddSingleton<IWeeklyStatsStore>(_ => new WeeklyStatsStore(snapshotsDirectory));
+builder.Services.AddSingleton<IPatientProcessEventStore>(_ => new PatientProcessEventStore(snapshotsDirectory));
 builder.Services.AddSingleton<AriaJobState>();
 builder.Services.AddSingleton<PlaywrightSitraMedClient>();
 builder.Services.AddSingleton<IAgendaExtractor, SitraMedAgendaExtractor>();
@@ -155,6 +156,25 @@ app.MapGet("/api/stats/weekly", async Task<IResult> (
         IWeeklyStatsStore weeklyStatsStore,
         CancellationToken cancellationToken) =>
     TypedResults.Ok(await weeklyStatsStore.LoadAsync()));
+
+app.MapGet("/api/patient-events", async Task<IResult> (
+        IPatientProcessEventStore eventStore,
+        int? days,
+        string? type,
+        string? center,
+        CancellationToken cancellationToken) =>
+{
+    var lookback = Math.Max(1, Math.Min(days ?? 30, 365));
+    var events = await eventStore.LoadRecentAsync(lookback, cancellationToken);
+
+    if (!string.IsNullOrWhiteSpace(type))
+        events = events.Where(e => string.Equals(e.EventType.ToString(), type, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    if (!string.IsNullOrWhiteSpace(center))
+        events = events.Where(e => string.Equals(e.CenterName, center, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    return TypedResults.Ok(events.OrderByDescending(e => e.DetectedAtUtc).ToList());
+});
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -762,6 +782,17 @@ app.MapGet("/api/agenda/available-dates", () =>
     return Results.Ok(dates);
 });
 
+// Returns whether the feriados.txt needs to be updated for next year.
+app.MapGet("/api/alerts/feriados", (BusinessDayCalculator bdCalc) =>
+{
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    var endOfYear = new DateOnly(today.Year, 12, 31);
+    var daysToYearEnd = endOfYear.DayNumber - today.DayNumber;
+    var nextYear = today.Year + 1;
+    var show = daysToYearEnd <= 10 && !bdCalc.HasHolidaysForYear(nextYear);
+    return TypedResults.Ok(new { show, year = nextYear });
+});
+
 // Scrapes the next N business days of agenda and stores each as a per-date snapshot.
 // Called by the Task Scheduler; can take several minutes.
 app.MapPost("/api/agenda/scrape-upcoming", async Task<IResult> (
@@ -801,6 +832,7 @@ app.MapGet("/api/agenda", async Task<IResult> (
     var today = DateOnly.FromDateTime(DateTime.Today);
 
     IReadOnlyList<MachineAppointmentSnapshot> scraped;
+    List<string> scrapingErrors = [];
 
     if (targetDate == today)
     {
@@ -818,7 +850,9 @@ app.MapGet("/api/agenda", async Task<IResult> (
         {
             try
             {
-                scraped = await agendaExtractor.ExtractForDateAsync(targetDate, cancellationToken);
+                var result = await agendaExtractor.ExtractForDateAsync(targetDate, cancellationToken);
+                scraped = result.Slots;
+                scrapingErrors = result.ScrapingErrors.ToList();
             }
             catch (Exception ex)
             {
@@ -947,7 +981,7 @@ app.MapGet("/api/agenda", async Task<IResult> (
         }
     }
 
-    return TypedResults.Ok(slots);
+    return TypedResults.Ok(new { slots, scrapingErrors });
 });
 
 // ─── Tomograph Agenda ─────────────────────────────────────────────────────────

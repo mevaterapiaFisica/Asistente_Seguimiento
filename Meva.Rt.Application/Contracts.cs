@@ -10,8 +10,14 @@ public interface IRtSystemConfigurationProvider
 public interface IAgendaExtractor
 {
     Task<IReadOnlyList<MachineAppointmentSnapshot>> ExtractAsync(CancellationToken cancellationToken);
-    Task<IReadOnlyList<MachineAppointmentSnapshot>> ExtractForDateAsync(DateOnly date, CancellationToken cancellationToken);
+    Task<AgendaExtractionResult> ExtractForDateAsync(DateOnly date, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<MachineAppointmentSnapshot>>> ExtractForDatesAsync(IEnumerable<DateOnly> dates, CancellationToken cancellationToken);
+}
+
+public sealed class AgendaExtractionResult
+{
+    public IReadOnlyList<MachineAppointmentSnapshot> Slots { get; init; } = [];
+    public IReadOnlyList<string> ScrapingErrors { get; init; } = [];
 }
 
 public interface IFollowUpExtractor
@@ -56,6 +62,13 @@ public interface IWeeklyStatsStore
     Task<IReadOnlyList<WeeklyStageStats>> LoadAsync();
 }
 
+public interface IPatientProcessEventStore
+{
+    Task AppendAsync(IEnumerable<PatientProcessEvent> events, CancellationToken ct);
+    Task<IReadOnlyList<PatientProcessEvent>> LoadAsync(CancellationToken ct);
+    Task<IReadOnlyList<PatientProcessEvent>> LoadRecentAsync(int days, CancellationToken ct);
+}
+
 public sealed class DashboardBootstrapData
 {
     public DateTime GeneratedAtUtc { get; set; }
@@ -77,6 +90,8 @@ public sealed class BootstrapService
     private readonly IPatientHcResolver _hcResolver;
     private readonly IStageTransitionStore _transitionStore;
     private readonly IWeeklyStatsStore _weeklyStatsStore;
+    private readonly BusinessDayCalculator _bdCalc;
+    private readonly IPatientProcessEventStore _eventStore;
 
     public BootstrapService(
         IAgendaExtractor agendaExtractor,
@@ -86,7 +101,9 @@ public sealed class BootstrapService
         IRtSystemConfigurationProvider configurationProvider,
         IPatientHcResolver hcResolver,
         IStageTransitionStore transitionStore,
-        IWeeklyStatsStore weeklyStatsStore)
+        IWeeklyStatsStore weeklyStatsStore,
+        BusinessDayCalculator bdCalc,
+        IPatientProcessEventStore eventStore)
     {
         _agendaExtractor = agendaExtractor;
         _followUpExtractor = followUpExtractor;
@@ -96,6 +113,8 @@ public sealed class BootstrapService
         _hcResolver = hcResolver;
         _transitionStore = transitionStore;
         _weeklyStatsStore = weeklyStatsStore;
+        _bdCalc = bdCalc;
+        _eventStore = eventStore;
     }
 
     public async Task<DashboardBootstrapData> BuildAsync(CancellationToken cancellationToken, bool skipAria = false)
@@ -330,7 +349,7 @@ public sealed class BootstrapService
                     PlannedMachineDisplayName = previous.PlannedMachineDisplayName,
                     StageStartDate = startDate,
                     StageEndDate = today,
-                    DaysInStage = today.DayNumber - startDate.DayNumber,
+                    DaysInStage = _bdCalc.CountBusinessDays(startDate, today),
                     ExpectedDays = previous.ExpectedDaysInStage,
                     WasDelayed = previous.IsDelayed
                 });
@@ -342,6 +361,65 @@ public sealed class BootstrapService
                 await _weeklyStatsStore.AccumulateAsync(transitions);
             }
             await _transitionStore.PruneAsync();
+
+            // ── Detección de eventos de proceso ───────────────────────────────
+            var stages = _configurationProvider.Configuration.Stages;
+            var stageByCodeEvents = stages.ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
+            var currentById = data.FollowUpPatients
+                .Where(p => !string.IsNullOrEmpty(p.PatientId))
+                .GroupBy(p => p.PatientId!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var newEvents = new List<PatientProcessEvent>();
+            var detectedAt = DateTime.UtcNow;
+
+            // Cambio de técnica
+            foreach (var current in data.FollowUpPatients)
+            {
+                if (string.IsNullOrEmpty(current.PatientId)) continue;
+                if (!previousByPatient.TryGetValue(current.PatientId, out var prev)) continue;
+                if (string.IsNullOrEmpty(prev.TreatmentTechnique)) continue;
+                if (string.Equals(prev.TreatmentTechnique, current.TreatmentTechnique, StringComparison.OrdinalIgnoreCase)) continue;
+
+                newEvents.Add(new PatientProcessEvent
+                {
+                    PatientId     = current.PatientId,
+                    PatientName   = current.PatientName,
+                    CenterName    = current.CenterName,
+                    EventType     = PatientProcessEventType.TechniqueChanged,
+                    DetectedAtUtc = detectedAt,
+                    PreviousValue = prev.TreatmentTechnique,
+                    NewValue      = current.TreatmentTechnique,
+                    Notes         = $"Etapa al momento del cambio: {current.StageCode}"
+                });
+            }
+
+            // Retroceso de etapa
+            foreach (var current in data.FollowUpPatients)
+            {
+                if (string.IsNullOrEmpty(current.PatientId)) continue;
+                if (!previousByPatient.TryGetValue(current.PatientId, out var prev)) continue;
+                if (string.IsNullOrEmpty(prev.StageCode) || string.IsNullOrEmpty(current.StageCode)) continue;
+                if (!stageByCodeEvents.TryGetValue(prev.StageCode, out var prevStageDef)) continue;
+                if (!stageByCodeEvents.TryGetValue(current.StageCode, out var currStageDef)) continue;
+                if (currStageDef.SortOrder >= prevStageDef.SortOrder) continue;
+
+                newEvents.Add(new PatientProcessEvent
+                {
+                    PatientId     = current.PatientId,
+                    PatientName   = current.PatientName,
+                    CenterName    = current.CenterName,
+                    EventType     = PatientProcessEventType.StageRegressed,
+                    DetectedAtUtc = detectedAt,
+                    PreviousValue = $"{prev.StageCode} ({prev.StageDisplayName})",
+                    NewValue      = $"{current.StageCode} ({current.StageDisplayName})",
+                    Notes         = $"Días en etapa anterior: {prev.DaysInStage}"
+                });
+            }
+
+
+            if (newEvents.Count > 0)
+                await _eventStore.AppendAsync(newEvents, cancellationToken);
         }
 
         await _snapshotStore.SaveAsync("dashboard_bootstrap", data, cancellationToken);

@@ -1,4 +1,4 @@
-namespace Meva.Rt.Web;
+namespace Meva.Rt.Application;
 
 public sealed class BusinessDayCalculator
 {
@@ -53,4 +53,20 @@ public sealed class BusinessDayCalculator
         }
         return current;
     }
+
+    public int CountBusinessDays(DateOnly from, DateOnly to)
+    {
+        if (to <= from) return 0;
+        var count = 0;
+        var current = from.AddDays(1);
+        while (current <= to)
+        {
+            if (IsBusinessDay(current)) count++;
+            current = current.AddDays(1);
+        }
+        return count;
+    }
+
+    public bool HasHolidaysForYear(int year)
+        => _holidays.Any(d => d.Year == year);
 }

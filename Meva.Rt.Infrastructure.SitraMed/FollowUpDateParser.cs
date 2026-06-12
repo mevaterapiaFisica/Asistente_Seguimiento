@@ -22,6 +22,8 @@ internal static class FollowUpDateParser
         @"(\d{2}/\d{2}/\d{4})\s+\d{2}:\d{2}hs\s+-\s+\S+\s+-\s+(\w+)",
         RegexOptions.Compiled);
 
+    private static readonly Regex StripTagsRegex = new(@"<[^>]+>", RegexOptions.Compiled);
+
     private static readonly Regex NextSectionRegex = new(
         @"<!--\s*f\d",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -118,8 +120,13 @@ internal static class FollowUpDateParser
     /// </summary>
     private static DateOnly? ExtractTurnoDate(string cellContent, string status)
     {
+        // Limpiar tags HTML antes de matchear — SitraMed puede envolver partes del texto
+        // en <span> u otros elementos, rompiendo el patrón de texto plano.
+        var text = StripTagsRegex.Replace(cellContent, " ");
+        text = System.Net.WebUtility.HtmlDecode(text);
+
         DateOnly? latest = null;
-        foreach (Match m in TurnoEntryRegex.Matches(cellContent))
+        foreach (Match m in TurnoEntryRegex.Matches(text))
         {
             if (!m.Groups[2].Value.Equals(status, StringComparison.OrdinalIgnoreCase))
                 continue;

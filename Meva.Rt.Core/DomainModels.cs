@@ -197,6 +197,25 @@ public sealed class StageTransitionEvent
     public bool WasDelayed { get; set; }
 }
 
+public enum PatientProcessEventType
+{
+    TechniqueChanged,
+    StageRegressed,
+    TreatmentSuspended
+}
+
+public sealed class PatientProcessEvent
+{
+    public string PatientId { get; set; } = string.Empty;
+    public string PatientName { get; set; } = string.Empty;
+    public string CenterName { get; set; } = string.Empty;
+    public PatientProcessEventType EventType { get; set; }
+    public DateTime DetectedAtUtc { get; set; }
+    public string? PreviousValue { get; set; }
+    public string? NewValue { get; set; }
+    public string? Notes { get; set; }
+}
+
 public sealed class HomeSnapshotOptions
 {
     /// <summary>

@@ -284,16 +284,18 @@ h1, h2, p { margin: 0; }
 .machine-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.09); }
 .machine-card.active { border-color: var(--accent); border-top-color: var(--accent); background: #eef6f4; }
 
-.machine-card.cap-ok   { border-top-color: #4caf50; }
-.machine-card.cap-warn { border-top-color: #ff9800; }
-.machine-card.cap-full { border-top-color: var(--red); }
+.machine-card.cap-ok          { border-top-color: #4caf50; }
+.machine-card.cap-warn        { border-top-color: #ff9800; }
+.machine-card.cap-full        { border-top-color: var(--red); }
+.machine-card.cap-scrape-error { border-top-color: #e65100; background: #fff8f5; }
 .machine-card.active.cap-ok, .machine-card.active.cap-warn, .machine-card.active.cap-full {
   border-top-color: var(--accent);
 }
 
-.machine-card-name  { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
-.machine-card-stats { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 3px; }
-.machine-card-free  { font-size: 11px; color: var(--muted); }
+.machine-card-name         { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+.machine-card-stats        { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 3px; }
+.machine-card-free         { font-size: 11px; color: var(--muted); }
+.machine-card-scrape-error { font-size: 11px; color: #e65100; font-weight: 600; margin-top: 2px; }
 .est-badge { font-size: 11px; color: var(--muted); background: #f0f0f0; border-radius: 5px; padding: 1px 5px; }
 
 /* ── Agenda detail (right) ────────────────────────────────────────────────── */
