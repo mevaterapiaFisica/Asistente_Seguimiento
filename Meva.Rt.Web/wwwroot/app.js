@@ -3043,7 +3043,8 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
     for (let i = 0; i < sorted.length - 1; i++) {
       const endI   = parseTime(sorted[i].endTime);
       const startJ = parseTime(sorted[i+1].startTime);
-      if (endI !== null && startJ !== null && endI > startJ) {
+      if (endI !== null && startJ !== null && endI > startJ &&
+          sorted[i].patientName !== sorted[i+1].patientName) {
         if (!b3ByMachine[machine]) b3ByMachine[machine] = [];
         b3ByMachine[machine].push({
           line1: `${sorted[i].startTime}-${sorted[i].endTime} ${sorted[i].patientName}`,
