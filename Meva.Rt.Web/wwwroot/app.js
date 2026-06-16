@@ -8,9 +8,13 @@ const state = {
     centerFilter: null,
     stageFilter: null,
     profesionalFilter: null,
-    searchQuery: '',
     activeCenter: null,
     activeStage: null
+  },
+
+  pacientes: {
+    query: '',
+    events: null
   },
 
   agenda: {
@@ -148,6 +152,11 @@ function isExcludedTechnique(p) {
   return p.treatmentTechnique === 'BQT' || p.treatmentTechnique === 'IORT';
 }
 
+function isExcludedSlot(slot) {
+  const t = (slot.treatmentLabel || '').split(/[\s-]/)[0];
+  return t === 'BQT' || t === 'IORT';
+}
+
 function isAriaEnabled(centerName) {
   const c = (state.homeData?.centers ?? []).find(x => x.name === centerName);
   return c ? c.ariaEnabled !== false : true;
@@ -236,6 +245,7 @@ function wireTabs() {
         b.classList.toggle('active', b === btn));
       document.querySelectorAll('.tab-panel').forEach(p =>
         p.classList.toggle('active', p.id === `tab-${state.activeTab}`));
+      if (state.activeTab === 'pacientes') loadPacientesTab();
       if (state.activeTab === 'resumen') renderResumen();
       if (state.activeTab === 'alertas') loadAlertasTab();
       if (state.activeTab === 'agenda') refreshAgendaView();
@@ -281,10 +291,6 @@ function wireActions() {
   document.getElementById('refreshAlertasBtn').addEventListener('click', () => {
     state.alertas.loaded = false;
     loadAlertasTab();
-  });
-  document.getElementById('patientSearch').addEventListener('input', e => {
-    state.followup.searchQuery = e.target.value.trim().toLowerCase();
-    renderFollowupDetail();
   });
 }
 
@@ -657,46 +663,6 @@ function renderFollowupDetail() {
   const allPatients = state.homeData.patients ?? [];
   const stageDefs = state.homeData.stages ?? [];
 
-  // Global search overrides stage selection
-  if (state.followup.searchQuery) {
-    const q = state.followup.searchQuery;
-    const matches = allPatients.filter(p =>
-      !isExcludedTechnique(p) &&
-      (p.patientName?.toLowerCase().includes(q) || p.patientId?.toLowerCase().includes(q)));
-
-    panel.innerHTML = '';
-    const title = el('div', 'detail-title',
-      `${matches.length} resultado${matches.length !== 1 ? 's' : ''} para "${q}"`);
-    panel.appendChild(title);
-
-    if (matches.length === 0) {
-      panel.appendChild(el('p', 'detail-placeholder', 'Sin coincidencias.'));
-      return;
-    }
-    matches.forEach(p => {
-      const def = stageDefs.find(s => s.code === p.stageCode);
-      const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
-      const row = document.createElement('article');
-      row.className = `patient-row ${dc}`;
-      const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-        : `<strong>${p.patientName}</strong>`);
-      row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
-        `<div class="patient-main">` +
-          nameHtml +
-          hcTag(p.patientId) +
-          (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
-          `<span class="patient-context">${p.centerName} · ${def?.displayName ?? p.stageCode}</span>` +
-        `</div>` +
-        renderTreatmentLabel(p) +
-        ariaBadges(p) +
-        daysBadge(p, dc);
-      panel.appendChild(row);
-    });
-    return;
-  }
-
   // Stage detail
   if (state.followup.activeCenter && state.followup.activeStage) {
     const def = stageDefs.find(s => s.code === state.followup.activeStage);
@@ -976,7 +942,7 @@ function renderAgendaMachineCards() {
 
     machines.forEach(cap => {
       const hasError = state.agenda.scrapingErrors.includes(cap.machineName);
-      const slots = state.agenda.slots.filter(s => s.machineName === cap.machineName);
+      const slots = state.agenda.slots.filter(s => s.machineName === cap.machineName && !isExcludedSlot(s));
       const scraped = slots.filter(s => !s.isEstimated).length;
       const estimated = slots.filter(s => s.isEstimated).length;
       const freeMin = freeMinutes(cap, scraped);
@@ -1031,8 +997,8 @@ function renderAgendaDetail() {
     return;
   }
 
-  const scraped = machineSlots.filter(s => !s.isEstimated);
-  const estimated = machineSlots.filter(s => s.isEstimated);
+  const scraped = machineSlots.filter(s => !s.isEstimated && !isExcludedSlot(s));
+  const estimated = machineSlots.filter(s => s.isEstimated && !isExcludedSlot(s));
 
   if (scraped.length === 0 && (isToday || estimated.length === 0)) {
     panel.appendChild(el('p', 'detail-placeholder',
@@ -3441,6 +3407,303 @@ function renderEspeciales() {
   });
 }
 
+// ── Pacientes tab ─────────────────────────────────────────────────────────────
+
+async function loadPacientesTab() {
+  const inp = document.getElementById('pacientesSearch');
+  if (inp && !inp._wired) {
+    inp._wired = true;
+    inp.addEventListener('input', e => {
+      state.pacientes.query = e.target.value.trim().toLowerCase();
+      _renderPacientesResults();
+    });
+  }
+
+  if (!state.configData) await loadConfigData();
+
+  if (!state.alertas.weeklyStats) {
+    try {
+      const resp = await fetch('/api/stats/weekly');
+      state.alertas.weeklyStats = resp.ok ? await resp.json() : [];
+    } catch { state.alertas.weeklyStats = []; }
+  }
+  if (!state.fisica.recoWeeklyStats) state.fisica.recoWeeklyStats = state.alertas.weeklyStats;
+
+  if (state.pacientes.events === null) {
+    try {
+      const resp = await fetch('/api/patient-events?days=90');
+      state.pacientes.events = resp.ok ? await resp.json() : [];
+    } catch { state.pacientes.events = []; }
+  }
+
+  _renderPacientesResults();
+}
+
+function _searchPacientes(query) {
+  if (!query || !state.homeData) return [];
+  const q = query.toLowerCase();
+
+  const followupMatches = (state.homeData.patients ?? []).filter(p =>
+    p.patientName?.toLowerCase().includes(q) || p.patientId?.toLowerCase().includes(q)
+  );
+
+  const agendaByKey = new Map();
+  for (const slot of (state.homeData.agenda ?? [])) {
+    const name = slot.patientName;
+    if (!name || name === '~' || name === '-') continue;
+    if (!name.toLowerCase().includes(q)) continue;
+    const key = slot.sitraMedGuid || name.toLowerCase();
+    if (!agendaByKey.has(key)) agendaByKey.set(key, []);
+    agendaByKey.get(key).push(slot);
+  }
+
+  const results = [];
+  const processedGuids = new Set();
+
+  for (const p of followupMatches) {
+    const agendaKey = p.sitraMedGuid ?? p.patientName?.toLowerCase();
+    const slots = agendaKey ? (agendaByKey.get(agendaKey) ?? []) : [];
+    if (agendaKey) agendaByKey.delete(agendaKey);
+    if (p.sitraMedGuid) processedGuids.add(p.sitraMedGuid);
+    results.push({ mode: slots.length > 0 ? 'both' : 'followup', followup: p, agendaSlots: slots });
+  }
+
+  for (const [, slots] of agendaByKey) {
+    const slot0 = slots[0];
+    if (slot0.sitraMedGuid && processedGuids.has(slot0.sitraMedGuid)) continue;
+    results.push({ mode: 'agenda', followup: null, agendaSlots: slots });
+  }
+
+  return results;
+}
+
+function _renderPacientesResults() {
+  const panel = document.getElementById('pacientesResults');
+  if (!panel) return;
+  const q = state.pacientes.query;
+  if (!q) { panel.innerHTML = ''; return; }
+  if (!state.homeData) {
+    panel.innerHTML = '<p class="detail-placeholder">Sin datos. Actualice primero.</p>';
+    return;
+  }
+
+  const results = _searchPacientes(q);
+  if (results.length === 0) {
+    panel.innerHTML = `<p class="detail-placeholder">Sin resultados para "${esc(q)}".</p>`;
+    return;
+  }
+
+  panel.innerHTML = '';
+  panel.appendChild(el('p', 'pacientes-count',
+    `${results.length} resultado${results.length !== 1 ? 's' : ''}`));
+  results.forEach(r => panel.appendChild(_renderPacienteCard(r)));
+}
+
+function _renderPacienteCard(result) {
+  const { mode, followup: p, agendaSlots } = result;
+  const card = document.createElement('article');
+  card.className = 'paciente-card';
+  const stageDefs = state.homeData.stages ?? [];
+  const stageMap = Object.fromEntries(stageDefs.map(s => [s.code, s]));
+  const events = state.pacientes.events ?? [];
+
+  if (mode === 'followup' || mode === 'both') {
+    const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
+    const stageDef = stageMap[p.stageCode];
+
+    const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(p.patientName)}</strong></a>`
+      : `<strong>${esc(p.patientName)}</strong>`);
+
+    // Línea 1: header
+    let html =
+      `<div class="paciente-card-header">${nameHtml}${hcTag(p.patientId)}<span class="patient-context">${esc(p.centerName)}</span></div>`;
+
+    // Línea 2: etapa + badge (simplificado, sin técnica ni físico)
+    html +=
+      `<div class="paciente-card-stage">` +
+        `<span class="paciente-stage-label">${esc(stageDef?.displayName ?? p.stageCode)}</span>` +
+        daysBadge(p, dc) +
+      `</div>`;
+
+    // Línea 3: contexto clínico — técnica + haz + equipo planificado + físico (si hay algo)
+    const ctxHtml = renderTreatmentLabel(p) + ariaBadges(p) +
+      (p.assignedPhysicist ? `<span class="physicist-tag">Físico: ${esc(p.assignedPhysicist)}</span>` : '');
+    if (ctxHtml) html += `<div class="paciente-card-stage">${ctxHtml}</div>`;
+
+    // Línea 4: tiempo transcurrido desde ingreso (C3)
+    const c3 = _computePatientAccumDelay(p, stageDefs, stageMap);
+    if (c3) {
+      const demoraTxt = c3.desvio > 0
+        ? ` Lleva <span class="alertas-red">${c3.desvio}d de demora</span>.`
+        : '';
+      html += `<div class="paciente-card-detail">Tiempo transcurrido desde ingreso: <strong>${c3.diasDesdeF3}d</strong> (${Math.round(c3.refAcum)}d según referencia).${demoraTxt}</div>`;
+    }
+
+    if (mode === 'both' && agendaSlots.length > 0) {
+      // Línea 5 (both): slots reales agendados — sin estimados ni disponibilidad
+      const dates = [...new Set(agendaSlots.map(s => s.agendaDate).filter(Boolean))].sort();
+      html += `<div class="paciente-card-agenda">En tratamiento · ${esc(agendaSlots[0].machineName ?? '')}:` +
+        dates.map(d => `<span class="paciente-slot-date">${_fmtDate(d)}</span>`).join('') +
+        `</div>`;
+    } else {
+      // Línea 5 (followup): inicio estimado (placeholder async)
+      html += `<div class="paciente-card-detail paciente-est">Inicio estimado: <em>calculando...</em></div>`;
+      // Línea 6 (followup): disponibilidad en el equipo planificado (siempre se muestra si hay equipo)
+      const avail = _pacienteFirstAvailableSlot(p);
+      if (avail) {
+        if (avail.noMachine) {
+          html += `<div class="paciente-card-detail muted-italic">Sin equipo asignado en ARIA</div>`;
+        } else if (avail.date) {
+          html += `<div class="paciente-card-detail">Primera disponibilidad en ${esc(avail.machineName)}: <strong>${_fmtDate(avail.date)}</strong></div>`;
+        } else {
+          html += `<div class="paciente-card-detail muted-italic">${esc(avail.machineName)}: sin disponibilidad en agenda actual</div>`;
+        }
+      }
+    }
+
+    const patEvents = events.filter(e =>
+      e.patientId === p.patientId ||
+      e.patientName?.toLowerCase() === p.patientName?.toLowerCase()
+    );
+    html += _pacienteEventsHtml(patEvents);
+
+    card.innerHTML = html;
+
+    if (mode === 'followup') {
+      _fisicaEstimatedDate(p.stageCode).then(est => {
+        const estEl = card.querySelector('.paciente-est');
+        if (!estEl) return;
+        if (est.dateStr) {
+          estEl.innerHTML = `Inicio estimado: <strong>${_fmtDate(est.dateStr)}</strong> <span class="muted-italic">(~${Math.round(est.totalDays)}d hábiles)</span>`;
+        } else {
+          estEl.innerHTML = 'Inicio estimado: <em class="muted-italic">sin datos suficientes</em>';
+        }
+      });
+    }
+
+  } else {
+    const slot0 = agendaSlots[0];
+    const nameHtml = slot0.sitraMedGuid
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${slot0.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(slot0.patientName)}</strong></a>`
+      : `<strong>${esc(slot0.patientName)}</strong>`;
+
+    const dates = [...new Set(agendaSlots.map(s => s.agendaDate).filter(Boolean))].sort();
+
+    let html =
+      `<div class="paciente-card-header">${priorityBadge(slot0.priority)}${nameHtml}<span class="paciente-agenda-badge">En tratamiento</span></div>` +
+      `<div class="paciente-card-stage">${esc(slot0.machineName ?? '')}${renderTreatmentLabel(slot0)}</div>` +
+      `<div class="paciente-card-agenda">Turnos:` +
+        dates.map(d => `<span class="paciente-slot-date">${_fmtDate(d)}</span>`).join('') +
+      `</div>`;
+
+    const patEvents = events.filter(e =>
+      e.patientName?.toLowerCase() === slot0.patientName?.toLowerCase()
+    );
+    html += _pacienteEventsHtml(patEvents);
+
+    card.innerHTML = html;
+  }
+
+  return card;
+}
+
+function _pacienteFirstAvailableSlot(p) {
+  if (!state.homeData) return null;
+  const displayName = p.plannedMachineDisplayName;
+
+  // Sin equipo asignado en ARIA: informar si el centro tiene ARIA habilitado
+  if (!displayName) {
+    return isAriaEnabled(p.centerName) ? { machineName: null, date: null, noMachine: true } : null;
+  }
+
+  // Buscar capacidad: exact → case-insensitive → vía equipments
+  const allCaps = state.homeData.configuration?.machineCapacities ?? [];
+  let cap = allCaps.find(c => c.machineName === displayName)
+    ?? allCaps.find(c => c.machineName?.toLowerCase() === displayName.toLowerCase());
+
+  // Fallback: usar datos del equipment (displayName === machineName en agenda)
+  let slotMachineName = cap?.machineName ?? displayName;
+  if (!cap) {
+    const eq = (state.homeData.equipments ?? []).find(e =>
+      e.displayName === displayName || e.displayName?.toLowerCase() === displayName.toLowerCase()
+    );
+    if (eq) {
+      cap = { machineName: eq.displayName, workingHours: eq.workingHours,
+              standardSlotMinutes: eq.standardSlotMinutes, reservedSpecialHours: eq.reservedSpecialHours ?? 0 };
+      slotMachineName = eq.displayName;
+    }
+  }
+
+  // Si no hay cap y no hay equipments match, mostrar igual pero sin cálculo de free
+  const capKnown = !!cap;
+
+  const techEntry = (state.configData?.techniqueDurations ?? [])
+    .find(t => t.treatmentLabel === p.treatmentLabel);
+  const reqMin = techEntry?.validDurationMinutes?.length
+    ? Math.min(...techEntry.validDurationMinutes)
+    : (cap?.standardSlotMinutes ?? 15);
+
+  const today = todayStr();
+  const byDate = {};
+  for (const slot of (state.homeData.agenda ?? [])) {
+    const sName = slot.machineName;
+    if ((sName !== slotMachineName && sName?.toLowerCase() !== slotMachineName.toLowerCase()) || slot.isEstimated || isExcludedSlot(slot)) continue;
+    const d = typeof slot.agendaDate === 'string' ? slot.agendaDate : String(slot.agendaDate);
+    if (d < today) continue;
+    byDate[d] = (byDate[d] ?? 0) + 1;
+  }
+
+  if (!capKnown) {
+    // Nombre conocido pero sin config de capacidad — no podemos calcular disponibilidad
+    return { machineName: displayName, date: null, noCapacity: true };
+  }
+
+  for (const d of Object.keys(byDate).sort()) {
+    if (freeMinutes(cap, byDate[d]) >= reqMin) return { machineName: slotMachineName, date: d };
+  }
+
+  // No hay slot libre en fechas scrapeadas
+  return { machineName: slotMachineName, date: null };
+}
+
+function _computePatientAccumDelay(p, stageDefs, stageMap) {
+  const weeklyStats = state.alertas.weeklyStats ?? [];
+  const eligible = (state.homeData.patients ?? []).filter(q => !q.isLongWait && !isExcludedTechnique(q));
+  const F3_SORT = stageDefs.find(s => s.code === 'F3')?.sortOrder ?? 10;
+  if ((stageMap[p.stageCode]?.sortOrder ?? 0) < F3_SORT) return null;
+
+  const curSort = stageMap[p.stageCode]?.sortOrder ?? 0;
+  const prevStages = stageDefs.filter(s =>
+    (s.sortOrder ?? 0) >= F3_SORT && (s.sortOrder ?? 0) < curSort
+  );
+  let before = 0;
+  for (const s of prevStages) {
+    const r = getReferenceForAlerts(s.code, weeklyStats, eligible);
+    before += r !== null ? r.ref : (s.expectedDays ?? 0);
+  }
+  const diasDesdeF3 = p.daysInStage + before;
+  const { total: refAcum } = _getAccumReference(p.stageCode, weeklyStats, eligible, stageDefs, stageMap);
+  if (refAcum <= 0) return null;
+  return { diasDesdeF3: Math.round(diasDesdeF3), refAcum, desvio: Math.round(diasDesdeF3 - refAcum) };
+}
+
+function _pacienteEventsHtml(events) {
+  if (!events.length) return '';
+  const fmt = dt => new Date(dt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+  const rows = events.slice(0, 5).map(e => {
+    let desc = '';
+    if (e.eventType === 'TechniqueChanged')
+      desc = `Cambio de técnica: ${esc(e.previousValue ?? '—')} → ${esc(e.newValue ?? '—')}`;
+    else if (e.eventType === 'StageRegressed')
+      desc = `Retroceso: ${esc(e.previousValue ?? '—')} → ${esc(e.newValue ?? '—')}`;
+    else
+      desc = esc(e.eventType);
+    return `<div class="paciente-event-row"><span class="paciente-event-date">${fmt(e.detectedAtUtc)}</span>${desc}</div>`;
+  }).join('');
+  return `<div class="paciente-card-events"><div class="paciente-events-title">Eventos recientes</div>${rows}</div>`;
+}
+
 // ── Feriados alert ────────────────────────────────────────────────────────────
 
 async function checkFeriadosAlert() {
@@ -3459,6 +3722,42 @@ async function checkFeriadosAlert() {
   } catch { }
 }
 
+// ── Status polling (auto-refresh) ─────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 3 * 60 * 1000;
+let _poll = { knownDataTime: null, knownVersion: null };
+
+async function _checkStatus() {
+  try {
+    const resp = await fetch('/api/status');
+    if (!resp.ok) return;
+    const { generatedAtUtc, appVersion } = await resp.json();
+
+    if (_poll.knownVersion === null) {
+      _poll.knownDataTime = generatedAtUtc;
+      _poll.knownVersion = appVersion;
+      return;
+    }
+
+    if (appVersion !== _poll.knownVersion) {
+      _showAutoUpdateBanner('Nueva versión disponible. Actualizando...');
+      setTimeout(() => location.reload(true), 2500);
+      return;
+    }
+
+    if (generatedAtUtc && generatedAtUtc !== _poll.knownDataTime) {
+      _poll.knownDataTime = generatedAtUtc;
+      _showAutoUpdateBanner('Datos actualizados. Recargando...');
+      setTimeout(() => location.reload(), 1500);
+    }
+  } catch { /* ignorar errores de red */ }
+}
+
+function _showAutoUpdateBanner(msg) {
+  const b = document.getElementById('auto-update-banner');
+  if (b) { b.textContent = msg; b.style.display = 'block'; }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 wireTabs();
@@ -3468,3 +3767,5 @@ loadAvailableTomographDates();
 loadHome();
 loadWeeklyStats();
 checkFeriadosAlert();
+setTimeout(_checkStatus, 10000);
+setInterval(_checkStatus, POLL_INTERVAL_MS);

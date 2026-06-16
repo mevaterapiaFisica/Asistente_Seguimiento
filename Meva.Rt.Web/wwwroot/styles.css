@@ -763,3 +763,56 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .spec-days-warn { color: var(--orange); font-weight: 600; }
 .spec-days-crit { color: var(--red); font-weight: 600; }
 .spec-days-gray { color: var(--muted); }
+
+/* ── Pacientes tab ────────────────────────────────────────────────────────── */
+
+.pacientes-layout {
+  max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;
+}
+.pacientes-search { display: block; }
+.pacientes-count { font-size: 13px; color: var(--muted); margin: 0; }
+.pacientes-results { display: flex; flex-direction: column; gap: 10px; }
+
+.paciente-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+}
+
+.paciente-card-header {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 14px;
+}
+.paciente-card-header strong { font-size: 14px; }
+.paciente-card-header a { color: inherit; text-decoration: none; }
+.paciente-card-header a:hover strong { text-decoration: underline; }
+
+.paciente-card-stage {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px;
+}
+.paciente-stage-label { font-weight: 600; }
+
+.paciente-card-detail { font-size: 13px; }
+
+.paciente-agenda-badge {
+  font-size: 12px; background: #e8f5e9; color: #2e7d32;
+  border: 1px solid #a5d6a7; border-radius: 999px; padding: 2px 9px;
+}
+
+.paciente-card-agenda {
+  font-size: 12px; color: var(--muted);
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+}
+
+.paciente-slot-date {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 6px; font-size: 12px; color: var(--ink);
+}
+
+.paciente-card-events {
+  border-top: 1px solid var(--line); padding-top: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.paciente-events-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+}
+.paciente-event-row { font-size: 12px; }
+.paciente-event-date { font-size: 11px; color: var(--muted); margin-right: 6px; }

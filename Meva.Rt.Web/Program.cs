@@ -102,6 +102,16 @@ app.MapGet("/api/home", async Task<IResult> (
     return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
 
+app.MapGet("/api/status", async (ISnapshotStore snapshotStore, CancellationToken ct) =>
+{
+    var data = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", ct);
+    var appJsPath = Path.Combine(app.Environment.WebRootPath, "app.js");
+    var appVersion = File.Exists(appJsPath)
+        ? new DateTimeOffset(File.GetLastWriteTimeUtc(appJsPath), TimeSpan.Zero).ToUnixTimeSeconds().ToString()
+        : "0";
+    return Results.Ok(new { generatedAtUtc = data?.GeneratedAtUtc, appVersion });
+});
+
 app.MapPost("/api/home/refresh", async Task<IResult> (
         BootstrapService bootstrapService,
         IRtSystemConfigurationProvider configurationProvider,
