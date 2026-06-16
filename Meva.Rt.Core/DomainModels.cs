@@ -53,6 +53,7 @@ public sealed class ProcessPatientSnapshot
     public string? ExactBeamEnergy { get; set; }
     public string? TreatmentLabel { get; set; }
     public int? Priority { get; set; }
+    public DateOnly? PostponedUntil { get; set; }
 }
 
 public sealed class MachineAppointmentSnapshot

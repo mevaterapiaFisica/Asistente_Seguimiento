@@ -74,6 +74,17 @@ function delayClass(days, expected, isLongWait) {
   return 'delayed';
 }
 
+function daysBadge(p, dc) {
+  if (p.postponedUntil && p.stageCode === 'F4') {
+    const d = new Date(), todayIso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    if (p.postponedUntil >= todayIso) {
+      const [, mo, da] = p.postponedUntil.split('-');
+      return `<span class="days-badge long-wait">Pospuesto por pac. h/${da}-${mo}</span>`;
+    }
+  }
+  return `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+}
+
 function delayDot(days, expected, isLongWait) {
   const cls = delayClass(days, expected, isLongWait);
   const col = cls === 'long-wait' ? 'dot-gray' : cls === 'on-time' ? 'dot-green' : cls === 'at-limit' ? 'dot-yellow' : 'dot-red';
@@ -674,7 +685,7 @@ function renderFollowupDetail() {
         `</div>` +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        daysBadge(p, dc);
       panel.appendChild(row);
     });
     return;
@@ -709,7 +720,7 @@ function renderFollowupDetail() {
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        daysBadge(p, dc);
       panel.appendChild(row);
     });
     return;
@@ -748,7 +759,7 @@ function renderFollowupDetail() {
         `</div>` +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        daysBadge(p, dc);
       panel.appendChild(row);
     });
     return;
@@ -789,7 +800,7 @@ function renderFollowupDetail() {
           `</div>` +
           renderTreatmentLabel(p) +
           ariaBadges(p) +
-          `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+          daysBadge(p, dc);
         panel.appendChild(row);
       });
     });
@@ -1685,7 +1696,7 @@ function renderFisicaDetail() {
         `</div>` +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+        daysBadge(p, dc);
       panel.appendChild(row);
       _fisicaPatientRowClickable(row, p);
     });
@@ -1731,7 +1742,7 @@ function renderFisicaDetail() {
           `</div>` +
           renderTreatmentLabel(p) +
           ariaBadges(p) +
-          `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
+          daysBadge(p, dc);
         panel.appendChild(row);
         _fisicaPatientRowClickable(row, p);
       });

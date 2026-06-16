@@ -249,6 +249,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                         StageStartDate = stageStartDate,
                         TomographyDate = row.TomographyDate,
                         ResponsibleDoctor = row.ResponsibleDoctor,
+                        PostponedUntil = row.PostponedUntil,
                         DaysInStage = daysInStage,
                         ExpectedDaysInStage = stageDefinition.ExpectedDays,
                         IsDelayed = daysInStage > stageDefinition.ExpectedDays,
@@ -306,6 +307,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                                      ?? ParseDate(match.Groups["date"].Value);
                 var tomographyDate = FollowUpDateParser.ExtractTomographyDate(segment);
                 var responsibleDoctor = FollowUpDateParser.ExtractResponsibleDoctor(segment);
+                var postponedUntil = FollowUpDateParser.ExtractPostponedUntil(segment);
 
                 if (string.IsNullOrWhiteSpace(patientName) || string.IsNullOrWhiteSpace(patientId))
                 {
@@ -332,6 +334,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     StageStartDate = stageStartDate,
                     TomographyDate = tomographyDate,
                     ResponsibleDoctor = responsibleDoctor,
+                    PostponedUntil = postponedUntil,
                     DaysInStage = daysInStage,
                     ExpectedDaysInStage = stageDefinition.ExpectedDays,
                     IsDelayed = daysInStage > stageDefinition.ExpectedDays,

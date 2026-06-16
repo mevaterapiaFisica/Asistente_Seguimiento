@@ -127,10 +127,19 @@ public sealed class BootstrapService
         var followUp = followUpTask.Result;
 
         var longWaitThreshold = _configurationProvider.Configuration.LongWaitThresholdDays;
+        var today = DateOnly.FromDateTime(DateTime.Today);
         foreach (var patient in followUp)
         {
             patient.IsLongWait = patient.DaysInStage > longWaitThreshold;
             patient.IsDelayed = patient.DaysInStage > patient.ExpectedDaysInStage && !patient.IsLongWait;
+
+            if (patient.StageCode == "F4"
+                && patient.PostponedUntil.HasValue
+                && patient.PostponedUntil.Value >= today)
+            {
+                patient.IsLongWait = true;
+                patient.IsDelayed = false;
+            }
         }
 
         // Build GUID→HC map: load previous scrape's cache, drop any GUID→GUID entries (unresolved),
@@ -326,7 +335,6 @@ public sealed class BootstrapService
                     patient.ResponsibleDoctor = prevDoc;
             }
 
-            var today = DateOnly.FromDateTime(DateTime.Today);
             var previousByPatient = new Dictionary<string, ProcessPatientSnapshot>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in previousBootstrap.FollowUpPatients)
                 if (!string.IsNullOrEmpty(p.PatientId))

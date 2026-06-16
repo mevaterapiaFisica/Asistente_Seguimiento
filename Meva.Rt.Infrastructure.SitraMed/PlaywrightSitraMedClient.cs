@@ -1542,6 +1542,10 @@ public sealed class PlaywrightSitraMedClient
                 ? FollowUpDateParser.ExtractResponsibleDoctor(rowHtml)
                 : null;
 
+            var postponedUntil = rowHtml != null
+                ? FollowUpDateParser.ExtractPostponedUntil(rowHtml)
+                : null;
+
             var firstConsultDate = stageEntryDate.HasValue
                 ? stageEntryDate.Value.ToString("dd-MM-yyyy")
                 : (await cells.Nth(1).InnerTextAsync()).Trim();
@@ -1650,6 +1654,7 @@ public sealed class PlaywrightSitraMedClient
                 StageCode = stage.Code,
                 TomographyDate = tomographyDate,
                 ResponsibleDoctor = responsibleDoctor,
+                PostponedUntil = postponedUntil,
                 Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null
             });
         }
@@ -1690,6 +1695,7 @@ public sealed class FollowUpPatientDomRow
     public string StageCode { get; set; } = string.Empty;
     public DateOnly? TomographyDate { get; set; }
     public string? ResponsibleDoctor { get; set; }
+    public DateOnly? PostponedUntil { get; set; }
     public int? Priority { get; set; }
 }
 

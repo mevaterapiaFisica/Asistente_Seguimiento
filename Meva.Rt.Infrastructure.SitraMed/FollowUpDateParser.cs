@@ -146,6 +146,18 @@ internal static class FollowUpDateParser
         => ExtractDateForStage(rowHtml, "F5");
 
     /// <summary>
+    /// Extrae la fecha de postergación del botón "Hasta: DD/MM/YYYY" en la columna
+    /// "Pospuesto por paciente" (1ª &lt;td&gt; de sección &lt;!-- f4). Aplica a pacientes F4.
+    /// </summary>
+    public static DateOnly? ExtractPostponedUntil(string rowHtml)
+    {
+        var cellText = ExtractCellText(rowHtml, "<!-- f4", 1);
+        if (string.IsNullOrWhiteSpace(cellText)) return null;
+        var m = DateInCellRegex.Match(cellText);
+        return m.Success ? ParseDateOnly(m.Groups[1].Value) : null;
+    }
+
+    /// <summary>
     /// Extrae el médico responsable: 4º &lt;td&gt; en la sección &lt;!-- f1 --&gt;
     /// (columna "Usuario" de la fila de definición de conducta).
     /// </summary>
