@@ -644,6 +644,12 @@ function buildCenterCard(centerName, stageSummary, stageOrder) {
   return card;
 }
 
+function followUpSort(a, b) {
+  const lwa = a.isLongWait ? 1 : 0, lwb = b.isLongWait ? 1 : 0;
+  if (lwa !== lwb) return lwa - lwb;
+  return b.daysInStage - a.daysInStage;
+}
+
 function renderFollowupDetail() {
   const panel = document.getElementById('followupDetail');
   if (!state.homeData) { panel.innerHTML = ''; return; }
@@ -696,7 +702,8 @@ function renderFollowupDetail() {
     const def = stageDefs.find(s => s.code === state.followup.activeStage);
     const pats = allPatients.filter(p =>
       !isExcludedTechnique(p) &&
-      p.centerName === state.followup.activeCenter && p.stageCode === state.followup.activeStage);
+      p.centerName === state.followup.activeCenter && p.stageCode === state.followup.activeStage)
+      .sort(followUpSort);
 
     panel.innerHTML = '';
     panel.appendChild(el('div', 'detail-title',
@@ -733,7 +740,7 @@ function renderFollowupDetail() {
     if (state.followup.centerFilter) {
       pats = pats.filter(p => p.centerName === state.followup.centerFilter);
     }
-    pats.sort((a, b) => b.daysInStage - a.daysInStage);
+    pats.sort(followUpSort);
 
     panel.innerHTML = '';
     panel.appendChild(el('div', 'detail-title',
@@ -779,7 +786,7 @@ function renderFollowupDetail() {
       return;
     }
     stageCodes.forEach(code => {
-      const stagePats = pats.filter(p => p.stageCode === code).sort((a, b) => b.daysInStage - a.daysInStage);
+      const stagePats = pats.filter(p => p.stageCode === code).sort(followUpSort);
       if (stagePats.length === 0) return;
       const def = stageDefs.find(s => s.code === code);
       panel.appendChild(el('div', 'detail-subtitle', `${def?.displayName ?? code} · ${stagePats.length} pac.`));
