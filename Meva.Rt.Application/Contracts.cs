@@ -295,7 +295,7 @@ public sealed class BootstrapService
                     CenterName = group.Key.CenterName,
                     StageCode = group.Key.StageCode,
                     StageGroupName = stageDef?.GroupName ?? group.First().StageGroupName,
-                    PatientCount = group.Count(),
+                    PatientCount = countable.Count,
                     AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
                     ExpectedDays = stageDef?.ExpectedDays ?? 0,
                     DelayedCount = group.Count(x => x.IsDelayed),
