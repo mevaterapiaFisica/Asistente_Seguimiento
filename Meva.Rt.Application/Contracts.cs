@@ -140,6 +140,12 @@ public sealed class BootstrapService
                 patient.IsLongWait = true;
                 patient.IsDelayed = false;
             }
+
+            if (patient.StageCode == "F6A" && patient.TreatmentTechnique == "TBI")
+            {
+                patient.IsLongWait = true;
+                patient.IsDelayed = false;
+            }
         }
 
         // Build GUID→HC map: load previous scrape's cache, drop any GUID→GUID entries (unresolved),
