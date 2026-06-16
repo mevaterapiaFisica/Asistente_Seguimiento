@@ -352,6 +352,7 @@ public sealed class BootstrapService
                 if (string.IsNullOrEmpty(current.PatientId)) continue;
                 if (!previousByPatient.TryGetValue(current.PatientId, out var previous)) continue;
                 if (string.Equals(previous.StageCode, current.StageCode, StringComparison.OrdinalIgnoreCase)) continue;
+                if (previous.IsLongWait) continue;
 
                 var startDate = previous.StageStartDate ?? today;
                 transitions.Add(new StageTransitionEvent
