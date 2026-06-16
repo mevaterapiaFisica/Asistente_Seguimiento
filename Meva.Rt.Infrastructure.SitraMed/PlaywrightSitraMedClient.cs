@@ -812,6 +812,14 @@ public sealed class PlaywrightSitraMedClient
         for (var i = 0; i < rowCount; i++)
         {
             var row = rowLocator.Nth(i);
+
+            // Skip rows with data-type containing "Finalizado" — these are past-treatment remnants
+            // rendered in grey by SitraMed (e.g. "Tratamiento Estima Finalizado").
+            // SitraMed uses CSS classes for color, not inline styles, so style-attribute checks don't apply here.
+            var dataType = string.Empty;
+            try { dataType = await row.GetAttributeAsync("data-type") ?? string.Empty; } catch { }
+            if (dataType.Contains("Finalizado", StringComparison.OrdinalIgnoreCase)) continue;
+
             var cells = await row.Locator("td").AllInnerTextsAsync();
             if (cells.Count == 0)
             {
@@ -827,6 +835,23 @@ public sealed class PlaywrightSitraMedClient
             if (LooksLikeAgendaHeader(trimmed))
             {
                 continue;
+            }
+
+            // Skip rows whose estimated end date (fechaFin, offset+9) is before the requested date.
+            // This catches grey rows: treatment already finished, slot still appears in agenda.
+            {
+                var fOff = 0;
+                while (fOff < trimmed.Length - 2 && string.IsNullOrWhiteSpace(trimmed[fOff])) fOff++;
+                if (trimmed.Length > fOff + 9)
+                {
+                    var fechaCell = trimmed[fOff + 9];
+                    if (!string.IsNullOrWhiteSpace(fechaCell) &&
+                        DateOnly.TryParseExact(fechaCell.Trim(),
+                            new[] { "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy" },
+                            CultureInfo.InvariantCulture, DateTimeStyles.None, out var rowDate) &&
+                        rowDate < date)
+                        continue;
+                }
             }
 
             var mapped = MapAgendaCells(trimmed);
@@ -871,6 +896,37 @@ public sealed class PlaywrightSitraMedClient
         return joined.Contains("paciente", StringComparison.OrdinalIgnoreCase)
                && (joined.Contains("inicio", StringComparison.OrdinalIgnoreCase)
                    || joined.Contains("hora", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Detects grey-ish background colors (R≈G≈B, not white, not black).
+    // Used to filter future appointment rows that SitraMed renders in grey instead of blue.
+    private static bool IsGreyBackground(string style)
+    {
+        if (string.IsNullOrEmpty(style)) return false;
+        var s = style.ToLowerInvariant();
+        if (s.Contains("gray") || s.Contains("grey") || s.Contains("silver")) return true;
+
+        var hex = Regex.Match(s, @"#([0-9a-f]{3,6})\b");
+        if (hex.Success)
+        {
+            var h = hex.Groups[1].Value;
+            int r, g, b;
+            if (h.Length == 3) { r = Convert.ToInt32($"{h[0]}{h[0]}", 16); g = Convert.ToInt32($"{h[1]}{h[1]}", 16); b = Convert.ToInt32($"{h[2]}{h[2]}", 16); }
+            else if (h.Length == 6) { r = Convert.ToInt32(h[..2], 16); g = Convert.ToInt32(h[2..4], 16); b = Convert.ToInt32(h[4..6], 16); }
+            else return false;
+            var maxC = Math.Max(r, Math.Max(g, b)); var minC = Math.Min(r, Math.Min(g, b));
+            return maxC - minC < 25 && maxC > 100 && maxC < 245;
+        }
+
+        var rgb = Regex.Match(s, @"rgba?\((\d+),\s*(\d+),\s*(\d+)");
+        if (rgb.Success)
+        {
+            var r = int.Parse(rgb.Groups[1].Value); var g = int.Parse(rgb.Groups[2].Value); var b = int.Parse(rgb.Groups[3].Value);
+            var maxC = Math.Max(r, Math.Max(g, b)); var minC = Math.Min(r, Math.Min(g, b));
+            return maxC - minC < 25 && maxC > 100 && maxC < 245;
+        }
+
+        return false;
     }
 
     /// <summary>

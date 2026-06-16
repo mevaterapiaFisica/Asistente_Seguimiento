@@ -9,7 +9,7 @@ namespace Meva.Rt.Infrastructure.SitraMed;
 public sealed class SitraMedAgendaExtractor : IAgendaExtractor
 {
     private static readonly Regex AgendaRowRegex = new(
-        "<tr[^>]*>\\s*(?:<td[^>]*>(?:\\s|<[^>]+>)*</td>\\s*)?<td[^>]*>(?<inicio>.*?)</td>\\s*<td[^>]*>(?<paciente>.*?)</td>\\s*<td[^>]*>(?<equipo>.*?)</td>\\s*<td[^>]*>(?<prioridad>.*?)</td>\\s*<td[^>]*>(?<observaciones>.*?)</td>\\s*<td[^>]*>(?<institucion>.*?)</td>\\s*<td[^>]*>(?<tipo>.*?)</td>\\s*<td[^>]*>(?<tratamiento>.*?)</td>\\s*<td[^>]*>(?<fechaInicio>.*?)</td>\\s*<td[^>]*>(?<fechaFin>.*?)</td>\\s*<td[^>]*>(?<horaFin>.*?)</td>\\s*<td[^>]*>(?<estado>.*?)</td>",
+        "<tr(?<trAttrs>[^>]*)>\\s*(?:<td[^>]*>(?:\\s|<[^>]+>)*</td>\\s*)?<td[^>]*>(?<inicio>.*?)</td>\\s*<td[^>]*>(?<paciente>.*?)</td>\\s*<td[^>]*>(?<equipo>.*?)</td>\\s*<td[^>]*>(?<prioridad>.*?)</td>\\s*<td[^>]*>(?<observaciones>.*?)</td>\\s*<td[^>]*>(?<institucion>.*?)</td>\\s*<td[^>]*>(?<tipo>.*?)</td>\\s*<td[^>]*>(?<tratamiento>.*?)</td>\\s*<td[^>]*>(?<fechaInicio>.*?)</td>\\s*<td[^>]*>(?<fechaFin>.*?)</td>\\s*<td[^>]*>(?<horaFin>.*?)</td>\\s*<td[^>]*>(?<estado>.*?)</td>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
     private readonly IRtSystemConfigurationProvider _configurationProvider;
@@ -114,12 +114,26 @@ public sealed class SitraMedAgendaExtractor : IAgendaExtractor
 
         foreach (Match row in rows)
         {
+            // Skip rows with grey background (future appointments mixed into today's view)
+            if (IsGreyBackground(row.Groups["trAttrs"].Value))
+                continue;
+
             var startTime = DecodeAndStrip(row.Groups["inicio"].Value);
             var patientName = DecodeAndStrip(row.Groups["paciente"].Value);
             if (string.IsNullOrWhiteSpace(startTime) || string.IsNullOrWhiteSpace(patientName) || patientName == "-")
             {
                 continue;
             }
+
+            // Skip rows whose estimated end date (fechaFin) is before the requested date.
+            // These are past-treatment remnants rendered in grey by SitraMed ("Tratamiento Estima Finalizado").
+            var fechaFinRaw = DecodeAndStrip(row.Groups["fechaFin"].Value);
+            if (!string.IsNullOrWhiteSpace(fechaFinRaw) &&
+                DateOnly.TryParseExact(fechaFinRaw,
+                    new[] { "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy" },
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var rowDate) &&
+                rowDate < source.AgendaDate)
+                continue;
 
             result.Add(new MachineAppointmentSnapshot
             {
@@ -140,6 +154,37 @@ public sealed class SitraMedAgendaExtractor : IAgendaExtractor
     private static string DecodeAndStrip(string value)
     {
         return WebUtility.HtmlDecode(Regex.Replace(Regex.Replace(value, "<.*?>", " "), "\\s+", " ").Trim());
+    }
+
+    // Detects grey-ish background colors (R≈G≈B, not white, not black).
+    // Used to filter future appointment rows that SitraMed renders in grey instead of blue.
+    private static bool IsGreyBackground(string style)
+    {
+        if (string.IsNullOrEmpty(style)) return false;
+        var s = style.ToLowerInvariant();
+        if (s.Contains("gray") || s.Contains("grey") || s.Contains("silver")) return true;
+
+        var hex = Regex.Match(s, @"#([0-9a-f]{3,6})\b");
+        if (hex.Success)
+        {
+            var h = hex.Groups[1].Value;
+            int r, g, b;
+            if (h.Length == 3) { r = Convert.ToInt32($"{h[0]}{h[0]}", 16); g = Convert.ToInt32($"{h[1]}{h[1]}", 16); b = Convert.ToInt32($"{h[2]}{h[2]}", 16); }
+            else if (h.Length == 6) { r = Convert.ToInt32(h[..2], 16); g = Convert.ToInt32(h[2..4], 16); b = Convert.ToInt32(h[4..6], 16); }
+            else return false;
+            var maxC = Math.Max(r, Math.Max(g, b)); var minC = Math.Min(r, Math.Min(g, b));
+            return maxC - minC < 25 && maxC > 100 && maxC < 245;
+        }
+
+        var rgb = Regex.Match(s, @"rgba?\((\d+),\s*(\d+),\s*(\d+)");
+        if (rgb.Success)
+        {
+            var r = int.Parse(rgb.Groups[1].Value); var g = int.Parse(rgb.Groups[2].Value); var b = int.Parse(rgb.Groups[3].Value);
+            var maxC = Math.Max(r, Math.Max(g, b)); var minC = Math.Min(r, Math.Min(g, b));
+            return maxC - minC < 25 && maxC > 100 && maxC < 245;
+        }
+
+        return false;
     }
 }
 
