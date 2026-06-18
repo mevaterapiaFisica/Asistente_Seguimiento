@@ -19,7 +19,8 @@ public static class TreatmentClassifier
         if (t.Contains("IGRT", StringComparison.OrdinalIgnoreCase)) return "IGRT";
         if (t.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
             || t.Contains("arco", StringComparison.OrdinalIgnoreCase)) return "VMAT";
-        if (t.Contains("IMRT", StringComparison.OrdinalIgnoreCase)) return "IMRT";
+        if (t.Contains("IMRT", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("Intensidad Modulada", StringComparison.OrdinalIgnoreCase)) return "IMRT";
         if (t.Contains("BQT", StringComparison.OrdinalIgnoreCase)
             || t.Contains("braqui", StringComparison.OrdinalIgnoreCase)) return "BQT";
         if (t.Contains("IORT", StringComparison.OrdinalIgnoreCase)

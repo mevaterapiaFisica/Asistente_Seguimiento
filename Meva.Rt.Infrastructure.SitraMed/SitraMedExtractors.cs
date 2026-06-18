@@ -469,14 +469,46 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
     {
         var matches = TreatmentZoneRegex.Matches(segment);
         if (matches.Count == 0) return string.Empty;
-        // Si hay múltiples tratamientos preferir el que no sea BQT/IORT
-        foreach (Match m in matches)
-        {
-            var zone = DecodeAndStrip(m.Groups["zone"].Value);
-            var tech = TreatmentClassifier.Classify(zone);
-            if (tech != "BQT" && tech != "IORT") return zone;
-        }
-        return DecodeAndStrip(matches[0].Groups["zone"].Value);
+        if (matches.Count == 1) return DecodeAndStrip(matches[0].Groups["zone"].Value);
+
+        var zones = matches
+            .Select(m => (zone: DecodeAndStrip(m.Groups["zone"].Value),
+                          tech: TreatmentClassifier.Classify(DecodeAndStrip(m.Groups["zone"].Value)),
+                          date: ExtractRowDate(segment, m.Index)))
+            .ToList();
+
+        var candidates = zones
+            .Where(x => x.tech != "BQT" && x.tech != "IORT")
+            .OrderByDescending(x => x.date ?? DateOnly.MinValue)
+            .ToList();
+
+        if (candidates.Count > 0) return candidates[0].zone;
+
+        // Fallback: BQT/IORT — still pick most recent
+        return zones.OrderByDescending(x => x.date ?? DateOnly.MinValue).First().zone;
+    }
+
+    private static readonly Regex RowDateRegex = new(@"\d{2}/\d{2}/\d{4}", RegexOptions.Compiled);
+
+    private static DateOnly? ExtractRowDate(string segment, int matchIndex)
+    {
+        var trStart = segment.LastIndexOf("<tr", matchIndex, StringComparison.OrdinalIgnoreCase);
+        if (trStart < 0) return null;
+
+        var td1 = segment.IndexOf("<td", trStart, StringComparison.OrdinalIgnoreCase);
+        if (td1 < 0) return null;
+        var td2 = segment.IndexOf("<td", td1 + 3, StringComparison.OrdinalIgnoreCase);
+        if (td2 < 0) return null;
+
+        var closeTd2 = segment.IndexOf("</td>", td2, StringComparison.OrdinalIgnoreCase);
+        if (closeTd2 < 0) return null;
+
+        var dateCell = segment.Substring(td2, closeTd2 - td2);
+        var dateMatch = RowDateRegex.Match(dateCell);
+        if (!dateMatch.Success) return null;
+
+        return DateOnly.TryParseExact(dateMatch.Value, "dd/MM/yyyy",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
     }
 
     private static string? ResolveExamplesDirectory()
@@ -647,4 +679,54 @@ internal sealed class FollowUpHtmlSource
 {
     public string FileName { get; set; } = string.Empty;
     public string Html { get; set; } = string.Empty;
+}
+
+public sealed class SitraMedAttendedPatientsExtractor : IAttendedPatientsExtractor
+{
+    private static readonly Regex RowRegex = new(
+        @"<tr[^>]*>(?<row>.*?)</tr>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+
+    private static readonly Regex AttendedBtnRegex = new(
+        @"<button[^>]*>\s*Atendido\s*</button>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+
+    private static readonly Regex GuidRegex = new(
+        @"medical_histories/(?<guid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/overview",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private readonly PlaywrightSitraMedClient _client;
+
+    public SitraMedAttendedPatientsExtractor(PlaywrightSitraMedClient client)
+    {
+        _client = client;
+    }
+
+    public async Task<IReadOnlySet<string>> ExtractAttendedGuidsAsync(
+        string centerName, string machineSitraName, DateOnly date, CancellationToken cancellationToken)
+    {
+        var html = await _client.DownloadAgendaPageHtmlForMachineAsync(centerName, machineSitraName, date, cancellationToken);
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            Console.Error.WriteLine($"[AttendedExtractor] HTML vacío para {centerName}/{machineSitraName}/{date}");
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+        return ParseAttendedGuids(html);
+    }
+
+    internal static IReadOnlySet<string> ParseAttendedGuids(string html)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match rowMatch in RowRegex.Matches(html))
+        {
+            var row = rowMatch.Groups["row"].Value;
+            if (!AttendedBtnRegex.IsMatch(row)) continue;
+            var guidMatch = GuidRegex.Match(row);
+            if (guidMatch.Success)
+                result.Add(guidMatch.Groups["guid"].Value);
+            else
+                Console.Error.WriteLine("[AttendedExtractor] Fila con Atendido sin GUID extraíble");
+        }
+        return result;
+    }
 }

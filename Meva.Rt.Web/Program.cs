@@ -67,6 +67,7 @@ builder.Services.AddSingleton<IFollowUpExtractor, SitraMedFollowUpExtractor>();
 builder.Services.AddSingleton<IAriaPatientRootProvider, NullAriaPatientRootProvider>();
 builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
 builder.Services.AddSingleton<IPatientHcResolver, SitraMedPatientHcFetcher>();
+builder.Services.AddSingleton<IAttendedPatientsExtractor, SitraMedAttendedPatientsExtractor>();
 builder.Services.AddSingleton<BootstrapService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
@@ -1228,6 +1229,35 @@ app.MapPost("/api/auth/verify", (HttpContext httpContext, IMemoryCache memoryCac
 
     memoryCache.Remove(rateCacheKey);
     return Results.Ok(new { valid = true });
+});
+
+// ─── Derivación ──────────────────────────────────────────────────────────────
+
+app.MapGet("/api/derivation/attended-patients", async (
+    string machine, string date,
+    IRtSystemConfigurationProvider configProvider,
+    IAttendedPatientsExtractor extractor,
+    CancellationToken ct) =>
+{
+    if (!DateOnly.TryParse(date, out var dateOnly))
+        return Results.BadRequest(new { error = "Formato de fecha inválido (use YYYY-MM-DD)" });
+
+    var machineConfig = configProvider.Configuration.Machines
+        .FirstOrDefault(m => string.Equals(m.DisplayName, machine, StringComparison.OrdinalIgnoreCase));
+    if (machineConfig == null)
+        return Results.NotFound(new { error = $"Equipo no encontrado: {machine}" });
+
+    try
+    {
+        var guids = await extractor.ExtractAttendedGuidsAsync(
+            machineConfig.CenterName, machineConfig.SitraName, dateOnly, ct);
+        return Results.Ok(new { attendedGuids = guids });
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        Console.Error.WriteLine($"[attended-patients] Error: {ex.Message}");
+        return Results.Ok(new { attendedGuids = Array.Empty<string>(), error = ex.Message });
+    }
 });
 
 // ─── App run ──────────────────────────────────────────────────────────────────

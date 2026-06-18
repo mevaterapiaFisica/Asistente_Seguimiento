@@ -49,6 +49,15 @@ public interface IPatientHcResolver
         CancellationToken cancellationToken);
 }
 
+public interface IAttendedPatientsExtractor
+{
+    Task<IReadOnlySet<string>> ExtractAttendedGuidsAsync(
+        string centerName,
+        string machineSitraName,
+        DateOnly date,
+        CancellationToken cancellationToken);
+}
+
 public interface IStageTransitionStore
 {
     Task AppendAsync(IEnumerable<StageTransitionEvent> events);

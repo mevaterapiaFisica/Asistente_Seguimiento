@@ -2307,20 +2307,50 @@ async function _calcularDerivacion() {
   const btn = document.getElementById('derivCalcularBtn');
   btn.disabled = true; btn.textContent = 'Calculando…';
 
+  const warningEl = document.getElementById('derivAttendedWarning');
+  if (warningEl) warningEl.hidden = true;
+
   try {
     const dates = _weekdaysBetween(fi, ff);
-    const results = await Promise.all(
-      dates.map(d => fetch(`/api/agenda?date=${d}`).then(r => r.ok ? r.json() : []).catch(() => []))
-    );
+    const [agendaResults, attendedGuids] = await Promise.all([
+      Promise.all(dates.map(d => fetch(`/api/agenda?date=${d}`).then(r => r.ok ? r.json() : []).catch(() => []))),
+      _fetchAttendedGuids(equipo, dates)
+    ]);
     dates.forEach((d, i) => {
-      const raw = results[i];
+      const raw = agendaResults[i];
       deriv.agendaSlots[d] = Array.isArray(raw) ? raw : (raw?.slots || []);
     });
     deriv.pacientes = _buildPacientesAfectados(equipo, dates, incluir);
+    for (const p of deriv.pacientes) {
+      if (p.sitraMedGuid && attendedGuids.has(p.sitraMedGuid.toLowerCase()))
+        deriv.asignaciones[p.key] = { estado: 'atendido', equipo: null };
+    }
     _renderDerivResult();
   } finally {
     btn.disabled = false; btn.textContent = 'Calcular derivacion';
   }
+}
+
+async function _fetchAttendedGuids(machineDisplayName, dates) {
+  const guids = new Set();
+  const results = await Promise.allSettled(
+    dates.map(d =>
+      fetch(`/api/derivation/attended-patients?machine=${encodeURIComponent(machineDisplayName)}&date=${d}`)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+    )
+  );
+  let hadError = false;
+  for (const r of results) {
+    if (r.status === 'rejected' || !r.value) { hadError = true; continue; }
+    if (r.value.error) hadError = true;
+    for (const g of (r.value.attendedGuids || [])) guids.add(g.toLowerCase());
+  }
+  if (hadError) {
+    const warningEl = document.getElementById('derivAttendedWarning');
+    if (warningEl) warningEl.hidden = false;
+  }
+  return guids;
 }
 
 function _buildPacientesAfectados(equipo, dates, incluirPlanif) {
@@ -2517,19 +2547,16 @@ function _buildDerivCard(p) {
       ${infoStr ? `<span class="deriv-card-dates">${infoStr}</span>` : ''}
       ${horariosStr ? `<span class="deriv-card-horario">🕐 ${horariosStr}</span>` : ''}
     </div>
-    <div class="deriv-quickbtns">
-      ${quickBtns}
-      ${othersSelect}
-    </div>
+    ${estado !== 'atendido' ? `<div class="deriv-quickbtns">${quickBtns}${othersSelect}</div>` : ''}
     <div class="deriv-card-footer">
       ${badgeHtml}
       <div class="deriv-card-actions">
         <button class="deriv-atendido-btn${estado === 'atendido' ? ' active' : ''}"
                 title="${estado === 'atendido' ? 'Quitar ya atendido' : 'Ya atendido hoy'}">✓</button>
-        <button class="deriv-suspend-btn${estado === 'suspendido' ? ' active' : ''}"
+        ${estado !== 'atendido' ? `<button class="deriv-suspend-btn${estado === 'suspendido' ? ' active' : ''}"
                 title="${estado === 'suspendido' ? 'Quitar suspension' : 'Suspender'}">
           ${estado === 'suspendido' ? '↩' : '⊗'}
-        </button>
+        </button>` : ''}
       </div>
     </div>`;
 
@@ -2549,7 +2576,7 @@ function _buildDerivCard(p) {
     });
   }
 
-  card.querySelector('.deriv-suspend-btn').addEventListener('click', e => {
+  card.querySelector('.deriv-suspend-btn')?.addEventListener('click', e => {
     e.stopPropagation(); _toggleSuspender(p.key);
   });
   card.querySelector('.deriv-atendido-btn').addEventListener('click', e => {
@@ -2755,7 +2782,7 @@ function exportarDerivacion(incluirSinAsignar) {
   const suspendidos = deriv.pacientes.filter(p => deriv.asignaciones[p.key]?.estado === 'suspendido');
   const atendidos   = deriv.pacientes.filter(p => deriv.asignaciones[p.key]?.estado === 'atendido');
   const sinAsignar  = deriv.pacientes.filter(p => !deriv.asignaciones[p.key]);
-  const exportList = [...derivados, ...suspendidos, ...atendidos, ...(incluirSinAsignar ? sinAsignar : [])];
+  const exportList = [...derivados, ...suspendidos, ...(incluirSinAsignar ? sinAsignar : [])];
 
   const countByEquipo = {};
   derivados.forEach(p => {
@@ -2813,6 +2840,12 @@ tr:nth-child(even) td{background:#fafaf7}
   Periodo del evento: ${fi}${fi!==ff?' al '+ff:''}<br>
   Generado el: ${now}&nbsp;·&nbsp;Generado por: Meva RT
 </div>
+${atendidos.length ? `<h2>Pacientes ya atendidos al momento del calculo</h2>
+<table style="margin-bottom:24px"><thead><tr><th>Paciente</th><th>HC</th><th>Tecnica</th><th>Turno(s) / Etapa</th></tr></thead>
+<tbody>${atendidos.map(p => {
+  const fechas = p.fechasTurno ? p.fechasTurno.map(_fmtDate).join(', ') : (p.etapaDisplay || '—');
+  return `<tr style="background:#f0faf0"><td>${esc(p.nombre)}</td><td>${esc(fmtHc(p.hc))}</td><td>${esc(p.treatmentLabel||'—')}</td><td>${esc(fechas)}</td></tr>`;
+}).join('')}</tbody></table>` : ''}
 <h2>Tabla de derivaciones</h2>
 <table><thead><tr><th>Paciente</th><th>HC</th><th>Tecnica</th><th>Turno(s) / Etapa</th><th>Destino</th><th>Observaciones</th></tr></thead>
 <tbody>${tableRows||'<tr><td colspan="6" style="color:#999;text-align:center">Sin pacientes</td></tr>'}</tbody></table>
@@ -2820,7 +2853,7 @@ tr:nth-child(even) td{background:#fafaf7}
 <table style="width:auto"><thead><tr><th>Equipo destino</th><th>Pacientes derivados</th></tr></thead>
 <tbody>${summaryRows}</tbody></table>
 <div class="note">
-  Total: ${exportList.length}&nbsp;|&nbsp;Derivados: ${derivados.length}&nbsp;|&nbsp;Suspendidos: ${suspendidos.length}&nbsp;|&nbsp;Ya atendidos: ${atendidos.length}${incluirSinAsignar&&sinAsignar.length?'&nbsp;|&nbsp;Sin asignar: '+sinAsignar.length:''}<br>
+  Total: ${deriv.pacientes.length}&nbsp;|&nbsp;Atendidos: ${atendidos.length}&nbsp;|&nbsp;Derivados: ${derivados.length}&nbsp;|&nbsp;Suspendidos: ${suspendidos.length}${incluirSinAsignar&&sinAsignar.length?'&nbsp;|&nbsp;Sin asignar: '+sinAsignar.length:''}<br>
   Este documento es orientativo. Las modificaciones deben realizarse en SitraMed.
 </div>
 </body></html>`;

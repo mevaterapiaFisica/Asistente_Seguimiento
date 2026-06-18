@@ -196,6 +196,26 @@ public sealed class PlaywrightSitraMedClient
         return await Task.WhenAll(tasks);
     }
 
+    public async Task<string?> DownloadAgendaPageHtmlForMachineAsync(
+        string centerName, string sitraName, DateOnly date, CancellationToken cancellationToken)
+    {
+        if (!CanUseRemoteScraping()) return null;
+
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+        var page = await session.Context.NewPageAsync();
+        page.SetDefaultTimeout(_options.TimeoutSeconds * 1000);
+        page.SetDefaultNavigationTimeout(_options.TimeoutSeconds * 1000);
+        try
+        {
+            var machine = new RtMachine { CenterName = centerName, SitraName = sitraName, DisplayName = sitraName };
+            return await DownloadAgendaHtmlAsync(page, machine, date, cancellationToken);
+        }
+        finally
+        {
+            await page.CloseAsync();
+        }
+    }
+
     public async Task<IReadOnlyList<TomographAgendaHtmlSnapshot>> DownloadTomographAgendaPagesAsync(
         IReadOnlyList<RtTomograph> tomographs,
         DateOnly date,
@@ -1672,6 +1692,11 @@ public sealed class PlaywrightSitraMedClient
                 treatmentZone = await row.EvaluateAsync<string>(
                     """
                     tr => {
+                        const conductLink = tr.querySelector('td a[href*="conduct_definitions"]');
+                        if (conductLink) {
+                            const text = (conductLink.textContent || '').trim();
+                            if (text.length > 2) return text;
+                        }
                         const keywords = ['tridimensional', '3d', 'modulada', 'imrt', 'sbrt',
                                           'igrt', 'tbi', 'irradiaci', 'radiocirug', 'vmat', 'arco',
                                           'braquiterapia', 'intraoperatoria', 'iort', 'rxcx'];
@@ -1679,6 +1704,7 @@ public sealed class PlaywrightSitraMedClient
                         const cells = Array.from(tr.querySelectorAll(':scope > td'));
                         let fallback = '';
                         for (let i = 2; i < cells.length; i++) {
+                            if (cells[i].querySelector('.modal, button.modal-button')) continue;
                             const raw = (cells[i].textContent || '').trim();
                             const tl = raw.replace(/[\s ]+/g, ' ').toLowerCase();
                             if (raw.length > 2 && keywords.some(kw => tl.includes(kw))) {

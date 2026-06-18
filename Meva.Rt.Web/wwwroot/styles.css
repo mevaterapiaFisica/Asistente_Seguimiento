@@ -559,6 +559,10 @@ h1, h2, p { margin: 0; }
 .deriv-badge-grey     { background: #f5f5f5; color: #6b7b83; border: 1px solid var(--line); }
 .deriv-badge-none     { background: #fff3e0; color: var(--orange); border: 1px solid #ffcc80; }
 .deriv-badge-atendido { background: #e8f5e9; color: #388e3c; border: 1px solid #81c784; }
+.deriv-attended-warning {
+  background: #fff8e1; color: #795548; border: 1px solid #ffe082;
+  border-radius: 6px; padding: 8px 14px; font-size: 13px; margin-bottom: 12px;
+}
 
 .deriv-card-actions { display: flex; gap: 2px; }
 .deriv-suspend-btn, .deriv-atendido-btn {
