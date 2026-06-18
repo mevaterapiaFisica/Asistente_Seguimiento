@@ -915,3 +915,41 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .inicios-warn.inicios-warn-failed {
   color: var(--red); background: #fff4f1; border-color: #e2a093;
 }
+
+/* ── Auth Modal ──────────────────────────────────────────────────────────── */
+.auth-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.auth-overlay[hidden] { display: none; }
+.auth-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.auth-modal-title {
+  font-size: 16px; font-weight: 700;
+  color: var(--text); margin: 0 0 20px;
+}
+.auth-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.auth-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.auth-input {
+  padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 14px; color: var(--text);
+  background: var(--bg); outline: none;
+}
+.auth-input:focus { border-color: var(--accent); }
+.auth-error {
+  font-size: 13px; color: var(--red);
+  background: #fff4f1; border: 1px solid #e2a093;
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 14px;
+}
+.auth-error[hidden] { display: none; }
+.auth-buttons {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;
+}

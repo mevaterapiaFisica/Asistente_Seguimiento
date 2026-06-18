@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Meva.Rt.Application;
@@ -65,6 +68,7 @@ builder.Services.AddSingleton<IAriaPatientRootProvider, NullAriaPatientRootProvi
 builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
 builder.Services.AddSingleton<IPatientHcResolver, SitraMedPatientHcFetcher>();
 builder.Services.AddSingleton<BootstrapService>();
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
@@ -1070,6 +1074,40 @@ app.MapGet("/api/tomograph-agenda", async Task<IResult> (
     return TypedResults.Ok(slots);
 });
 
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+app.MapPost("/api/auth/verify", (HttpContext httpContext, IMemoryCache memoryCache, AuthVerifyRequest req) =>
+{
+    var profile = req.Profile?.ToLowerInvariant();
+    if (profile != "sysadmin" && profile != "oftech")
+        return Results.BadRequest(new { valid = false, error = "Perfil inválido" });
+
+    var envVar = profile == "sysadmin" ? "MEVA_PWD_SYSADMIN_HASH" : "MEVA_PWD_OFTECH_HASH";
+    var expectedHash = Environment.GetEnvironmentVariable(envVar);
+    if (string.IsNullOrEmpty(expectedHash))
+        return Results.Json(new { valid = false, error = "Perfil no configurado" }, statusCode: 503);
+
+    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var rateCacheKey = $"auth_rate_{ip}_{profile}";
+    memoryCache.TryGetValue(rateCacheKey, out int failCount);
+
+    if (failCount >= 5)
+        return Results.Json(new { valid = false, error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
+
+    var actualHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(req.Password ?? "")));
+    if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+    {
+        memoryCache.Set(rateCacheKey, failCount + 1,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
+        return Results.Json(new { valid = false }, statusCode: 401);
+    }
+
+    memoryCache.Remove(rateCacheKey);
+    return Results.Ok(new { valid = true });
+});
+
 // ─── App run ──────────────────────────────────────────────────────────────────
 
 app.Run();
+
+record AuthVerifyRequest(string Profile, string Password);

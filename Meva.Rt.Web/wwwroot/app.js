@@ -247,10 +247,104 @@ const TECH_HIGHLIGHT_MAP = {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
+// ── Auth modal ────────────────────────────────────────────────────────────────
+
+function requestAuth(profile, options = {}) {
+  return new Promise(resolve => {
+    const { requireUsername = false, title = 'Autenticación requerida' } = options;
+
+    const overlay    = document.getElementById('auth-modal-overlay');
+    const titleEl    = document.getElementById('auth-modal-title');
+    const usernameRow = document.getElementById('auth-username-row');
+    const usernameIn = document.getElementById('auth-username');
+    const passwordIn = document.getElementById('auth-password');
+    const errorDiv   = document.getElementById('auth-error');
+    const acceptBtn  = document.getElementById('auth-accept-btn');
+    const cancelBtn  = document.getElementById('auth-cancel-btn');
+
+    titleEl.textContent = title;
+    usernameRow.hidden = !requireUsername;
+    usernameIn.value = '';
+    passwordIn.value = '';
+    errorDiv.hidden = true;
+    errorDiv.textContent = '';
+    acceptBtn.disabled = true;
+    overlay.hidden = false;
+    (requireUsername ? usernameIn : passwordIn).focus();
+
+    function checkReady() {
+      acceptBtn.disabled = passwordIn.value.length === 0 ||
+        (requireUsername && usernameIn.value.trim().length === 0);
+    }
+
+    async function onAccept() {
+      const password = passwordIn.value;
+      const username = usernameIn.value.trim();
+      acceptBtn.disabled = true;
+      errorDiv.hidden = true;
+      try {
+        const resp = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile, password })
+        });
+        if (resp.ok) {
+          cleanup();
+          resolve({ authenticated: true, username: username || undefined });
+        } else if (resp.status === 429) {
+          const data = await resp.json().catch(() => ({}));
+          errorDiv.textContent = data.error ?? 'Demasiados intentos. Espere 5 minutos.';
+          errorDiv.hidden = false;
+          acceptBtn.disabled = false;
+        } else {
+          errorDiv.textContent = 'Contraseña incorrecta.';
+          errorDiv.hidden = false;
+          passwordIn.value = '';
+          checkReady();
+          passwordIn.focus();
+        }
+      } catch {
+        errorDiv.textContent = 'Error de conexión.';
+        errorDiv.hidden = false;
+        acceptBtn.disabled = false;
+      }
+    }
+
+    function onCancel() { cleanup(); resolve(null); }
+
+    function onKeydown(e) {
+      if (e.key === 'Enter' && !acceptBtn.disabled) onAccept();
+      if (e.key === 'Escape') onCancel();
+    }
+
+    function cleanup() {
+      overlay.hidden = true;
+      usernameIn.removeEventListener('input', checkReady);
+      passwordIn.removeEventListener('input', checkReady);
+      acceptBtn.removeEventListener('click', onAccept);
+      cancelBtn.removeEventListener('click', onCancel);
+      passwordIn.removeEventListener('keydown', onKeydown);
+    }
+
+    usernameIn.addEventListener('input', checkReady);
+    passwordIn.addEventListener('input', checkReady);
+    acceptBtn.addEventListener('click', onAccept);
+    cancelBtn.addEventListener('click', onCancel);
+    passwordIn.addEventListener('keydown', onKeydown);
+  });
+}
+
 function wireTabs() {
   document.querySelectorAll('nav.tabs .tab-button[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.activeTab = btn.dataset.tab;
+    btn.addEventListener('click', async () => {
+      const targetTab = btn.dataset.tab;
+
+      if (targetTab === 'config') {
+        const auth = await requestAuth('sysadmin', { title: 'Acceso a Configuración' });
+        if (!auth || !auth.authenticated) return;
+      }
+
+      state.activeTab = targetTab;
       document.querySelectorAll('nav.tabs .tab-button[data-tab]').forEach(b =>
         b.classList.toggle('active', b === btn));
       document.querySelectorAll('.tab-panel').forEach(p =>
@@ -284,9 +378,21 @@ function wireActions() {
     e.stopPropagation();
   });
   document.addEventListener('click', () => { menu.hidden = true; });
-  document.getElementById('actionUpdateSitramed').addEventListener('click', actionUpdateSitramed);
-  document.getElementById('actionUpdateAria').addEventListener('click', actionUpdateAria);
-  document.getElementById('actionUpdateAll').addEventListener('click', actionUpdateAll);
+  document.getElementById('actionUpdateSitramed').addEventListener('click', async () => {
+    const auth = await requestAuth('sysadmin', { title: 'Confirmar actualización' });
+    if (!auth || !auth.authenticated) return;
+    actionUpdateSitramed();
+  });
+  document.getElementById('actionUpdateAria').addEventListener('click', async () => {
+    const auth = await requestAuth('sysadmin', { title: 'Confirmar actualización' });
+    if (!auth || !auth.authenticated) return;
+    actionUpdateAria();
+  });
+  document.getElementById('actionUpdateAll').addEventListener('click', async () => {
+    const auth = await requestAuth('sysadmin', { title: 'Confirmar actualización' });
+    if (!auth || !auth.authenticated) return;
+    actionUpdateAll();
+  });
 
   document.getElementById('agendaDateSelect').addEventListener('change', e => {
     state.agenda.selectedDate = e.target.value || null;

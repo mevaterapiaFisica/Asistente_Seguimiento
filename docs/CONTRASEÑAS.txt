@@ -1,0 +1,85 @@
+GESTIÓN DE CONTRASEÑAS - Meva.Rt
+=================================
+
+El sistema usa dos perfiles con contraseñas separadas:
+
+1. SysAdmin: acceso al tab Configuración y disparo manual de
+   actualizaciones.
+2. Oficina Técnica: registro de reservas de turno.
+
+Las contraseñas se almacenan como hash SHA-256 en variables
+de entorno del sistema Windows. NUNCA se guardan en archivos
+del proyecto.
+
+─── CAMBIAR UNA CONTRASEÑA ──────────────────────────────────
+
+Paso 1 - Generar el hash de la nueva contraseña:
+
+  Abrir PowerShell o cmd como administrador.
+  Navegar a la carpeta del proyecto:
+    cd C:\Pablo\Meva.Rt
+
+  Ejecutar:
+    dotnet run --project Meva.Rt.Tools.HashPassword
+
+  Ingresar la contraseña deseada cuando lo pida.
+  Copiar el hash SHA-256 que devuelve (es una cadena larga
+  de números y letras mayúsculas).
+
+Paso 2 - Configurar la variable de entorno:
+
+  Abrir "Variables de entorno del sistema" en Windows:
+    Tecla Windows → "Editar variables de entorno del sistema"
+    → Variables de entorno
+
+  En "Variables del sistema" (no usuario), crear o editar:
+    Para SysAdmin:        MEVA_PWD_SYSADMIN_HASH
+    Para Oficina Técnica: MEVA_PWD_OFTECH_HASH
+
+  Pegar el hash copiado en el paso 1 como valor.
+  Aceptar todos los diálogos.
+
+Paso 3 - Reiniciar el servicio:
+
+  Abrir Servicios (services.msc).
+  Buscar "Meva.Rt" en la lista.
+  Click derecho → Reiniciar.
+
+  Las nuevas contraseñas tomarán efecto inmediatamente.
+
+─── PROBAR LAS CONTRASEÑAS ───────────────────────────────────
+
+Abrir la aplicación en el browser:
+  http://localhost:5000
+
+Intentar acceder al tab Configuración.
+Cuando pida la contraseña, ingresar la nueva contraseña
+SysAdmin.
+
+Si todo está correcto, debería permitir el acceso.
+
+─── NOTAS DE SEGURIDAD ────────────────────────────────────────
+
+- El hash SHA-256 NO se puede revertir: si se olvida la
+  contraseña, hay que generar una nueva y reemplazar el hash.
+- El archivo de variables de entorno está protegido por
+  Windows: solo administradores del sistema pueden leerlo.
+- Si querés que el servicio no requiera contraseña para un
+  perfil (por ejemplo durante desarrollo), simplemente
+  elimina la variable de entorno correspondiente. La app
+  mostrará "Servicio no disponible" pero seguirá funcionando
+  el resto.
+- Los intentos fallidos se limitan a 5 cada 5 minutos por
+  dirección IP, para evitar ataques de fuerza bruta.
+
+─── PRIMERA INSTALACIÓN ──────────────────────────────────────
+
+Si es la primera vez que se instala el sistema:
+
+1. Generar los hashes para ambos perfiles (Paso 1).
+2. Crear las DOS variables de entorno (Paso 2).
+3. Reiniciar el servicio (Paso 3).
+
+Hasta que existan las variables, las funciones protegidas
+devolverán error y no se podrá acceder a Configuración ni
+registrar reservas.

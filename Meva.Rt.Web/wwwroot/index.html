@@ -292,6 +292,26 @@
 
     </main>
   </div>
+  <!-- ── Auth Modal ────────────────────────────────────────────────────── -->
+  <div id="auth-modal-overlay" class="auth-overlay" hidden>
+    <div class="auth-modal">
+      <h3 id="auth-modal-title" class="auth-modal-title">Autenticación requerida</h3>
+      <div id="auth-username-row" class="auth-field" hidden>
+        <label class="auth-label">Nombre de usuario</label>
+        <input id="auth-username" type="text" class="auth-input" autocomplete="off">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Contraseña</label>
+        <input id="auth-password" type="password" class="auth-input" autocomplete="current-password">
+      </div>
+      <div id="auth-error" class="auth-error" hidden></div>
+      <div class="auth-buttons">
+        <button id="auth-cancel-btn" type="button" class="ghost-button">Cancelar</button>
+        <button id="auth-accept-btn" type="button" class="tab-button active" disabled>Aceptar</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js?v=20260618"></script>
 </body>
 </html>
