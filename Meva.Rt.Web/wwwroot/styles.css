@@ -925,22 +925,22 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 }
 .auth-overlay[hidden] { display: none; }
 .auth-modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 28px 32px;
   width: 340px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
 }
 .auth-modal-title {
   font-size: 16px; font-weight: 700;
-  color: var(--text); margin: 0 0 20px;
+  color: var(--ink); margin: 0 0 20px;
 }
 .auth-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
 .auth-label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .auth-input {
-  padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: 6px; font-size: 14px; color: var(--text);
+  padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; font-size: 14px; color: var(--ink);
   background: var(--bg); outline: none;
 }
 .auth-input:focus { border-color: var(--accent); }
