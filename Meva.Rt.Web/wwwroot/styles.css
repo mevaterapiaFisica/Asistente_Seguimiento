@@ -1001,10 +1001,6 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
   border-radius: 999px; padding: 1px 8px; white-space: nowrap;
 }
 
-/* Pacientes tab — 2 columnas cuando hay paciente seleccionado */
-.pacientes-detail-layout {
-  display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start;
-}
 .pacientes-action-panel {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 16px;
@@ -1062,16 +1058,57 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
   border-radius: 8px;
 }
 
-/* Pacientes tab — tarjeta seleccionada */
+/* Pacientes tab — tarjeta seleccionada en la lista compacta */
 .paciente-card-selected {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* Layout 3 columnas */
+.pacientes-detail-layout {
+  display: grid;
+  grid-template-columns: 25% 1fr 200px;
+  gap: 24px;
+  align-items: start;
+}
 .pacientes-list-col {
   min-width: 0;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 80vh; overflow-y: auto;
 }
+.pacientes-center-col { min-width: 0; }
 .pacientes-detail-col { position: sticky; top: 16px; }
+
+/* Items compactos de la lista izquierda */
+.pacientes-list-item {
+  cursor: pointer; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); transition: background 0.1s;
+  user-select: none;
+}
+.pacientes-list-item:hover { background: var(--bg); }
+.pacientes-list-item.selected {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
+.pli-name {
+  font-size: 13px; font-weight: 500;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;
+  line-height: 1.4;
+}
+.pli-context { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pli-resv { margin-top: 3px; }
+
+/* Responsive: < 1200px — el panel acción baja debajo de la ficha */
+@media (max-width: 1200px) {
+  .pacientes-detail-layout {
+    grid-template-columns: 28% 1fr;
+    grid-template-rows: auto auto;
+  }
+  .pacientes-list-col { grid-row: span 2; max-height: none; }
+  .pacientes-center-col { grid-column: 2; grid-row: 1; }
+  .pacientes-detail-col { grid-column: 2; grid-row: 2; position: static; }
+}
+
 .pacientes-action-patient {
   font-size: 13px; line-height: 1.8; margin-bottom: 14px;
   padding-bottom: 12px; border-bottom: 1px solid var(--line);

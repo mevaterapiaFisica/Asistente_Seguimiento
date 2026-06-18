@@ -3681,31 +3681,54 @@ function _renderPacientesResults() {
   const layout = document.createElement('div');
   layout.className = 'pacientes-detail-layout';
 
-  // Left column: list
+  // ── Columna izquierda: lista compacta ─────────────────────────────────────
   const listCol = document.createElement('div');
   listCol.className = 'pacientes-list-col';
   listCol.appendChild(el('p', 'pacientes-count',
     `${results.length} resultado${results.length !== 1 ? 's' : ''}`));
 
+  const stageDefs = state.homeData.stages ?? [];
   results.forEach(r => {
-    const card = _renderPacienteCard(r);
-    const isSelected = r.followup?.patientId === state.pacientes.selected?.followup?.patientId;
-    if (isSelected) card.classList.add('paciente-card-selected');
-    card.style.cursor = 'pointer';
-    card.addEventListener('click', () => {
+    const p = r.followup;
+    const slot0 = r.agendaSlots?.[0];
+    const patientId = p?.patientId ?? slot0?.patientId;
+    const name = p?.patientName ?? slot0?.patientName ?? '?';
+    const centerName = p?.centerName ?? slot0?.centerName ?? '';
+    const stageCode = p?.stageCode ?? '';
+    const stageLabel = stageDefs.find(s => s.code === stageCode)?.displayName ?? stageCode;
+    const resv = window.activeReservations.get(patientId);
+
+    const isSelected = patientId && patientId === state.pacientes.selected?.followup?.patientId;
+    const item = document.createElement('div');
+    item.className = `pacientes-list-item${isSelected ? ' selected' : ''}`;
+    item.innerHTML =
+      `<div class="pli-name">${priorityBadge(p?.priority ?? slot0?.priority)}${esc(name)}${hcTag(patientId)}</div>` +
+      ((centerName || stageLabel)
+        ? `<div class="pli-context">${[centerName, stageLabel].filter(Boolean).map(esc).join(' · ')}</div>`
+        : '') +
+      (resv ? `<div class="pli-resv">${_reservationBadge(patientId)}</div>` : '');
+    item.addEventListener('click', () => {
       state.pacientes.selected = r;
       _renderPacientesResults();
     });
-    listCol.appendChild(card);
+    listCol.appendChild(item);
   });
 
-  // Right column: action panel
+  // ── Columna central: ficha expandida del paciente seleccionado ────────────
+  const centerCol = document.createElement('div');
+  centerCol.className = 'pacientes-center-col';
+  if (state.pacientes.selected) {
+    centerCol.appendChild(_renderPacienteCard(state.pacientes.selected));
+  }
+
+  // ── Columna derecha: panel de acción ──────────────────────────────────────
   const detailCol = document.createElement('div');
   detailCol.className = 'pacientes-detail-col';
   detailCol.id = 'pacientes-detail-col';
   _renderPatientActionPanel(state.pacientes.selected, detailCol);
 
   layout.appendChild(listCol);
+  layout.appendChild(centerCol);
   layout.appendChild(detailCol);
   panel.appendChild(layout);
 }
