@@ -1143,12 +1143,33 @@ function renderAgendaDetail() {
     if (!isToday && estimated.length === 0) return;
   }
 
-  // Sort scraped by start time, estimated at end
-  scraped.sort((a, b) => (a.startTime || 'zzz').localeCompare(b.startTime || 'zzz'));
+  // Ghost slots: reservations matching this machine and date
+  const ghostSlots = [];
+  window.activeReservations.forEach(r => {
+    if (r.reservedDate !== state.agenda.selectedDate) return;
+    if (r.machineDisplayName !== state.agenda.activeMachine) return;
+    ghostSlots.push({ _ghost: true, startTime: r.reservedTime || '', reservation: r });
+  });
 
-  const all = [...scraped, ...estimated];
+  // Real + ghost sorted by time; estimated appended at end
+  const realAndGhost = [...scraped, ...ghostSlots]
+    .sort((a, b) => (a.startTime || 'zzz').localeCompare(b.startTime || 'zzz'));
+  const all = [...realAndGhost, ...estimated];
+
   all.forEach(slot => {
     const row = document.createElement('div');
+
+    if (slot._ghost) {
+      const r = slot.reservation;
+      row.className = 'slot-row reserved-ghost';
+      row.innerHTML =
+        `<span class="slot-time">${r.reservedTime || '~'}</span>` +
+        `<span class="slot-patient">${esc(r.patientName)}</span>` +
+        `<span class="slot-badge" style="background:var(--color-reservation-bg);color:var(--color-reservation);border:1px solid var(--color-reservation-border)">turno reservado</span>`;
+      panel.appendChild(row);
+      return;
+    }
+
     const isInferred = slot.isEstimated && slot.estimatedSource === 'center';
     row.className = `slot-row ${slot.isEstimated ? (isInferred ? 'inferred' : 'estimated') : 'in-agenda'}`;
     let displayName;
@@ -1173,22 +1194,6 @@ function renderAgendaDetail() {
       `<span class="slot-patient">${displayName}</span>` +
       renderTreatmentLabel(slot) +
       (slot.isEstimated ? estimatedBadge : `<span class="slot-badge celeste">en agenda</span>`);
-    panel.appendChild(row);
-  });
-
-  // Ghost slots: reservations matching this machine and date
-  const activeMachine = state.agenda.activeMachine;
-  const selectedDate = state.agenda.selectedDate;
-  window.activeReservations.forEach(r => {
-    if (r.reservedDate !== selectedDate) return;
-    if (r.machineDisplayName !== activeMachine) return;
-    const row = document.createElement('div');
-    row.className = 'slot-row reserved-ghost';
-    const [, rm, rd] = r.reservedDate.split('-');
-    row.innerHTML =
-      `<span class="slot-time">${r.reservedTime || '~'}</span>` +
-      `<span class="slot-patient">${esc(r.patientName)}</span>` +
-      `<span class="slot-badge" style="background:var(--color-reservation-bg);color:var(--color-reservation);border:1px solid var(--color-reservation-border)">turno reservado</span>`;
     panel.appendChild(row);
   });
 }
