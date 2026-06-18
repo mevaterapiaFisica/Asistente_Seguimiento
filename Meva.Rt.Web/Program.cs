@@ -1145,9 +1145,12 @@ app.MapPost("/api/reservations", async (HttpContext httpContext, IMemoryCache me
 });
 
 app.MapDelete("/api/reservations/{reservationId}", async (string reservationId, HttpContext httpContext,
-    IMemoryCache memoryCache, TurnReservationStore reservationStore, DeleteReservationRequest req, CancellationToken ct) =>
+    IMemoryCache memoryCache, TurnReservationStore reservationStore, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(req.Password))
+    DeleteReservationRequest? req;
+    try { req = await httpContext.Request.ReadFromJsonAsync<DeleteReservationRequest>(ct); }
+    catch { req = null; }
+    if (req is null || string.IsNullOrWhiteSpace(req.Password))
         return Results.BadRequest(new { error = "Contraseña requerida" });
 
     var expectedHash = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
