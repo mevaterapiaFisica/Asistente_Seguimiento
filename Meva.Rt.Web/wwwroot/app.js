@@ -3887,25 +3887,99 @@ function _renderPatientActionPanel(result, container) {
   container.appendChild(panel);
 }
 
-async function _deleteReservation(reservationId, patient) {
-  if (!confirm(`¿Eliminar la reserva de turno para ${patient.patientName}?`)) return;
-  const auth = await requestAuth('oftech', {
-    title: 'Confirmar eliminación de reserva',
-    returnPassword: true
+function _deleteReservation(reservationId, patient) {
+  const reservation = window.activeReservations.get(patient.patientId);
+  if (!reservation) return;
+
+  const [ry, rm, rd] = reservation.reservedDate.split('-');
+  const fechaStr = `${rd}/${rm}/${ry} ${reservation.reservedTime ?? ''}`.trim();
+
+  // Modal dinámico de confirmación con credenciales
+  const overlay = document.createElement('div');
+  overlay.className = 'auth-overlay';
+  overlay.innerHTML = `
+    <div class="auth-modal del-confirm-modal">
+      <h3 class="auth-modal-title">Eliminar reserva</h3>
+      <p class="del-confirm-question">¿Confirma eliminar la reserva de turno?</p>
+      <div class="del-confirm-info">
+        <div class="del-info-row"><span class="del-info-label">Paciente:</span> ${esc(reservation.patientName)}</div>
+        <div class="del-info-row"><span class="del-info-label">Fecha:</span> ${esc(fechaStr)}</div>
+        <div class="del-info-row"><span class="del-info-label">Equipo:</span> ${esc(reservation.machineDisplayName)}</div>
+      </div>
+      <p class="del-confirm-warn">Esta acción no se puede deshacer.</p>
+      <div class="auth-field">
+        <label class="auth-label">Usuario</label>
+        <input id="del-username" type="text" class="auth-input" autocomplete="off">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Contraseña</label>
+        <input id="del-password" type="password" class="auth-input">
+      </div>
+      <div id="del-error" class="auth-error" hidden></div>
+      <div class="auth-buttons">
+        <button id="del-cancel" type="button" class="ghost-button">Cancelar</button>
+        <button id="del-confirm-btn" type="button" class="tab-button active del-confirm-btn" disabled>Confirmar eliminación</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const usernameIn = overlay.querySelector('#del-username');
+  const passwordIn = overlay.querySelector('#del-password');
+  const errorDiv  = overlay.querySelector('#del-error');
+  const confirmBtn = overlay.querySelector('#del-confirm-btn');
+  const cancelBtn  = overlay.querySelector('#del-cancel');
+  usernameIn.focus();
+
+  function checkReady() {
+    confirmBtn.disabled = !(usernameIn.value.trim() && passwordIn.value);
+  }
+  usernameIn.addEventListener('input', checkReady);
+  passwordIn.addEventListener('input', checkReady);
+
+  function close() { document.body.removeChild(overlay); }
+
+  cancelBtn.addEventListener('click', close);
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  confirmBtn.addEventListener('click', async () => {
+    confirmBtn.disabled = true;
+    errorDiv.hidden = true;
+    try {
+      const resp = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameIn.value.trim(), password: passwordIn.value })
+      });
+      if (resp.status === 401) {
+        errorDiv.textContent = 'Contraseña incorrecta.';
+        errorDiv.hidden = false;
+        passwordIn.value = '';
+        confirmBtn.disabled = true;
+        usernameIn.focus();
+        return;
+      }
+      if (resp.status === 429) {
+        errorDiv.textContent = 'Demasiados intentos. Espere unos minutos.';
+        errorDiv.hidden = false;
+        confirmBtn.disabled = false;
+        return;
+      }
+      if (!resp.ok) {
+        errorDiv.textContent = `Error al eliminar (${resp.status}).`;
+        errorDiv.hidden = false;
+        confirmBtn.disabled = false;
+        return;
+      }
+      window.activeReservations.delete(patient.patientId);
+      state.pacientes.selected = null;
+      close();
+      _renderPacientesResults();
+    } catch {
+      errorDiv.textContent = 'Error de red.';
+      errorDiv.hidden = false;
+      confirmBtn.disabled = false;
+    }
   });
-  if (!auth) return;
-  try {
-    const resp = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'oftech', password: auth.password })
-    });
-    if (resp.status === 429) { alert('Demasiados intentos. Espere unos minutos.'); return; }
-    if (!resp.ok) { alert(`Error al eliminar la reserva (${resp.status}).`); return; }
-    window.activeReservations.delete(patient.patientId);
-    state.pacientes.selected = null;
-    _renderPacientesResults();
-  } catch { alert('Error de red al eliminar la reserva.'); }
 }
 
 function _openReservationModal(patient, existing) {
@@ -3929,9 +4003,19 @@ function _openReservationModal(patient, existing) {
   titleEl.textContent = existing ? 'Editar reserva de turno' : 'Reservar Turno';
   patInfoEl.textContent = `${patient.patientName} · ${patient.centerName ?? ''}`;
 
-  // Populate machines
+  // Populate machines — filtrar por centro del paciente
   machineIn.innerHTML = '<option value="">— Seleccionar equipo —</option>';
-  const machines = state.homeData?.configuration?.machines ?? [];
+  const allMachines = state.homeData?.configuration?.machines ?? [];
+  let machines = allMachines;
+  if (patient.centerName) {
+    machines = allMachines.filter(m => m.centerName === patient.centerName);
+    if (machines.length === 0) {
+      console.warn(`_openReservationModal: sin equipos para centro "${patient.centerName}", mostrando todos`);
+      machines = allMachines;
+    }
+  } else {
+    console.warn('_openReservationModal: paciente sin centerName, mostrando todos los equipos');
+  }
   machines.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m.displayName;
