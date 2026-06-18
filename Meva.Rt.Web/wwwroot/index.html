@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css?v=20260616">
+  <link rel="stylesheet" href="styles.css?v=20260618">
 </head>
 <body>
   <div id="feriados-alert-banner" style="display:none; background:#fff3cd; color:#856404; border:1px solid #ffc107; border-radius:6px; padding:8px 16px; margin:8px 16px; font-size:13px; font-weight:600;"></div>
@@ -20,6 +20,7 @@
     <nav class="tabs">
       <button class="tab-button active" data-tab="alertas" type="button">Alertas</button>
       <button class="tab-button" data-tab="pacientes" type="button">Pacientes</button>
+      <button class="tab-button" data-tab="inicios" type="button">Inicios</button>
       <button class="tab-button" data-tab="followup" type="button">Seguimiento</button>
       <button class="tab-button" data-tab="tomograph" type="button">Agenda Tomografos</button>
       <button class="tab-button" data-tab="agenda" type="button">Agenda Equipos</button>
@@ -61,6 +62,16 @@
                  placeholder="Buscar paciente por nombre o HC...">
           <div id="pacientesResults" class="pacientes-results"></div>
         </div>
+      </section>
+
+      <!-- ── Inicios ──────────────────────────────────────────────────────── -->
+      <section id="tab-inicios" class="tab-panel">
+        <div class="filter-bar">
+          <span class="filter-label">Centro:</span>
+          <div id="iniciosCenterPills" class="pill-row"></div>
+        </div>
+        <div id="iniciosCounter" class="inicios-counter"></div>
+        <div id="iniciosContent"></div>
       </section>
 
       <!-- ── Tendencias ───────────────────────────────────────────────────── -->
@@ -281,6 +292,6 @@
 
     </main>
   </div>
-  <script src="app.js?v=20260616"></script>
+  <script src="app.js?v=20260618"></script>
 </body>
 </html>

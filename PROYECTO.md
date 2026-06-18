@@ -1,0 +1,506 @@
+# Meva.Rt — Documentación del Proyecto
+
+> Sistema de seguimiento de pacientes en radioterapia oncológica para **Meva Terapia** (mevaterapia.com.ar).
+> Tecnologías: .NET 9, ASP.NET Core Minimal APIs, Playwright, Entity Framework 6, Windows Service.
+> Última actualización: 2026-06-18 (sesión tarde)
+
+---
+
+## Problema que resuelve
+
+Los pacientes de radioterapia pasan por un proceso largo y multietapa: desde la solicitud de planificación hasta la primera sesión de tratamiento. El equipo de física médica necesita saber en qué etapa está cada paciente, cuántos días lleva ahí, y si hay demoras que requieren intervención.
+
+Los datos viven en dos sistemas separados:
+- **SitraMed** — sistema de gestión clínica (web app interna), contiene seguimiento de pacientes y agenda de equipos.
+- **ARIA** — sistema Varian de planificación de radioterapia (base de datos SQL Server local en cada centro), contiene los planes de tratamiento aprobados.
+
+Meva.Rt integra ambos sistemas en un **dashboard web unificado**.
+
+---
+
+## Arquitectura general
+
+```
+Meva.Rt.Core                      ← Modelos de dominio, TreatmentClassifier (sin dependencias externas)
+Meva.Rt.Application                ← Interfaces + BootstrapService (orquestador) + BusinessDayCalculator
+Meva.Rt.Infrastructure.SitraMed   ← Web scraping con Playwright (paralelo, SemaphoreSlim 2)
+Meva.Rt.Infrastructure.Aria        ← Integración ARIA via AriaQ.dll
+Meva.Rt.Infrastructure.Storage    ← Persistencia JSON en disco
+Meva.Rt.Web                       ← ASP.NET Core, API REST + frontend estático
+Meva.Rt.AriaRunner                ← Ejecutable independiente para la PC con ARIA
+```
+
+El frontend es un HTML/JS estático servido por el mismo servidor .NET (en `Meva.Rt.Web/wwwroot`).
+La app corre como **Windows Service** en el puerto 5000.
+
+---
+
+## Entidades principales (Meva.Rt.Core/DomainModels.cs)
+
+| Entidad | Descripción |
+|---|---|
+| `RtCenter` | Centro de radioterapia. Tiene flag `AriaEnabled`. |
+| `RtMachine` | Equipo de irradiación. Tres nombres: `SitraName`, `AriaName`, `DisplayName`. |
+| `RtTomograph` | Tomógrafo. Mismo esquema de nombres. |
+| `RtMachineCapabilities` | Capacidades por equipo: `CanDoVMAT`, `CanDoSBRT`, `CanDoRC`, `CanDoTBI`, `CanDoTSET`, `CanDoIGRT`, `CanDoElectrones`, `HighEnergyBeams[]`. |
+| `ProcessStageDefinition` | Etapa del proceso. Código (`F3`, `F6A`...), nombre, días esperados, microstatus de SitraMed. |
+| `ProcessPatientSnapshot` | Un paciente en una etapa. Campos clave: HC, nombre, centro, máquina planeada, `DaysInStage` (días **hábiles**), `IsLongWait`, `TreatmentTechnique`, `IrradiationModality`, `ExactBeamEnergy`, `TreatmentLabel`, `Priority`, `ResponsibleDoctor`, `AssignedPhysicist`, `TomographyDate`. |
+| `MachineAppointmentSnapshot` | Turno agendado: fecha, hora, paciente, `TreatmentLabel`, `Priority`. |
+| `AriaPlanSnapshot` | Plan activo en ARIA: máquina, estado, `BeamType`, fracciones, `IrradiationModality`, `ExactBeamEnergy`. |
+| `PatientProcessEvent` | Evento de proceso: `TechniqueChanged` o `StageRegressed`. Se detecta automáticamente en cada refresh comparando con el snapshot previo. |
+| `StageSummaryItem` | Resumen por etapa/centro: conteo, promedio de días, demorados, long-wait. |
+| `RtSystemConfiguration` | Config completa: centros, máquinas, etapas, capacidades. Se puede sobrescribir vía `data/rt_configuration.json`. |
+
+---
+
+## TreatmentClassifier (Meva.Rt.Core)
+
+Dos métodos estáticos:
+- **`Classify(treatmentText)`**: clasifica el texto de SitraMed → `TSET` > `TBI` > `SBRT` > `RC` > `VMAT` > `IMRT` > `BQT` > `IORT` > `IGRT` > `3DC` (default).
+- **`BuildLabel(tech, modality, energy, beamFallback)`**: combina datos de SitraMed + ARIA en un string legible. Ejemplos: `"VMAT"`, `"IMRT - estático"`, `"SBRT - VMAT"`, `"3DC - 6X"`, `"3DC 10X"`, `"IGRT - VMAT"`, `"TBI"`, `"TSET"`.
+
+La clasificación BQT/IORT se ignora si el paciente tiene otra técnica en SitraMed (`ResolveTreatmentZone` en extractores).
+
+---
+
+## Etapas del proceso (F-stages)
+
+| Código | Etapa | Días esperados |
+|---|---|---|
+| F3 | Ingreso | 2 |
+| F4 | Turno Tomosimuación | 3 |
+| F5 | Marcación | 2 |
+| F6A | Asignación de Plan | 2 |
+| F6B | Espera de Plan | 2 |
+| F6C | Aprobación Médica | 2 |
+| F6F | Control de Calidad | 1 |
+| F6G | Cálculo Independiente | 1 |
+| F7A | Aprobación Físico | 1 |
+| F7C | Chequeo General | 1 |
+
+Hay 19 etapas en total (F1–F11), las críticas de planificación activa son las anteriores.
+
+**Días hábiles:** `DaysInStage` se calcula con `BusinessDayCalculator` (excluye sábados, domingos y feriados de `feriados.txt`). Se usa tanto para `DaysInStage` de pacientes como para transiciones.
+
+**Larga espera (long-wait):** `DaysInStage > LongWaitThresholdDays` (default: 40 días) → `IsLongWait = true`. Se muestra en gris en el frontend y se excluye de promedios y de transiciones semanales.
+
+**Marcadores HTML de SitraMed para calcular fecha inicio de etapa:**
+- F3/F4 → `<!-- f3`
+- F5 → `<!-- f4`
+- F6A → `<!-- f5`
+- **F6B / F6C / F6F / F6G → `<!-- f6`** (la primera `<td>` es la fecha de asignación del físico)
+- F7A / F7C → `<!-- f6` (pendiente: usar última fecha de f6, no la primera)
+
+---
+
+## Centros y equipos
+
+### Mapeado completo
+
+| Centro | SitraName | AriaName | DisplayName | AriaEnabled |
+|---|---|---|---|---|
+| MEVA-Central | Equipo 1 | Equipo1 | MEVA-Central - Equipo 1 | ✓ |
+| MEVA-Central | Equipo 2 | Equipo 2 6EX | MEVA-Central - Equipo 2 | ✓ |
+| MEVA-Central | Equipo 3 | Equipo3 | MEVA-Central - Equipo 3 | ✓ |
+| MEVA-Central | Equipo 4 | D-2300CD | MEVA-Central - Equipo 4 | ✓ |
+| CETRO | Cetro | Varian 21 EX | CETRO - Cetro | ✓ |
+| QUILMES | Quilmes - Equipo 1 | QBA_600CD_523 | QUILMES - Equipo 1 | ✓ |
+| QUILMES | Quilmes - Equipo 2 | EQ2_iX_827 | QUILMES - Equipo 2 | ✓ |
+| SAN JUSTO | San Justo - Equipo 1 | 6oo C/D | SAN JUSTO - Equipo 1 | ✓ |
+| SAN JUSTO | San Justo - Equipo 2 | (no confirmado) | SAN JUSTO - Equipo 2 | ✓ |
+| RT MEDRANO | RT Medrano | CL21EX | RT MEDRANO - RT Medrano | ✓ |
+| MEVA-Viamonte | Viamonte - Equipo 1 | (no confirmado) | MEVA-Viamonte - Equipo 1 | ✗ |
+| MEVA-Viamonte | Viamonte - Equipo 2 | (no confirmado) | MEVA-Viamonte - Equipo 2 | ✗ |
+
+### Tomógrafos
+
+| Centro | SitraName | DisplayName |
+|---|---|---|
+| MEVA-Central | Tomografo | MEVA-Central - Tomografo |
+| MEVA-Viamonte | Tomografo Viamonte | MEVA-Viamonte - Tomografo |
+| QUILMES | Tomografo Quilmes | QUILMES - Tomografo |
+| SAN JUSTO | Tomografo San Justo | SAN JUSTO - Tomografo |
+
+Fuente de verdad: `AppConfiguration.cs`. Se puede sobrescribir vía `data/rt_configuration.json` o `PUT /api/configuration`.
+
+---
+
+## Componentes de infraestructura
+
+### SitraMed (web scraping)
+
+`Meva.Rt.Infrastructure.SitraMed` usa **Playwright** para autenticarse y extraer datos.
+
+**Paralelización:** Login único (`CreateLoggedPageAsync` → `IBrowserContext`), luego `SemaphoreSlim(MaxParallelPages = 2)`. Múltiples `IPage` comparten cookies de sesión. `Task.WhenAll` para todas las combinaciones centro×etapa. Agenda y seguimiento se lanzan en paralelo desde `BootstrapService`.
+
+- **`SitraMedAgendaExtractor`** — turnos de equipos. Parsea HTML con regex. `HasScrapingError` indica fallo parcial.
+- **`SitraMedFollowUpExtractor`** — pacientes por centro+etapa. Calcula `DaysInStage` con `BusinessDayCalculator`.
+- **`SitraMedTomographExtractor`** — análogo a agenda para tomógrafos.
+- **`SitraMedPatientHcFetcher`** — resuelve GUID interno → HC. Necesario para correlacionar con ARIA.
+- **`FollowUpDateParser`** — parsea fechas de etapa del HTML de SitraMed (marcadores `<!-- fX -->`). También extrae `ResponsibleDoctor` (médico responsable) y `TomographyDate`.
+
+### ARIA (base de datos Varian)
+
+`Meva.Rt.Infrastructure.Aria` integra via **AriaQ.dll** (Entity Framework 6).
+
+- **`AriaPlanResolver`** — dado HCs de pacientes, devuelve plan activo. En producción consulta BD; si no hay conexión, lee `aria_plans_mock.json`.
+- **Clasificación de tipo de haz:** `Electrones` (RadiationType=="E"), `SRS` (técnica contiene SRS/STEREO), `AltaE` (energía ≥ 10000 keV), `6X` (default).
+- **`IrradiationModality`:** `ARC`→`VMAT`, `STATIC`+>40CP→`IMRT`, `STATIC`+≤40CP→`3DC`. Viene del primer haz del plan.
+- **`ExactBeamEnergy`:** máximo sobre **todos** los campos del plan (si un campo es 10X/15X/18X, se usa esa energía aunque otros sean 6X).
+
+### Persistencia (Storage)
+
+`Meva.Rt.Infrastructure.Storage` usa JSON en disco.
+
+Archivos clave en `data/`:
+- `dashboard_bootstrap.json` — snapshot completo del dashboard
+- `agenda_YYYY-MM-DD.json` — agenda de equipos por fecha
+- `tomograph_agenda_YYYY-MM-DD.json` — agenda de tomógrafos por fecha
+- `aria_plans_mock.json` — planes ARIA (input del dashboard; se **mergea** al actualizar, no se reemplaza)
+- `aria_results_*.json` — salida cruda de AriaRunner
+- `guid_hc_map.json` — caché GUID → HC
+- `patient_process_events.json` — eventos de proceso detectados (TechniqueChanged, StageRegressed); store append-only con escritura atómica vía `.tmp`
+- `weekly_stats.json` — estadísticas semanales acumuladas (requiere 4 semanas para usarse en estimaciones)
+- `stage_transitions.json` — transiciones de etapa registradas
+- `feriados.txt` — una fecha por línea en formato `YYYY-MM-DD`
+
+---
+
+## API REST (Meva.Rt.Web/Program.cs)
+
+### Dashboard y estado
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/home` | Devuelve el dashboard. Usa caché según `MEVA_HOME_REFRESH_MODE`. |
+| `GET /api/status` | `{ generatedAtUtc, appVersion }` — para polling de auto-refresh en el frontend. |
+| `POST /api/home/refresh` | Refresco completo: scraping + ARIA + guardar snapshot. |
+| `POST /api/home/refresh-no-aria` | Refresco sin ARIA. Exporta IDs a `pacientes.json`. |
+| `POST /api/home/apply-aria` | Enriquece snapshot existente con planes de `aria_plans_mock.json`. |
+
+### Agenda de equipos
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/agenda?date=YYYY-MM-DD` | Agenda para una fecha. Devuelve `{ slots, scrapingErrors }`. Fechas futuras incluyen citas estimadas. |
+| `GET /api/agenda/available-dates` | Lista de fechas con snapshots guardados. |
+| `POST /api/agenda/scrape-upcoming?days=15` | Scrape N días hábiles futuros (máx 30). |
+
+### Agenda de tomógrafos
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/tomograph-agenda?date=YYYY-MM-DD` | Agenda tomógrafos para una fecha. |
+| `GET /api/tomograph-agenda/available-dates` | Lista de fechas con snapshots. |
+| `POST /api/tomograph-agenda/scrape-upcoming?days=15` | Scrape N días hábiles futuros. |
+
+### ARIA — flujo batch
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/aria/export-patient-ids` | Lista de HCs de pacientes en etapas de planificación. |
+| `GET /api/aria/query-status` | `{ isRunning, progressPct, currentPatient, totalPatients, lastRunSucceeded }`. Lee log del AriaRunner para calcular progreso. |
+| `POST /api/aria/import-results` | Lee `aria_results_*.json`, genera/mergea `aria_plans_mock.json`. |
+| `POST /api/aria/run-query` | Lanza AriaRunner.exe; devuelve **202 Accepted** inmediatamente (fire-and-forget). El progreso se consulta con `GET /api/aria/query-status`. |
+
+### Estadísticas, eventos y configuración
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/stats/weekly` | Estadísticas semanales acumuladas. |
+| `GET /api/patient-events?days=N&type=X&center=Y` | Eventos de proceso recientes (TechniqueChanged, StageRegressed). |
+| `GET /api/alerts/feriados` | Alerta de fin de año: si quedan ≤10 días para el 31/12 y `feriados.txt` no tiene el año siguiente. |
+| `GET /api/configuration` | Config actual (centros, máquinas, etapas, capacidades). |
+| `PUT /api/configuration` | Guarda config en `data/rt_configuration.json`. |
+| `POST /api/scraping/test` | Prueba scraping sin guardar. |
+| `POST /api/scraping/test-agenda` | Prueba agenda de equipos. |
+| `POST /api/scraping/test-tomograph` | Prueba agenda de tomógrafos. |
+| `POST /api/scraping/test-followup-full` | Prueba seguimiento completo. |
+
+---
+
+## AriaRunner — ejecutable independiente
+
+### Por qué existe
+
+El servidor web **no tiene acceso a la red de ARIA**. `AriaRunner.exe` corre en una PC que sí tiene ARIA instalado.
+
+### Flujo de uso
+
+```
+1. [Esta PC]    GET /api/aria/export-patient-ids   → lista de HCs
+2. [Manual]     Copiar como input_patients.json a la PC con ARIA
+3. [PC con ARIA] AriaRunner.exe
+                → lee input_patients.json
+                → 6 consultas WHERE IN a la BD ARIA (~7 segundos para 619 pacientes)
+                → genera aria_results_YYYYMMDD_HHMMSS.json
+4. [Manual]     Copiar aria_results_*.json a data/ de esta PC
+5. [Esta PC]    POST /api/aria/import-results  → mergea en aria_plans_mock.json
+                POST /api/home/apply-aria       → enriquece dashboard
+```
+
+O bien: `POST /api/aria/run-query` (si `MEVA_ARIA_RUNNER_EXE` está configurado) lo hace en background con polling de progreso desde el frontend.
+
+### Bulk query ARIA (desde sesión 2026-06-10)
+
+Reemplaza las 938 consultas individuales por 6 consultas WHERE IN:
+1. Patients + PatientDoctors WHERE PatientId IN (...)
+2. Courses WHERE PatientSer IN (...)
+3. PlanSetups + Prescription + RTPlans WHERE CourseSer IN (...) AND Status != 'Rejected'
+4. Radiations + RadiationDevice + EnergyMode + Technique WHERE PlanSetupSer IN (...)
+5. ExternalFieldCommons GROUP BY RadiationSer COUNT(ControlPoints)
+6. Ensamblado en memoria con Lookups
+
+`QueryInBatches` fragmenta listas > 500 keys (límite SQL Server de 2100 parámetros).
+
+**Resultado:** 17 min → 7 segundos. Tiempo total de refresh completo: ~22 min → 3.1 min.
+
+### Detalles técnicos
+
+- Usa Entity Framework 6 (.NET Standard 2.0, compatible con .NET 9)
+- `AriaQ.dll` (Varian) en la misma carpeta
+- Connection string: env var `ARIA_CONNECTION_STRING` o argumento `--conn=`
+- Impersonación Windows opcional: env `ARIA_VARIAN_PASSWORD` → `ECL-FISICA2\varian`
+- Selección del plan activo: `TreatApproval` > `PlanApproval` > `Unapproved` (más reciente)
+- Excluye cursos con nombre que contenga "QA" o "Fisica"
+- Argumento `--workers=N` disponible (por defecto 1 worker secuencial; paralelización no justifica complejidad)
+- AriaRunner.exe desplegado en `C:\MevaRT\AriaRunner\` (net9.0-windows: exe + dll)
+
+---
+
+## Frontend (Meva.Rt.Web/wwwroot)
+
+### Tabs del dashboard (en orden)
+
+1. **Alertas** (tab por defecto)
+2. **Pacientes**
+3. **Inicios**
+4. **Seguimiento**
+5. **Agenda Tomografos**
+6. **Agenda Equipos**
+7. **Derivacion**
+8. **Tendencias**
+9. **Fisica**
+10. **Técnicas Especiales**
+11. **Configuracion** (alineado a la derecha)
+
+### Tab Alertas
+
+- **A1** — Centros con etapas demoradas: grid de tarjetas por centro, días reales vs. referencia.
+- **A2** — Tiempo estimado de planificación: dentro de cada tarjeta de centro, calculado con `weeklyStats` por centro.
+- **B1** — Agenda de equipos: agrupado por centro.
+- **B3** — Turnos superpuestos: cuenta pares de superposición (no equipos). Ignora superposiciones donde ambos turnos son del mismo paciente.
+- **C2/C3** — Eventos recientes: TechniqueChanged y StageRegressed (StageRegressed muestra `displayName` de etapa, no código).
+- Alerta fin de año: banner cuando quedan ≤10 días para el 31/12 y no hay feriados del año siguiente.
+
+### Tab Pacientes (desde sesión 2026-06-16)
+
+Buscador global + tarjetas de paciente. Tres modos de tarjeta:
+- **followup** — solo en seguimiento: estimados, disponibilidad en equipo, tiempo desde ingreso, demora.
+- **both** — en seguimiento + tiene turnos agendados: turnos reales, sin estimados.
+- **agenda** — solo en agenda: nombre, equipo, turnos.
+
+`_pacienteFirstAvailableSlot(p)`: busca el primer slot libre en el equipo planeado del paciente en la agenda disponible. Excluye slots BQT/IORT.
+
+### Tab Inicios (desde sesión 2026-06-18)
+
+Pacientes que **inician tratamiento** en los próximos 3 días hábiles (D+1, D+2, D+3).
+
+**Lógica de detección:** un slot es "inicio" en el día D si:
+- Aparece en la agenda real (no estimada, no BQT/IORT) de D, **Y**
+- No aparece en los 2 días hábiles inmediatamente anteriores a D (prev1 y prev2 se calculan respecto a D, no a hoy)
+
+La clave de paciente es `sitraMedGuid` si existe, sino `patientName.toLower()`.
+
+**Lookback por día:**
+- D+1: prev1=hoy (de `homeData.agenda`), prev2=D-1 (ayer)
+- D+2: prev1=D+1, prev2=hoy
+- D+3: prev1=D+2, prev2=D+1
+
+Esto garantiza que un paciente en D+1 y D+2 aparece solo en D+1 (ya que D+2 lo excluye por estar en prev1=D+1).
+
+**Datos cargados en `loadIniciosTab()`:**
+- Días pasados (D-1, D-2) — silencioso si no hay archivo
+- Días futuros disponibles según `GET /api/agenda/available-dates`
+- Fechas faltantes → warning visible + `POST /api/agenda/scrape-upcoming?days=7` en background + reintento a los 15s
+- Hoy → `state.homeData.agenda` (sin llamada extra a la API)
+
+**Layout:** sección por día con encabezado (día de semana + fecha + conteo) → grilla 2 columnas de cards por equipo → subcards de paciente (nombre linkea a SitraMed, HC, horario, etapa, técnica).
+
+**Filtro de centro:** pills reconstruidas en cada `renderIniciosTab()` para reflejar el estado activo. `machineName` ya incluye el centro en todos los equipos (formato `"Centro - Equipo"`), se usa directo sin transformación.
+
+### Tab Seguimiento
+
+Tabla de pacientes por etapa y centro. Los pacientes con larga espera van al fondo. Resto ordenado por días de demora descendente.
+
+### Tab Agenda Equipos / Tomógrafos
+
+- Slots BQT/IORT excluidos del conteo y de la vista (`isExcludedSlot(slot)`).
+- Equipos con error de scraping muestran borde naranja + "⚠ Error de scraping".
+
+### Tab Derivación
+
+Herramienta organizativa (no modifica SitraMed/ARIA) para cuando un equipo está fuera de servicio.
+
+- Columna izquierda (50%): lista de pacientes con turnos en el equipo fallido + pacientes en planificación para ese equipo. Cada paciente: nombre, HC, badge técnica, badge prioridad, horario actual, 3 botones rápidos de equipos compatibles + dropdown "Otros...". Botones de estado: derivar, ⊗ suspender, ✓ ya atendido.
+- Panel derecho (50%): tarjetas de equipos destino con turnos libres y pacientes derivados.
+- Barra inferior: Total / Derivados / Suspendidos / Atendidos / Sin asignar.
+- Exporta HTML autocontenido con tabla de derivaciones.
+- Compatibilidad por TreatmentLabel (VMAT→canDoVMAT, SBRT→canDoSBRT, etc.). IGRT no es mandatorio pero muestra ⚠ si el equipo no lo hace.
+
+### Tab Tendencias (ex-Resumen)
+
+Estadísticas semanales de flujo de pacientes. Requiere 4 semanas de datos reales para mostrar estadísticas; antes muestra valores de referencia con leyenda explicativa.
+
+### Tab Física
+
+- Recomendación de equipo para un paciente seleccionado.
+- Tarjetas de técnica filtradas por paciente.
+- Ranking de equipos por disponibilidad real (`capacidad_total - agendaPatients`); soporta valores negativos (sobrecapacidad).
+- Estimación de fecha de inicio usando `weeklyStats` si hay ≥4 semanas, sino `expectedDays`.
+
+### Tab Técnicas Especiales (desde sesión 2026-06-10)
+
+Pacientes con técnica SBRT o RC, desde etapa F4B en adelante.
+- Pills de filtro por Técnica y Etapa.
+- Tabla: HC | Nombre | Técnica | Fecha Tomo | Etapa | Días | Médico | Físico.
+- Colores de días: verde ≤esperado, amarillo ≤2×esperado, rojo >2×esperado.
+- Orden: prioridad ASC → sortOrder etapa → días DESC.
+
+### Auto-refresh (desde sesión 2026-06-16)
+
+Polling cada 3 minutos a `GET /api/status`. Si `appVersion` cambió: banner azul + `location.reload(true)` en 2.5s. Si solo `generatedAtUtc` cambió: banner + reload en 1.5s. El primer check es a los 10s (establece baseline sin recargar).
+
+### Badges y helpers
+
+- `renderTreatmentLabel(item)` — función única para mostrar técnica (reemplaza badges separados).
+- `priorityBadge(p)` — P1 en rojo negrita, P2 en gris, P3/null sin badge.
+- `ariaBadges(p)` — solo muestra `▸ máquina` (sin haz ni modalidad, ya están en el label).
+- `isExcludedSlot(slot)` — excluye BQT e IORT de agenda y búsqueda de disponibilidad.
+- `hcTag(hc)` / `fmtHc(hc)` — oculta GUIDs de SitraMed (tipo `0269ce85-...`) mostrando `Sin HC`.
+- `_addBusinessDays(dateStr, n)` / `_subtractBusinessDays(dateStr, n)` — suma/resta N días hábiles (excluye sábado y domingo; no usa feriados en frontend).
+- `_fmtDayOfWeek(dateStr)` — nombre del día en español (`"Lunes"`, `"Martes"`, etc.).
+
+---
+
+## Variables de entorno
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `MEVA_SITRAMED_USER` | — | Usuario SitraMed |
+| `MEVA_SITRAMED_PASSWORD` | — | Contraseña SitraMed |
+| `MEVA_HOME_REFRESH_MODE` | `snapshot_first` | `snapshot_first` / `snapshot_only` / `every_request` |
+| `MEVA_SITRAMED_HEADFUL` | `false` | Muestra el browser Playwright |
+| `MEVA_SITRAMED_DIAGNOSTICS` | `false` | Guarda screenshots de diagnóstico |
+| `MEVA_SITRAMED_SAVE_AGENDA_HTML` | `false` | Guarda HTML crudo de agenda |
+| `MEVA_SITRAMED_TIMEOUT_SECONDS` | `30` | Timeout de scraping |
+| `MEVA_DATA_DIR` | `{AppRoot}/data` | Directorio de snapshots |
+| `MEVA_FERIADOS_PATH` | `data/feriados.txt` | Archivo de feriados |
+| `MEVA_ARIA_MAP_PATH` | `config/mapEquiposAriaSitra.txt` | Mapa máquinas ARIA↔Sitra |
+| `MEVA_ARIA_MOCK_JSON` | `data/aria_plans_mock.json` | Planes mock ARIA |
+| `MEVA_ARIA_RUNNER_EXE` | — | Path a AriaRunner.exe (opcional para run-query automático) |
+
+---
+
+## Flujo completo del sistema
+
+### 1. Carga del dashboard
+
+```
+GET /api/home
+  └─ RefreshMode = snapshot_first?
+       ├─ SÍ → lee dashboard_bootstrap.json (si existe)
+       └─ NO → BootstrapService.BuildAsync()
+                 ├─ En paralelo:
+                 │   ├─ SitraMedAgendaExtractor → agendas de equipos
+                 │   └─ SitraMedFollowUpExtractor → pacientes en seguimiento
+                 ├─ SitraMedPatientHcFetcher → GUID → HC
+                 ├─ AriaPlanResolver → planes ARIA (mock o real)
+                 ├─ Propaga IrradiationModality + ExactBeamEnergy → TreatmentLabel
+                 ├─ Detecta PatientProcessEvents (vs snapshot previo)
+                 ├─ Calcula StageSummary + transiciones semanales (excluye long-wait)
+                 └─ Persiste → dashboard_bootstrap.json + patient_process_events.json
+```
+
+### 2. Actualización batch ARIA
+
+```
+POST /api/home/refresh-no-aria   → scrape sin ARIA
+POST /api/aria/run-query         → 202 Accepted; AriaRunner en background
+GET  /api/aria/query-status      → polling de progreso (frontend hace polling c/4s)
+POST /api/aria/import-results    → parsea aria_results_*.json → mergea aria_plans_mock.json
+POST /api/home/apply-aria        → enriquece snapshot con planes ARIA
+```
+
+### 3. Task Scheduler (automático)
+
+`scripts/refresh.bat` en el Task Scheduler de Windows:
+- Llama `POST /api/home/refresh`
+- Llama `POST /api/agenda/scrape-upcoming`
+- El servidor debe estar corriendo en el puerto 5000
+
+---
+
+## Directorio del proyecto
+
+```
+C:\Pablo\Meva.Rt\
+├── Meva.Rt.Core\
+│   ├── DomainModels.cs              ← Todas las entidades de dominio
+│   └── TreatmentClassifier.cs       ← Classify() y BuildLabel()
+├── Meva.Rt.Application\
+│   ├── Contracts.cs                 ← Interfaces + BootstrapService (orquestador)
+│   └── BusinessDayCalculator.cs     ← Días hábiles (excluye feriados)
+├── Meva.Rt.Infrastructure.SitraMed\
+│   ├── SitraMedExtractors.cs        ← Extractores de agenda, seguimiento, tomógrafo
+│   ├── PlaywrightSitraMedClient.cs  ← Cliente web scraping (paralelo, SemaphoreSlim 2)
+│   ├── SitraMedPatientHcFetcher.cs  ← Resolución GUID → HC
+│   └── FollowUpDateParser.cs        ← Parseo de fechas de etapas del HTML de SitraMed
+├── Meva.Rt.Infrastructure.Aria\
+│   ├── AriaAdapter.cs               ← AriaPlanResolver
+│   └── MetodosParaWebScrap.cs       ← Helpers AriaQ.dll
+├── Meva.Rt.Infrastructure.Storage\
+│   ├── JsonSnapshotStore.cs         ← Persistencia JSON principal
+│   ├── WeeklyStatsStore.cs          ← Estadísticas semanales
+│   ├── StageTransitionStore.cs      ← Transiciones de etapa
+│   └── PatientProcessEventStore.cs  ← Eventos de proceso (append-only, escritura atómica)
+├── Meva.Rt.Web\
+│   ├── Program.cs                   ← Todos los endpoints de la API
+│   ├── AppConfiguration.cs          ← Config hardcodeada de centros/equipos/etapas
+│   ├── RtConfigurationHolder.cs     ← Override de config desde JSON
+│   ├── AriaJobState.cs              ← Singleton: estado del job ARIA (TryStart/Complete/ReadProgress)
+│   └── wwwroot/                     ← Frontend estático
+│       ├── index.html               ← Estructura HTML (tabs, versión en ?v=...)
+│       ├── app.js                   ← Toda la lógica frontend
+│       └── styles.css               ← Estilos
+├── Meva.Rt.AriaRunner\
+│   ├── Program.cs                   ← Entry point (usa QueryAllPatients, sin workers)
+│   ├── AriaQuery.cs                 ← 6 bulk queries WHERE IN a BD ARIA
+│   ├── Models.cs                    ← DTOs de entrada/salida
+│   ├── Logger.cs                    ← Logging thread-safe con timestamps
+│   └── README_INSTRUCCIONES.txt     ← Instrucciones para PC con ARIA
+├── data\                            ← Snapshots en runtime (no en git)
+│   ├── dashboard_bootstrap.json
+│   ├── aria_plans_mock.json
+│   ├── patient_process_events.json
+│   ├── weekly_stats.json
+│   ├── stage_transitions.json
+│   └── feriados.txt
+└── scripts\
+    └── refresh.bat                  ← Script para Task Scheduler
+```
+
+---
+
+## Notas de contexto
+
+- **Puerto 5000.** La web corre en `http://localhost:5000`. Snapshots en `data/` dentro del directorio de la app.
+- **AriaQ.dll no está en el repo.** DLL propietaria de Varian. Se copia manualmente a `C:\MevaRT\AriaRunner\` antes de desplegar.
+- **AriaRunner desplegado** en `C:\MevaRT\AriaRunner\AriaRunner.exe` (net9.0-windows: exe apphost + dll managed).
+- **SAN JUSTO Equipo 2 y MEVA-Viamonte** — los AriaNames no están confirmados (vacíos en config).
+- **`data/rt_configuration.json`** — si existe, sobrescribe los defaults de `AppConfiguration.cs`.
+- **`aria_plans_mock.json` se mergea** al actualizar desde AriaRunner: pacientes agenda-pura conservan sus datos indefinidamente.
+- **Cache HTML:** `index.html` tiene `Cache-Control: no-store` tanto en el meta tag como en `UseStaticFiles` de Program.cs. El auto-refresh del frontend detecta cambios de `appVersion` (basada en timestamp de `app.js`) y recarga automáticamente.
+- **weekly_stats.json:** requiere 4 semanas de datos reales acumulados antes de usarse para estimaciones de fecha de inicio. Los archivos históricos masivos (importación inicial) están renombrados a `.backup.json`.
+- **PatientProcessEvents:** solo detecta TechniqueChanged y StageRegressed. La desaparición de un paciente del seguimiento = inició tratamiento (no se detecta como suspensión).
+- **Feriados:** `data/feriados.txt` con una fecha por línea en formato `YYYY-MM-DD`. La alerta de fin de año avisa cuando falta agregar el año siguiente.

@@ -59,6 +59,16 @@ const state = {
     techniqueFilter: null,
     stageFilter: null,
     sort: { col: null, dir: 'asc' }
+  },
+
+  inicios: {
+    centerFilter: null,
+    agendaByDate: {},       // date → slots[] (undefined = not loaded yet)
+    futureDates: [],
+    missingDates: [],       // future dates sin archivo pre-scrapeado (mostrando advertencia)
+    failedDates: new Set(), // fechas que no se pudieron cargar tras reintento
+    scrapePending: false,
+    retryHandle: null
   }
 };
 
@@ -246,6 +256,7 @@ function wireTabs() {
       document.querySelectorAll('.tab-panel').forEach(p =>
         p.classList.toggle('active', p.id === `tab-${state.activeTab}`));
       if (state.activeTab === 'pacientes') loadPacientesTab();
+      if (state.activeTab === 'inicios') loadIniciosTab();
       if (state.activeTab === 'resumen') renderResumen();
       if (state.activeTab === 'alertas') loadAlertasTab();
       if (state.activeTab === 'agenda') refreshAgendaView();
@@ -1274,6 +1285,17 @@ function _addBusinessDays(dateStr, n) {
   while (added < Math.ceil(n)) {
     d.setDate(d.getDate() + 1);
     if (d.getDay() > 0 && d.getDay() < 6) added++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function _subtractBusinessDays(dateStr, n) {
+  if (!n || n <= 0) return dateStr;
+  const d = new Date(dateStr + 'T12:00:00');
+  let removed = 0;
+  while (removed < n) {
+    d.setDate(d.getDate() - 1);
+    if (d.getDay() > 0 && d.getDay() < 6) removed++;
   }
   return d.toISOString().slice(0, 10);
 }
@@ -2682,6 +2704,11 @@ function _fmtDate(s) {
   return `${d}/${m}/${y}`;
 }
 
+function _fmtDayOfWeek(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
+}
+
 function _derivLabelClass(label) {
   if (!label) return '';
   const f = label.split(/[\s\-]/)[0].toUpperCase();
@@ -3720,6 +3747,312 @@ async function checkFeriadosAlert() {
       banner.style.display = 'none';
     }
   } catch { }
+}
+
+// ── Inicios tab ───────────────────────────────────────────────────────────────
+
+function _buildIniciosCenterFilter() {
+  const centers = [...new Set(
+    (state.homeData?.configuration?.machineCapacities ?? []).map(c => c.centerName)
+  )].sort();
+  const row = document.getElementById('iniciosCenterPills');
+  if (!row) return;
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', state.inicios.centerFilter === null, () => {
+    state.inicios.centerFilter = null; renderIniciosTab();
+  }));
+  centers.forEach(c => row.appendChild(
+    makePill(c, state.inicios.centerFilter === c, () => {
+      state.inicios.centerFilter = c; renderIniciosTab();
+    })
+  ));
+}
+
+async function loadIniciosTab() {
+  _buildIniciosCenterFilter();
+
+  const content = document.getElementById('iniciosContent');
+  const counter = document.getElementById('iniciosCounter');
+  if (!state.homeData) {
+    content.innerHTML = '<p class="detail-placeholder">Sin datos. Actualice primero.</p>';
+    counter.textContent = '';
+    return;
+  }
+
+  // Refrescar la lista de fechas pre-scrapeadas
+  try {
+    const resp = await fetch('/api/agenda/available-dates');
+    if (resp.ok) state.agenda.availableDates = await resp.json();
+  } catch {}
+
+  const today = todayStr();
+  const d1  = _addBusinessDays(today, 1);
+  const d2  = _addBusinessDays(today, 2);
+  const d3  = _addBusinessDays(today, 3);
+  const dm1 = _subtractBusinessDays(today, 1);
+  const dm2 = _subtractBusinessDays(today, 2);
+
+  state.inicios.futureDates = [d1, d2, d3];
+  const availSet = new Set(state.agenda.availableDates);
+
+  // Cargar días pasados (sin advertencia si no hay datos)
+  await Promise.all([dm1, dm2].map(async d => {
+    if (state.inicios.agendaByDate[d] !== undefined) return;
+    try {
+      const resp = await fetch(`/api/agenda?date=${d}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        state.inicios.agendaByDate[d] = (data.slots ?? data).filter(s => !s.isEstimated);
+      } else {
+        state.inicios.agendaByDate[d] = [];
+      }
+    } catch { state.inicios.agendaByDate[d] = []; }
+  }));
+
+  // Cargar días futuros disponibles; trackear faltantes
+  const missingDates = [];
+  await Promise.all([d1, d2, d3].map(async d => {
+    if (state.inicios.agendaByDate[d] !== undefined) return;
+    if (!availSet.has(d)) { missingDates.push(d); return; }
+    try {
+      const resp = await fetch(`/api/agenda?date=${d}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        state.inicios.agendaByDate[d] = (data.slots ?? data).filter(s => !s.isEstimated);
+      } else {
+        missingDates.push(d);
+      }
+    } catch { missingDates.push(d); }
+  }));
+
+  state.inicios.missingDates = missingDates;
+  renderIniciosTab();
+
+  // Scrape en segundo plano para fechas faltantes, reintentar en 15s
+  if (missingDates.length > 0 && !state.inicios.scrapePending) {
+    state.inicios.scrapePending = true;
+    fetch('/api/agenda/scrape-upcoming?days=7', { method: 'POST' }).catch(() => {});
+
+    if (state.inicios.retryHandle) clearTimeout(state.inicios.retryHandle);
+    state.inicios.retryHandle = setTimeout(async () => {
+      state.inicios.scrapePending = false;
+      try {
+        const resp = await fetch('/api/agenda/available-dates');
+        if (resp.ok) state.agenda.availableDates = await resp.json();
+      } catch {}
+
+      const newAvailSet = new Set(state.agenda.availableDates);
+      const stillMissing = [];
+      await Promise.all(missingDates.map(async d => {
+        if (state.inicios.agendaByDate[d] !== undefined) return;
+        if (!newAvailSet.has(d)) { stillMissing.push(d); return; }
+        try {
+          const resp = await fetch(`/api/agenda?date=${d}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            state.inicios.agendaByDate[d] = (data.slots ?? data).filter(s => !s.isEstimated);
+          } else {
+            stillMissing.push(d);
+          }
+        } catch { stillMissing.push(d); }
+      }));
+
+      state.inicios.missingDates = [];
+      for (const d of stillMissing) state.inicios.failedDates.add(d);
+
+      if (state.activeTab === 'inicios') renderIniciosTab();
+    }, 15000);
+  }
+}
+
+// Detecta "inicios" en targetDate: slots reales que NO aparecen en los 2 días
+// hábiles previos a targetDate (los 2 días antes de ese día específico, no de hoy).
+function _detectInicios(targetDate) {
+  const today = todayStr();
+  const prev1 = _subtractBusinessDays(targetDate, 1);
+  const prev2 = _subtractBusinessDays(targetDate, 2);
+
+  function getSlotsForDay(d) {
+    if (d === today) return (state.homeData?.agenda ?? []).filter(s => !s.isEstimated && !isExcludedSlot(s));
+    return (state.inicios.agendaByDate[d] ?? []);
+  }
+
+  const prevKeys = new Set(
+    [...getSlotsForDay(prev1), ...getSlotsForDay(prev2)]
+      .map(s => s.sitraMedGuid || s.patientName?.toLowerCase())
+      .filter(Boolean)
+  );
+
+  const daySlots = state.inicios.agendaByDate[targetDate];
+  if (!Array.isArray(daySlots)) return [];
+
+  return daySlots.filter(slot => {
+    if (!slot.patientName || slot.patientName === '~' || slot.patientName === '-') return false;
+    if (isExcludedSlot(slot)) return false;
+    const key = slot.sitraMedGuid || slot.patientName?.toLowerCase();
+    return !key || !prevKeys.has(key);
+  });
+}
+
+function renderIniciosTab() {
+  _buildIniciosCenterFilter();
+  const content = document.getElementById('iniciosContent');
+  const counter = document.getElementById('iniciosCounter');
+  if (!content) return;
+
+  if (!state.homeData) {
+    content.innerHTML = '<p class="detail-placeholder">Sin datos. Actualice primero.</p>';
+    counter.textContent = '';
+    return;
+  }
+
+  const today = todayStr();
+  const futureDates = state.inicios.futureDates.length
+    ? state.inicios.futureDates
+    : [_addBusinessDays(today, 1), _addBusinessDays(today, 2), _addBusinessDays(today, 3)];
+
+  // Mapa GUID → paciente de seguimiento (para obtener etapa)
+  const followupByGuid = {};
+  for (const p of (state.homeData.patients ?? [])) {
+    if (p.sitraMedGuid) followupByGuid[p.sitraMedGuid] = p;
+  }
+  const stageDefs = state.homeData.stages ?? [];
+  const stageMap = Object.fromEntries(stageDefs.map(s => [s.code, s]));
+
+  // Calcular conteos con filtro de centro aplicado
+  const counts = {};
+  let totalCount = 0;
+  for (const d of futureDates) {
+    const inicios = _detectInicios(d).filter(s =>
+      !state.inicios.centerFilter || s.centerName === state.inicios.centerFilter
+    );
+    counts[d] = inicios.length;
+    totalCount += inicios.length;
+  }
+
+  const [d1, d2, d3] = futureDates;
+  counter.textContent =
+    `${totalCount} inicio${totalCount !== 1 ? 's' : ''} en los próximos 3 días hábiles ` +
+    `(${counts[d1]} mañana, ${counts[d2]} en 2 días, ${counts[d3]} en 3 días)`;
+
+  content.innerHTML = '';
+
+  for (const d of futureDates) {
+    const allInicios = _detectInicios(d);
+    const inicios = state.inicios.centerFilter
+      ? allInicios.filter(s => s.centerName === state.inicios.centerFilter)
+      : allInicios;
+
+    const isMissing = state.inicios.missingDates.includes(d);
+    const isFailed  = state.inicios.failedDates.has(d);
+
+    const daySection = document.createElement('div');
+    daySection.className = 'inicios-day-section';
+
+    // Encabezado del día
+    const hdr = document.createElement('div');
+    hdr.className = 'inicios-day-header';
+    hdr.innerHTML =
+      `<span class="inicios-day-title">${_fmtDayOfWeek(d)} ${_fmtDate(d)}</span>` +
+      `<span class="inicios-day-count">${inicios.length} inicio${inicios.length !== 1 ? 's' : ''}</span>`;
+    daySection.appendChild(hdr);
+
+    // Advertencias de disponibilidad
+    if (isFailed) {
+      const w = document.createElement('div');
+      w.className = 'inicios-warn inicios-warn-failed';
+      w.textContent = `No se pudieron cargar datos para ${_fmtDate(d)}`;
+      daySection.appendChild(w);
+    } else if (isMissing) {
+      const w = document.createElement('div');
+      w.className = 'inicios-warn';
+      w.textContent = `Agenda del ${_fmtDate(d)} no disponible — actualizando en segundo plano...`;
+      daySection.appendChild(w);
+    }
+
+    if (inicios.length === 0) {
+      if (!isMissing && !isFailed) {
+        const p = document.createElement('p');
+        p.className = 'detail-placeholder';
+        p.textContent = 'Sin inicios este día.';
+        daySection.appendChild(p);
+      }
+    } else {
+      // Agrupar por equipo
+      const byMachine = new Map();
+      for (const slot of inicios) {
+        if (!byMachine.has(slot.machineName)) byMachine.set(slot.machineName, []);
+        byMachine.get(slot.machineName).push(slot);
+      }
+
+      const sortedMachines = [...byMachine.entries()].sort((a, b) => {
+        const ca = a[1][0].centerName ?? '', cb = b[1][0].centerName ?? '';
+        return ca.localeCompare(cb) || a[0].localeCompare(b[0]);
+      });
+
+      const grid = document.createElement('div');
+      grid.className = 'inicios-machines-grid';
+
+      for (const [machineName, slots] of sortedMachines) {
+        // Ordenar por prioridad ASC (nulls al fondo), luego por hora
+        slots.sort((a, b) => {
+          const pa = a.priority ?? 99, pb = b.priority ?? 99;
+          if (pa !== pb) return pa - pb;
+          return (a.startTime || '').localeCompare(b.startTime || '');
+        });
+
+        const hasP1 = slots.some(s => s.priority === 1);
+        const centerName = slots[0].centerName ?? '';
+
+        const card = document.createElement('div');
+        card.className = `inicios-machine-card${hasP1 ? ' has-p1' : ''}`;
+
+        // Encabezado de la card de equipo
+        let hdrHtml = `<div class="inicios-machine-header">`;
+        hdrHtml += `<span class="inicios-machine-name">${esc(machineName)}</span>`;
+        if (hasP1) hdrHtml += `<span class="inicios-p1-badge">P1</span>`;
+        hdrHtml += `<span class="inicios-machine-count">${slots.length}</span>`;
+        hdrHtml += `</div>`;
+
+        // Subcards de pacientes
+        let patientsHtml = '<div class="inicios-patient-list">';
+        for (const slot of slots) {
+          const fp = slot.sitraMedGuid ? followupByGuid[slot.sitraMedGuid] : null;
+          const stageLabel = fp
+            ? (stageMap[fp.stageCode]?.displayName ?? fp.stageCode)
+            : 'En tratamiento';
+          const guid = slot.sitraMedGuid;
+
+          const nameHtml = priorityBadge(slot.priority) +
+            (guid
+              ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(slot.patientName)}</strong></a>`
+              : `<strong>${esc(slot.patientName)}</strong>`);
+          const hcHtml = fp ? hcTag(fp.patientId) : '';
+
+          const timeStr = slot.startTime && slot.endTime
+            ? `${slot.startTime.slice(0, 5)} — ${slot.endTime.slice(0, 5)}`
+            : slot.startTime ? slot.startTime.slice(0, 5) : '';
+
+          const labelBadge = renderTreatmentLabel(slot);
+
+          patientsHtml += `<div class="inicios-patient-card">`;
+          patientsHtml += `<div class="inicios-patient-name">${nameHtml}${hcHtml}</div>`;
+          if (timeStr) patientsHtml += `<div class="inicios-patient-detail">🕐 ${esc(timeStr)}</div>`;
+          patientsHtml += `<div class="inicios-patient-detail">Etapa: ${esc(stageLabel)}</div>`;
+          if (labelBadge) patientsHtml += `<div class="inicios-patient-detail">${labelBadge}</div>`;
+          patientsHtml += `</div>`;
+        }
+        patientsHtml += `</div>`;
+
+        card.innerHTML = hdrHtml + patientsHtml;
+        grid.appendChild(card);
+      }
+
+      daySection.appendChild(grid);
+    }
+
+    content.appendChild(daySection);
+  }
 }
 
 // ── Status polling (auto-refresh) ─────────────────────────────────────────────
