@@ -251,46 +251,39 @@ const TECH_HIGHLIGHT_MAP = {
 
 function requestAuth(profile, options = {}) {
   return new Promise(resolve => {
-    const { requireUsername = false, title = 'Autenticación requerida' } = options;
+    const { title = 'Autenticación requerida' } = options;
 
-    const overlay    = document.getElementById('auth-modal-overlay');
-    const titleEl    = document.getElementById('auth-modal-title');
-    const usernameRow = document.getElementById('auth-username-row');
-    const usernameIn = document.getElementById('auth-username');
+    const overlay   = document.getElementById('auth-modal-overlay');
+    const titleEl   = document.getElementById('auth-modal-title');
     const passwordIn = document.getElementById('auth-password');
-    const errorDiv   = document.getElementById('auth-error');
-    const acceptBtn  = document.getElementById('auth-accept-btn');
-    const cancelBtn  = document.getElementById('auth-cancel-btn');
+    const errorDiv  = document.getElementById('auth-error');
+    const acceptBtn = document.getElementById('auth-accept-btn');
+    const cancelBtn = document.getElementById('auth-cancel-btn');
 
     titleEl.textContent = title;
-    usernameRow.hidden = !requireUsername;
-    usernameIn.value = '';
     passwordIn.value = '';
     errorDiv.hidden = true;
     errorDiv.textContent = '';
     acceptBtn.disabled = true;
     overlay.hidden = false;
-    (requireUsername ? usernameIn : passwordIn).focus();
+    passwordIn.focus();
 
     function checkReady() {
-      acceptBtn.disabled = passwordIn.value.length === 0 ||
-        (requireUsername && usernameIn.value.trim().length === 0);
+      acceptBtn.disabled = passwordIn.value.length === 0;
     }
 
     async function onAccept() {
-      const password = passwordIn.value;
-      const username = usernameIn.value.trim();
       acceptBtn.disabled = true;
       errorDiv.hidden = true;
       try {
         const resp = await fetch('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile, password })
+          body: JSON.stringify({ profile, password: passwordIn.value })
         });
         if (resp.ok) {
           cleanup();
-          resolve({ authenticated: true, username: username || undefined });
+          resolve({ authenticated: true });
         } else if (resp.status === 429) {
           const data = await resp.json().catch(() => ({}));
           errorDiv.textContent = data.error ?? 'Demasiados intentos. Espere 5 minutos.';
@@ -319,14 +312,12 @@ function requestAuth(profile, options = {}) {
 
     function cleanup() {
       overlay.hidden = true;
-      usernameIn.removeEventListener('input', checkReady);
       passwordIn.removeEventListener('input', checkReady);
       acceptBtn.removeEventListener('click', onAccept);
       cancelBtn.removeEventListener('click', onCancel);
       passwordIn.removeEventListener('keydown', onKeydown);
     }
 
-    usernameIn.addEventListener('input', checkReady);
     passwordIn.addEventListener('input', checkReady);
     acceptBtn.addEventListener('click', onAccept);
     cancelBtn.addEventListener('click', onCancel);
