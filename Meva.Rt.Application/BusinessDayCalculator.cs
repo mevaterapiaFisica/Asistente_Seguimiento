@@ -67,6 +67,19 @@ public sealed class BusinessDayCalculator
         return count;
     }
 
+    public DateOnly SubtractBusinessDays(DateOnly from, int businessDays)
+    {
+        var remaining = Math.Max(businessDays, 1);
+        var current = from;
+        while (remaining > 0)
+        {
+            current = current.AddDays(-1);
+            if (IsBusinessDay(current))
+                remaining--;
+        }
+        return current;
+    }
+
     public bool HasHolidaysForYear(int year)
         => _holidays.Any(d => d.Year == year);
 }

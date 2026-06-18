@@ -69,6 +69,7 @@ builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
 builder.Services.AddSingleton<IPatientHcResolver, SitraMedPatientHcFetcher>();
 builder.Services.AddSingleton<BootstrapService>();
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
 
 var app = builder.Build();
 
@@ -119,9 +120,11 @@ app.MapGet("/api/status", async (ISnapshotStore snapshotStore, CancellationToken
 app.MapPost("/api/home/refresh", async Task<IResult> (
         BootstrapService bootstrapService,
         IRtSystemConfigurationProvider configurationProvider,
+        TurnReservationStore reservationStore,
         CancellationToken cancellationToken) =>
 {
     var data = await bootstrapService.BuildAsync(cancellationToken);
+    await reservationStore.PruneExpiredAsync(2, cancellationToken);
     return TypedResults.Ok(HomeResponseMapper.Map(data, configurationProvider));
 });
 
@@ -1074,6 +1077,124 @@ app.MapGet("/api/tomograph-agenda", async Task<IResult> (
     return TypedResults.Ok(slots);
 });
 
+// ─── Reservas de turno ───────────────────────────────────────────────────────
+
+app.MapGet("/api/reservations", async (TurnReservationStore reservationStore, CancellationToken ct) =>
+    TypedResults.Ok(await reservationStore.LoadAllActiveAsync(ct)));
+
+app.MapGet("/api/reservations/{patientId}", async (string patientId, TurnReservationStore reservationStore, CancellationToken ct) =>
+{
+    var res = await reservationStore.GetByPatientIdAsync(patientId, ct);
+    return res is not null ? Results.Ok(res) : Results.NotFound();
+});
+
+app.MapPost("/api/reservations", async (HttpContext httpContext, IMemoryCache memoryCache,
+    TurnReservationStore reservationStore, ISnapshotStore snapshotStore,
+    CreateReservationRequest req, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.PatientId) || string.IsNullOrWhiteSpace(req.PatientName) ||
+        string.IsNullOrWhiteSpace(req.MachineDisplayName) || string.IsNullOrWhiteSpace(req.ReservedDate) ||
+        string.IsNullOrWhiteSpace(req.ReservedTime) || string.IsNullOrWhiteSpace(req.Username) ||
+        string.IsNullOrWhiteSpace(req.Password))
+        return Results.BadRequest(new { error = "Faltan campos requeridos" });
+
+    var expectedHash = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
+    if (string.IsNullOrEmpty(expectedHash))
+        return Results.Json(new { error = "Perfil no configurado" }, statusCode: 503);
+
+    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var rateCacheKey = $"auth_rate_{ip}_oftech";
+    memoryCache.TryGetValue(rateCacheKey, out int failCount);
+    if (failCount >= 5)
+        return Results.Json(new { error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
+
+    var actualHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(req.Password)));
+    if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+    {
+        memoryCache.Set(rateCacheKey, failCount + 1,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
+        return Results.Json(new { valid = false }, statusCode: 401);
+    }
+    memoryCache.Remove(rateCacheKey);
+
+    if (!DateOnly.TryParse(req.ReservedDate, out var reservedDate))
+        return Results.BadRequest(new { error = "Fecha inválida" });
+
+    var now = DateTime.UtcNow;
+    var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", ct);
+    var patient = snapshot?.FollowUpPatients?.FirstOrDefault(p =>
+        string.Equals(p.PatientId, req.PatientId, StringComparison.OrdinalIgnoreCase));
+
+    var reservation = new PatientTurnReservation
+    {
+        ReservationId = $"RES_{req.PatientId}_{now:yyyyMMddHHmmss}",
+        PatientId = req.PatientId,
+        PatientName = req.PatientName,
+        CenterName = req.CenterName ?? string.Empty,
+        MachineDisplayName = req.MachineDisplayName,
+        ReservedDate = reservedDate,
+        ReservedTime = req.ReservedTime,
+        Observations = req.Observations ?? string.Empty,
+        RegisteredByUsername = req.Username,
+        RegisteredAtUtc = now,
+        PlannedMachineAtReservation = patient?.PlannedMachineDisplayName
+    };
+
+    await reservationStore.SaveOrUpdateAsync(reservation, ct);
+    return TypedResults.Created($"/api/reservations/{req.PatientId}", reservation);
+});
+
+app.MapDelete("/api/reservations/{reservationId}", async (string reservationId, HttpContext httpContext,
+    IMemoryCache memoryCache, TurnReservationStore reservationStore, DeleteReservationRequest req, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Password))
+        return Results.BadRequest(new { error = "Contraseña requerida" });
+
+    var expectedHash = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
+    if (string.IsNullOrEmpty(expectedHash))
+        return Results.Json(new { error = "Perfil no configurado" }, statusCode: 503);
+
+    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var rateCacheKey = $"auth_rate_{ip}_oftech";
+    memoryCache.TryGetValue(rateCacheKey, out int failCount);
+    if (failCount >= 5)
+        return Results.Json(new { error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
+
+    var actualHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(req.Password)));
+    if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+    {
+        memoryCache.Set(rateCacheKey, failCount + 1,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
+        return Results.Json(new { valid = false }, statusCode: 401);
+    }
+    memoryCache.Remove(rateCacheKey);
+
+    await reservationStore.DeleteByIdAsync(reservationId, ct);
+    return TypedResults.NoContent();
+});
+
+app.MapGet("/api/machine-capacity", async (string date, string machine,
+    ISnapshotStore snapshotStore, IRtSystemConfigurationProvider configProvider, CancellationToken ct) =>
+{
+    if (!DateOnly.TryParse(date, out var targetDate))
+        return Results.BadRequest(new { error = "Fecha inválida" });
+
+    var slots = await snapshotStore.TryLoadAsync<List<MachineAppointmentSnapshot>>($"agenda_{targetDate:yyyy-MM-dd}", ct)
+                ?? [];
+    var realSlots = slots.Count(s => string.Equals(s.MachineName, machine, StringComparison.OrdinalIgnoreCase));
+
+    var cap = configProvider.Configuration.MachineCapacities
+        .FirstOrDefault(c => string.Equals(c.MachineName, machine, StringComparison.OrdinalIgnoreCase));
+    var capacity = 0;
+    if (cap is not null && cap.StandardSlotMinutes > 0)
+    {
+        var workMin = (double)(cap.WorkingHours - cap.ReservedSpecialHours) * 60;
+        capacity = (int)(workMin / cap.StandardSlotMinutes);
+    }
+
+    return Results.Ok(new { realSlots, capacity, overload = Math.Max(0, realSlots - capacity) });
+});
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 app.MapPost("/api/auth/verify", (HttpContext httpContext, IMemoryCache memoryCache, AuthVerifyRequest req) =>
@@ -1111,3 +1232,8 @@ app.MapPost("/api/auth/verify", (HttpContext httpContext, IMemoryCache memoryCac
 app.Run();
 
 record AuthVerifyRequest(string Profile, string Password);
+record CreateReservationRequest(
+    string PatientId, string PatientName, string? CenterName,
+    string MachineDisplayName, string ReservedDate, string ReservedTime,
+    string? Observations, string Username, string Password);
+record DeleteReservationRequest(string Username, string Password);

@@ -9,6 +9,9 @@
   --green: #2e7d32;
   --orange: #e65100;
   --red: #b74832;
+  --color-reservation: #7c3aed;
+  --color-reservation-bg: #f3f0ff;
+  --color-reservation-border: #c4b5fd;
 }
 
 * { box-sizing: border-box; }
@@ -953,3 +956,141 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .auth-buttons {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;
 }
+
+/* ── Reservation Modal ──────────────────────────────────────────────────────*/
+.reservation-modal {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 24px 28px; width: 520px; max-width: 96vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22); max-height: 90vh; overflow-y: auto;
+}
+.res-modal-patient-info {
+  font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 16px; line-height: 1.6;
+}
+.res-modal-row { display: flex; gap: 12px; }
+.res-field-half { flex: 1; }
+.res-textarea { resize: vertical; font-family: inherit; }
+.res-checkbox-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink); cursor: pointer; margin-bottom: 12px;
+}
+.res-divider { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+.res-warn {
+  font-size: 12px; color: var(--orange); background: #fff8f3;
+  border: 1px solid #ffcc99; border-radius: 6px;
+  padding: 7px 10px; margin-bottom: 10px;
+}
+.res-warn[hidden] { display: none; }
+.res-capacity {
+  font-size: 12px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 10px; margin-bottom: 10px;
+}
+.res-capacity[hidden] { display: none; }
+.res-capacity.overloaded { color: var(--red); border-color: #e2a093; background: #fff4f1; }
+.res-submit-btn { padding: 8px 20px; font-size: 15px; }
+
+/* Reservation badge en tarjetas de paciente */
+.reservation-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  color: var(--color-reservation);
+  background: var(--color-reservation-bg);
+  border: 1px solid var(--color-reservation-border);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap;
+}
+
+/* Pacientes tab — 2 columnas cuando hay paciente seleccionado */
+.pacientes-detail-layout {
+  display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start;
+}
+.pacientes-action-panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px;
+}
+.pacientes-result-list { display: flex; flex-direction: column; gap: 6px; }
+.pacientes-result-item {
+  cursor: pointer; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg);
+  font-size: 13px; transition: background 0.1s;
+}
+.pacientes-result-item:hover { background: var(--color-reservation-bg); }
+.pacientes-result-item.selected {
+  border-color: var(--color-reservation); background: var(--color-reservation-bg);
+}
+.reserve-btn {
+  width: 100%; padding: 12px 0; font-size: 15px; font-weight: 700;
+  background: var(--color-reservation); color: #fff;
+  border: none; border-radius: 8px; cursor: pointer; margin-bottom: 4px;
+}
+.reserve-btn:hover { background: #6d28d9; }
+.reservation-card {
+  background: var(--color-reservation-bg);
+  border: 1px solid var(--color-reservation-border);
+  border-radius: 8px; padding: 12px; margin-bottom: 10px;
+  font-size: 13px; line-height: 1.6;
+}
+.reservation-card strong { color: var(--color-reservation); }
+.edit-reserve-btn {
+  width: 100%; padding: 10px 0; font-size: 14px; font-weight: 600;
+  background: var(--color-reservation); color: #fff;
+  border: none; border-radius: 8px; cursor: pointer; margin-bottom: 8px;
+}
+.delete-reserve-btn {
+  width: 100%; padding: 7px 0; font-size: 13px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+}
+.delete-reserve-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* Ghost slot en agenda de equipos */
+.slot-row.reserved-ghost {
+  background: var(--color-reservation-bg);
+  border: 1px dashed var(--color-reservation-border);
+  border-radius: 6px;
+}
+.slot-row.reserved-ghost .slot-time { color: var(--color-reservation); font-weight: 600; }
+
+/* Técnicas especiales — fila con reserva */
+.spec-table tr.has-reservation td { background: var(--color-reservation-bg); }
+
+/* Inicios — subcard con reserva */
+.inicios-patient-card.is-reservation {
+  background: var(--color-reservation-bg);
+  border: 1px dashed var(--color-reservation-border);
+  border-radius: 8px;
+}
+
+/* Pacientes tab — tarjeta seleccionada */
+.paciente-card-selected {
+  border-color: var(--color-reservation) !important;
+  box-shadow: 0 0 0 2px var(--color-reservation-border);
+}
+.pacientes-list-col { min-width: 0; }
+.pacientes-detail-col { position: sticky; top: 16px; }
+.pacientes-action-patient {
+  font-size: 13px; line-height: 1.8; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--line);
+}
+.res-action-buttons { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.reserve-btn-delete {
+  width: 100%; padding: 7px 0; font-size: 13px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+}
+.reserve-btn-delete:hover { border-color: var(--red); color: var(--red); }
+.reservation-info-card {
+  background: var(--color-reservation-bg);
+  border: 1px solid var(--color-reservation-border);
+  border-radius: 8px; padding: 12px; margin-bottom: 10px;
+  font-size: 13px; line-height: 1.7;
+}
+.res-info-header { margin-bottom: 8px; }
+.res-info-row { margin-bottom: 3px; }
+.res-info-label { font-weight: 600; color: var(--color-reservation); }
+
+/* Capacity indicator states */
+.res-capacity.res-cap-ok { color: var(--green); border-color: #a3e6b5; background: #f0fff4; }
+.res-capacity.res-cap-warn { color: var(--orange); border-color: #ffcc99; background: #fff8f3; }
+.res-capacity.res-cap-full { color: var(--red); border-color: #e2a093; background: #fff4f1; }

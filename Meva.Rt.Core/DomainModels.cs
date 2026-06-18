@@ -226,3 +226,19 @@ public sealed class HomeSnapshotOptions
     /// </summary>
     public string RefreshMode { get; set; } = "snapshot_first";
 }
+
+public sealed class PatientTurnReservation
+{
+    // Formato: "RES_{patientId}_{yyyyMMddHHmmss}"
+    public string ReservationId { get; set; } = string.Empty;
+    public string PatientId { get; set; } = string.Empty;
+    public string PatientName { get; set; } = string.Empty;
+    public string CenterName { get; set; } = string.Empty;
+    public string MachineDisplayName { get; set; } = string.Empty;
+    public DateOnly ReservedDate { get; set; }
+    public string ReservedTime { get; set; } = string.Empty;
+    public string Observations { get; set; } = string.Empty;
+    public string RegisteredByUsername { get; set; } = string.Empty;
+    public DateTime RegisteredAtUtc { get; set; }
+    public string? PlannedMachineAtReservation { get; set; }
+}

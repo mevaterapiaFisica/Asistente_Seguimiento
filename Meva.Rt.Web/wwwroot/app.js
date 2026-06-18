@@ -12,11 +12,6 @@ const state = {
     activeStage: null
   },
 
-  pacientes: {
-    query: '',
-    events: null
-  },
-
   agenda: {
     availableDates: [],
     selectedDate: null,
@@ -69,8 +64,17 @@ const state = {
     failedDates: new Set(), // fechas que no se pudieron cargar tras reintento
     scrapePending: false,
     retryHandle: null
+  },
+
+  pacientes: {
+    query: '',
+    events: null,
+    selected: null          // result object seleccionado en la lista
   }
 };
+
+// Reservas activas: Map<patientId, reservation> — accesible globalmente
+window.activeReservations = new Map();
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -118,6 +122,28 @@ function formatMinutes(min) {
 function capacityClass(freeSlots, totalSlots) {
   const r = freeSlots / Math.max(totalSlots, 1);
   return r > 0.3 ? 'cap-ok' : r > 0.1 ? 'cap-warn' : 'cap-full';
+}
+
+async function _refreshReservations() {
+  try {
+    const resp = await fetch('/api/reservations');
+    if (!resp.ok) return;
+    const list = await resp.json();
+    window.activeReservations = new Map(list.map(r => [r.patientId, r]));
+  } catch {}
+}
+
+function _reservationBadge(patientId) {
+  const r = window.activeReservations.get(patientId);
+  if (!r) return '';
+  const [y, mo, d] = r.reservedDate.split('-');
+  return `<span class="reservation-badge">Turno ${d}/${mo} ${r.reservedTime}</span>`;
+}
+
+function _fmtDateTime(utcStr) {
+  if (!utcStr) return '';
+  const d = new Date(utcStr);
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function makePill(label, active, onClick) {
@@ -282,8 +308,10 @@ function requestAuth(profile, options = {}) {
           body: JSON.stringify({ profile, password: passwordIn.value })
         });
         if (resp.ok) {
+          const result = { authenticated: true };
+          if (options.returnPassword) result.password = passwordIn.value;
           cleanup();
-          resolve({ authenticated: true });
+          resolve(result);
         } else if (resp.status === 429) {
           const data = await resp.json().catch(() => ({}));
           errorDiv.textContent = data.error ?? 'Demasiados intentos. Espere 5 minutos.';
@@ -565,6 +593,7 @@ function renderHome(data) {
   renderEspeciales();
   populateAgendaTestControls(data);
   loadAlertasTab();
+  _refreshReservations();
 }
 
 // ── Seguimiento tab ───────────────────────────────────────────────────────────
@@ -1144,6 +1173,22 @@ function renderAgendaDetail() {
       `<span class="slot-patient">${displayName}</span>` +
       renderTreatmentLabel(slot) +
       (slot.isEstimated ? estimatedBadge : `<span class="slot-badge celeste">en agenda</span>`);
+    panel.appendChild(row);
+  });
+
+  // Ghost slots: reservations matching this machine and date
+  const activeMachine = state.agenda.activeMachine;
+  const selectedDate = state.agenda.selectedDate;
+  window.activeReservations.forEach(r => {
+    if (r.reservedDate !== selectedDate) return;
+    if (r.machineDisplayName !== activeMachine) return;
+    const row = document.createElement('div');
+    row.className = 'slot-row reserved-ghost';
+    const [, rm, rd] = r.reservedDate.split('-');
+    row.innerHTML =
+      `<span class="slot-time">${r.reservedTime || '~'}</span>` +
+      `<span class="slot-patient">${esc(r.patientName)}</span>` +
+      `<span class="slot-badge" style="background:var(--color-reservation-bg);color:var(--color-reservation);border:1px solid var(--color-reservation-border)">turno reservado</span>`;
     panel.appendChild(row);
   });
 }
@@ -3490,7 +3535,14 @@ function renderEspeciales() {
       (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer">${esc(p.patientName)}</a>`
         : esc(p.patientName));
-    return `<tr>
+    const resv = window.activeReservations.get(p.patientId);
+    let resvCell = '<span class="muted-italic">—</span>';
+    if (resv) {
+      const [, rm, rd] = resv.reservedDate.split('-');
+      resvCell = `<span class="reservation-badge">${rd}/${rm} ${resv.reservedTime}</span>`;
+    }
+    const trClass = resv ? ' class="has-reservation"' : '';
+    return `<tr${trClass}>
       <td>${esc(fmtHc(p.patientId))}</td>
       <td>${nameHtml}</td>
       <td>${techBadge}</td>
@@ -3499,6 +3551,7 @@ function renderEspeciales() {
       <td class="${daysClass}">${p.daysInStage}</td>
       <td>${doctorStr}</td>
       <td>${physicistStr}</td>
+      <td>${resvCell}</td>
     </tr>`;
   }).join('');
 
@@ -3512,8 +3565,9 @@ function renderEspeciales() {
       ${thSort('Días en etapa', 'days')}
       ${thSort('Médico', 'doctor')}
       ${thSort('Físico asignado', 'physicist')}
+      <th>Turno reservado</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="9" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
   wrap.innerHTML = html;
 
@@ -3605,7 +3659,7 @@ function _renderPacientesResults() {
   const panel = document.getElementById('pacientesResults');
   if (!panel) return;
   const q = state.pacientes.query;
-  if (!q) { panel.innerHTML = ''; return; }
+  if (!q) { panel.innerHTML = ''; state.pacientes.selected = null; return; }
   if (!state.homeData) {
     panel.innerHTML = '<p class="detail-placeholder">Sin datos. Actualice primero.</p>';
     return;
@@ -3617,10 +3671,43 @@ function _renderPacientesResults() {
     return;
   }
 
+  // Auto-select first result if nothing selected (or selected is no longer in results)
+  const selId = state.pacientes.selected?.followup?.patientId;
+  const stillValid = selId && results.some(r => r.followup?.patientId === selId);
+  if (!stillValid) state.pacientes.selected = results[0];
+
   panel.innerHTML = '';
-  panel.appendChild(el('p', 'pacientes-count',
+
+  const layout = document.createElement('div');
+  layout.className = 'pacientes-detail-layout';
+
+  // Left column: list
+  const listCol = document.createElement('div');
+  listCol.className = 'pacientes-list-col';
+  listCol.appendChild(el('p', 'pacientes-count',
     `${results.length} resultado${results.length !== 1 ? 's' : ''}`));
-  results.forEach(r => panel.appendChild(_renderPacienteCard(r)));
+
+  results.forEach(r => {
+    const card = _renderPacienteCard(r);
+    const isSelected = r.followup?.patientId === state.pacientes.selected?.followup?.patientId;
+    if (isSelected) card.classList.add('paciente-card-selected');
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => {
+      state.pacientes.selected = r;
+      _renderPacientesResults();
+    });
+    listCol.appendChild(card);
+  });
+
+  // Right column: action panel
+  const detailCol = document.createElement('div');
+  detailCol.className = 'pacientes-detail-col';
+  detailCol.id = 'pacientes-detail-col';
+  _renderPatientActionPanel(state.pacientes.selected, detailCol);
+
+  layout.appendChild(listCol);
+  layout.appendChild(detailCol);
+  panel.appendChild(layout);
 }
 
 function _renderPacienteCard(result) {
@@ -3641,7 +3728,7 @@ function _renderPacienteCard(result) {
 
     // Línea 1: header
     let html =
-      `<div class="paciente-card-header">${nameHtml}${hcTag(p.patientId)}<span class="patient-context">${esc(p.centerName)}</span></div>`;
+      `<div class="paciente-card-header">${nameHtml}${hcTag(p.patientId)}${_reservationBadge(p.patientId)}<span class="patient-context">${esc(p.centerName)}</span></div>`;
 
     // Línea 2: etapa + badge (simplificado, sin técnica ni físico)
     html +=
@@ -3730,6 +3817,263 @@ function _renderPacienteCard(result) {
   }
 
   return card;
+}
+
+function _renderPatientActionPanel(result, container) {
+  if (!container) container = document.getElementById('pacientes-detail-col');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!result) {
+    container.innerHTML = '<p class="detail-placeholder">Seleccione un paciente.</p>';
+    return;
+  }
+
+  const p = result.followup;
+  if (!p) {
+    container.innerHTML = '<p class="detail-placeholder">Acciones no disponibles para pacientes solo en agenda.</p>';
+    return;
+  }
+
+  const reservation = window.activeReservations.get(p.patientId);
+  const panel = document.createElement('div');
+  panel.className = 'pacientes-action-panel';
+
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'pacientes-action-patient';
+  infoDiv.innerHTML =
+    `<strong>${esc(p.patientName)}</strong>${hcTag(p.patientId)}<br>` +
+    `<span class="patient-context">${esc(p.centerName)}</span>` +
+    (p.stageCode ? ` · <span class="muted-italic">${esc(p.stageCode)}</span>` : '');
+  panel.appendChild(infoDiv);
+
+  if (!reservation) {
+    const btn = document.createElement('button');
+    btn.className = 'tab-button active reserve-btn';
+    btn.textContent = 'Reservar Turno';
+    btn.addEventListener('click', () => _openReservationModal(p, null));
+    panel.appendChild(btn);
+  } else {
+    const [ry, rm, rd] = reservation.reservedDate.split('-');
+    const card = document.createElement('div');
+    card.className = 'reservation-info-card';
+    card.innerHTML =
+      `<div class="res-info-header"><span class="reservation-badge">Turno reservado</span></div>` +
+      `<div class="res-info-row"><span class="res-info-label">Fecha:</span> ${rd}/${rm}/${ry}</div>` +
+      `<div class="res-info-row"><span class="res-info-label">Hora:</span> ${esc(reservation.reservedTime)}</div>` +
+      `<div class="res-info-row"><span class="res-info-label">Equipo:</span> ${esc(reservation.machineDisplayName)}</div>` +
+      (reservation.observations ? `<div class="res-info-row"><span class="res-info-label">Obs:</span> ${esc(reservation.observations)}</div>` : '') +
+      `<div class="res-info-row muted-italic">Registrado por ${esc(reservation.registeredByUsername)} el ${_fmtDateTime(reservation.registeredAtUtc)}</div>`;
+    panel.appendChild(card);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'res-action-buttons';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'tab-button active reserve-btn';
+    editBtn.textContent = 'Editar reserva';
+    editBtn.addEventListener('click', () => _openReservationModal(p, reservation));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'ghost-button reserve-btn-delete';
+    delBtn.textContent = 'Eliminar reserva';
+    delBtn.addEventListener('click', () => _deleteReservation(reservation.reservationId, p));
+
+    btnRow.appendChild(editBtn);
+    btnRow.appendChild(delBtn);
+    panel.appendChild(btnRow);
+  }
+
+  container.appendChild(panel);
+}
+
+async function _deleteReservation(reservationId, patient) {
+  if (!confirm(`¿Eliminar la reserva de turno para ${patient.patientName}?`)) return;
+  const auth = await requestAuth('oftech', {
+    title: 'Confirmar eliminación de reserva',
+    returnPassword: true
+  });
+  if (!auth) return;
+  try {
+    const resp = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'oftech', password: auth.password })
+    });
+    if (resp.status === 429) { alert('Demasiados intentos. Espere unos minutos.'); return; }
+    if (!resp.ok) { alert(`Error al eliminar la reserva (${resp.status}).`); return; }
+    window.activeReservations.delete(patient.patientId);
+    state.pacientes.selected = null;
+    _renderPacientesResults();
+  } catch { alert('Error de red al eliminar la reserva.'); }
+}
+
+function _openReservationModal(patient, existing) {
+  const overlay = document.getElementById('reservation-modal-overlay');
+  const titleEl = document.getElementById('res-modal-title');
+  const patInfoEl = document.getElementById('res-modal-patient-info');
+  const dateIn = document.getElementById('res-date');
+  const timeIn = document.getElementById('res-time');
+  const machineIn = document.getElementById('res-machine');
+  const warnEl = document.getElementById('res-machine-warn');
+  const capEl = document.getElementById('res-capacity');
+  const obsIn = document.getElementById('res-observations');
+  const confirmedIn = document.getElementById('res-confirmed');
+  const usernameIn = document.getElementById('res-username');
+  const passwordIn = document.getElementById('res-password');
+  const errorDiv = document.getElementById('res-error');
+  const cancelBtn = document.getElementById('res-cancel-btn');
+  const submitBtn = document.getElementById('res-submit-btn');
+  if (!overlay) return;
+
+  titleEl.textContent = existing ? 'Editar reserva de turno' : 'Reservar Turno';
+  patInfoEl.textContent = `${patient.patientName} · ${patient.centerName ?? ''}`;
+
+  // Populate machines
+  machineIn.innerHTML = '<option value="">— Seleccionar equipo —</option>';
+  const machines = state.homeData?.configuration?.machines ?? [];
+  machines.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.displayName;
+    opt.textContent = m.displayName;
+    machineIn.appendChild(opt);
+  });
+
+  // Pre-fill
+  if (existing) {
+    dateIn.value = existing.reservedDate;
+    timeIn.value = existing.reservedTime;
+    machineIn.value = existing.machineDisplayName;
+    obsIn.value = existing.observations ?? '';
+    confirmedIn.checked = false;
+  } else {
+    const tomorrow = todayStr().replace(/(\d{4})-(\d{2})-(\d{2})/, (_, y, m, d) => {
+      const dt = new Date(+y, +m - 1, +d + 1);
+      return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+    });
+    dateIn.value = tomorrow;
+    timeIn.value = '';
+    machineIn.value = patient.plannedMachineDisplayName ?? '';
+    obsIn.value = '';
+    confirmedIn.checked = false;
+  }
+  usernameIn.value = '';
+  passwordIn.value = '';
+  errorDiv.hidden = true;
+  warnEl.hidden = true;
+  capEl.hidden = true;
+  submitBtn.disabled = true;
+  overlay.hidden = false;
+  dateIn.focus();
+
+  // Planned machine mismatch warning
+  function checkMachineWarn() {
+    const planned = patient.plannedMachineDisplayName;
+    const selected = machineIn.value;
+    if (planned && selected && selected !== planned) {
+      warnEl.textContent = `El equipo planificado en ARIA es: ${planned}`;
+      warnEl.hidden = false;
+    } else {
+      warnEl.hidden = true;
+    }
+  }
+
+  // Capacity check
+  async function checkCapacity() {
+    const date = dateIn.value;
+    const machine = machineIn.value;
+    if (!date || !machine) { capEl.hidden = true; return; }
+    try {
+      const resp = await fetch(`/api/machine-capacity?date=${encodeURIComponent(date)}&machine=${encodeURIComponent(machine)}`);
+      if (!resp.ok) { capEl.hidden = true; return; }
+      const { realSlots, capacity, overload } = await resp.json();
+      const pct = capacity > 0 ? Math.round(realSlots / capacity * 100) : 0;
+      const cls = overload ? 'res-cap-full' : pct > 80 ? 'res-cap-warn' : 'res-cap-ok';
+      capEl.className = `res-capacity ${cls}`;
+      capEl.textContent = `Turnos en agenda: ${realSlots} / ${capacity} (${pct}%)${overload ? ' — LLENO' : ''}`;
+      capEl.hidden = false;
+    } catch { capEl.hidden = true; }
+  }
+
+  function checkReady() {
+    submitBtn.disabled = !(dateIn.value && machineIn.value && usernameIn.value && passwordIn.value);
+  }
+
+  machineIn.addEventListener('change', () => { checkMachineWarn(); checkCapacity(); checkReady(); });
+  dateIn.addEventListener('change', () => { checkCapacity(); checkReady(); });
+  timeIn.addEventListener('input', checkReady);
+  usernameIn.addEventListener('input', checkReady);
+  passwordIn.addEventListener('input', checkReady);
+
+  checkMachineWarn();
+  checkCapacity();
+
+  async function onSubmit() {
+    submitBtn.disabled = true;
+    errorDiv.hidden = true;
+    try {
+      const body = {
+        patientId: patient.patientId,
+        patientName: patient.patientName,
+        centerName: patient.centerName ?? null,
+        machineDisplayName: machineIn.value,
+        reservedDate: dateIn.value,
+        reservedTime: timeIn.value || '00:00',
+        observations: obsIn.value.trim() || null,
+        username: usernameIn.value.trim(),
+        password: passwordIn.value
+      };
+      const resp = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (resp.status === 401) {
+        errorDiv.textContent = 'Contraseña incorrecta.';
+        errorDiv.hidden = false;
+        submitBtn.disabled = false;
+        return;
+      }
+      if (resp.status === 429) {
+        errorDiv.textContent = 'Demasiados intentos. Espere unos minutos.';
+        errorDiv.hidden = false;
+        submitBtn.disabled = false;
+        return;
+      }
+      if (!resp.ok) {
+        errorDiv.textContent = `Error al guardar la reserva (${resp.status}).`;
+        errorDiv.hidden = false;
+        submitBtn.disabled = false;
+        return;
+      }
+      const saved = await resp.json();
+      window.activeReservations.set(patient.patientId, saved);
+      cleanup();
+      _renderPacientesResults();
+    } catch {
+      errorDiv.textContent = 'Error de red al guardar.';
+      errorDiv.hidden = false;
+      submitBtn.disabled = false;
+    }
+  }
+
+  function onCancel() { cleanup(); }
+
+  function onKeydown(e) {
+    if (e.key === 'Escape') onCancel();
+  }
+
+  function cleanup() {
+    overlay.hidden = true;
+    machineIn.removeEventListener('change', checkMachineWarn);
+    cancelBtn.removeEventListener('click', onCancel);
+    submitBtn.removeEventListener('click', onSubmit);
+    document.removeEventListener('keydown', onKeydown);
+  }
+
+  cancelBtn.addEventListener('click', onCancel);
+  submitBtn.addEventListener('click', onSubmit);
+  document.addEventListener('keydown', onKeydown);
 }
 
 function _pacienteFirstAvailableSlot(p) {
@@ -4146,6 +4490,60 @@ function renderIniciosTab() {
       }
 
       daySection.appendChild(grid);
+    }
+
+    // Reservations for this day
+    const dayReservations = [...window.activeReservations.values()].filter(r => r.reservedDate === d);
+    const filteredReservations = state.inicios.centerFilter
+      ? dayReservations.filter(r => r.centerName === state.inicios.centerFilter)
+      : dayReservations;
+
+    if (filteredReservations.length > 0) {
+      const resHdr = document.createElement('div');
+      resHdr.className = 'inicios-day-header';
+      resHdr.style.marginTop = '0.5rem';
+      resHdr.innerHTML = `<span class="inicios-day-title" style="color:var(--color-reservation)">Turnos reservados</span><span class="inicios-day-count">${filteredReservations.length}</span>`;
+      daySection.appendChild(resHdr);
+
+      const resGrid = document.createElement('div');
+      resGrid.className = 'inicios-machines-grid';
+
+      // Group by machine
+      const byMachine = new Map();
+      for (const r of filteredReservations) {
+        if (!byMachine.has(r.machineDisplayName)) byMachine.set(r.machineDisplayName, []);
+        byMachine.get(r.machineDisplayName).push(r);
+      }
+
+      for (const [machineName, resvList] of byMachine) {
+        const card = document.createElement('div');
+        card.className = 'inicios-machine-card';
+        card.style.borderColor = 'var(--color-reservation-border)';
+        card.style.background = 'var(--color-reservation-bg)';
+
+        let hdrHtml = `<div class="inicios-machine-header">`;
+        hdrHtml += `<span class="inicios-machine-name" style="color:var(--color-reservation)">${esc(machineName)}</span>`;
+        hdrHtml += `<span class="inicios-machine-count">${resvList.length}</span>`;
+        hdrHtml += `</div>`;
+
+        let patientsHtml = '<div class="inicios-patient-list">';
+        for (const r of resvList) {
+          const p = (state.homeData?.patients ?? []).find(pt => pt.patientId === r.patientId);
+          const stageLabel = p ? (state.homeData?.stages?.find(s => s.code === p.stageCode)?.displayName ?? p.stageCode) : '';
+          patientsHtml += `<div class="inicios-patient-card is-reservation">`;
+          patientsHtml += `<div class="inicios-patient-name">${esc(r.patientName)}${hcTag(r.patientId)}</div>`;
+          if (r.reservedTime) patientsHtml += `<div class="inicios-patient-detail">🕐 ${esc(r.reservedTime)}</div>`;
+          if (stageLabel) patientsHtml += `<div class="inicios-patient-detail">Etapa: ${esc(stageLabel)}</div>`;
+          if (r.observations) patientsHtml += `<div class="inicios-patient-detail muted-italic">${esc(r.observations)}</div>`;
+          patientsHtml += `</div>`;
+        }
+        patientsHtml += `</div>`;
+
+        card.innerHTML = hdrHtml + patientsHtml;
+        resGrid.appendChild(card);
+      }
+
+      daySection.appendChild(resGrid);
     }
 
     content.appendChild(daySection);
