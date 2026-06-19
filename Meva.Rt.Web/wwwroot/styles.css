@@ -27,7 +27,7 @@ body {
 
 .hero { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .hero-content { flex: 1; }
-.hero-logo { flex-shrink: 0; margin-left: 24px; }
+.hero-logo { flex-shrink: 0; margin-left: 24px; background: #fff; border-radius: 8px; padding: 8px 12px; }
 .logo-institucional { height: 67px; width: auto; object-fit: contain; }
 .eyebrow { text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); font-size: 12px; margin: 0; }
 h1 { margin: 0; font-size: 38px; }
