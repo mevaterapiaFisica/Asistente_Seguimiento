@@ -1100,6 +1100,11 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
   border-radius: 8px;
 }
 
+/* Turnos Reservados — subcards expandibles */
+.resv-subcard { cursor: pointer; }
+.resv-subcard.resv-selected { border-left: 3px solid var(--accent); background: var(--color-reservation-bg); }
+.resv-action-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
 /* Pacientes tab — tarjeta seleccionada en la lista compacta */
 .paciente-card-selected {
   outline: 2px solid var(--accent);

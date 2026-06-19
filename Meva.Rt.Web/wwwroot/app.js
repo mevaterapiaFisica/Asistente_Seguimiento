@@ -71,6 +71,11 @@ const state = {
     query: '',
     events: null,
     selected: null          // result object seleccionado en la lista
+  },
+
+  reservations: {
+    centerFilter: null,
+    lastLoadTime: 0
   }
 };
 
@@ -362,10 +367,11 @@ const NAV_GROUPS = {
     { id: 'pacientes',  label: 'Buscar' },
   ]},
   agendas: { tabs: [
-    { id: 'agenda',     label: 'Equipos' },
-    { id: 'tomograph',  label: 'Tomógrafos' },
-    { id: 'inicios',    label: 'Inicios' },
-    { id: 'derivacion', label: 'Derivación' },
+    { id: 'agenda',        label: 'Equipos' },
+    { id: 'tomograph',     label: 'Tomógrafos' },
+    { id: 'inicios',       label: 'Inicios' },
+    { id: 'reservations',  label: 'Turnos Reservados' },
+    { id: 'derivacion',    label: 'Derivación' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -427,6 +433,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'fisica') renderFisicaView();
   if (targetTab === 'especiales') renderEspeciales();
   if (targetTab === 'derivacion') openDerivacion();
+  if (targetTab === 'reservations') loadReservationsTab();
   return true;
 }
 
@@ -4121,9 +4128,11 @@ function _deleteReservation(reservationId, patient) {
         return;
       }
       window.activeReservations.delete(patient.patientId);
+      state.reservations.lastLoadTime = Date.now();
       state.pacientes.selected = null;
       close();
       _renderPacientesResults();
+      if (state.activeTab === 'reservations') renderReservationsTab();
     } catch {
       errorDiv.textContent = 'Error de red.';
       errorDiv.hidden = false;
@@ -4282,8 +4291,10 @@ function _openReservationModal(patient, existing) {
       }
       const saved = await resp.json();
       window.activeReservations.set(patient.patientId, saved);
+      state.reservations.lastLoadTime = Date.now();
       cleanup();
       _renderPacientesResults();
+      if (state.activeTab === 'reservations') renderReservationsTab();
     } catch {
       errorDiv.textContent = 'Error de red al guardar.';
       errorDiv.hidden = false;
@@ -4780,6 +4791,193 @@ function renderIniciosTab() {
       daySection.appendChild(resGrid);
     }
 
+    content.appendChild(daySection);
+  }
+}
+
+// ── Turnos Reservados tab ─────────────────────────────────────────────────────
+
+async function loadReservationsTab() {
+  const now = Date.now();
+  if (now - state.reservations.lastLoadTime > 5 * 60 * 1000) {
+    try {
+      const resp = await fetch('/api/reservations');
+      if (resp.ok) {
+        const list = await resp.json();
+        window.activeReservations = new Map(list.map(r => [r.patientId, r]));
+        state.reservations.lastLoadTime = now;
+      }
+    } catch {}
+  }
+  renderReservationsTab();
+}
+
+function renderReservationsTab() {
+  const centers = [...new Set(
+    (state.homeData?.configuration?.machineCapacities ?? []).map(c => c.centerName)
+  )].sort();
+  const pillRow = document.getElementById('reservationsCenterPills');
+  if (pillRow) {
+    pillRow.innerHTML = '';
+    pillRow.appendChild(makePill('Todos', state.reservations.centerFilter === null, () => {
+      state.reservations.centerFilter = null; renderReservationsTab();
+    }));
+    centers.forEach(c => pillRow.appendChild(
+      makePill(c, state.reservations.centerFilter === c, () => {
+        state.reservations.centerFilter = c; renderReservationsTab();
+      })
+    ));
+  }
+
+  const content = document.getElementById('reservationsContent');
+  const counter = document.getElementById('reservationsCounter');
+  if (!content) return;
+
+  const all = [...window.activeReservations.values()];
+  const filtered = state.reservations.centerFilter
+    ? all.filter(r => r.centerName === state.reservations.centerFilter)
+    : all;
+
+  if (all.length === 0) {
+    content.innerHTML = '<p class="detail-placeholder">No hay turnos reservados activos.</p>';
+    if (counter) counter.textContent = '';
+    return;
+  }
+  if (filtered.length === 0) {
+    content.innerHTML = '<p class="detail-placeholder">No hay turnos reservados para este centro.</p>';
+    if (counter) counter.textContent = '';
+    return;
+  }
+
+  const today = todayStr();
+  const d1 = _addBusinessDays(today, 1);
+  const d2 = _addBusinessDays(today, 2);
+  const d3 = _addBusinessDays(today, 3);
+  let c1 = 0, c2 = 0, c3 = 0, cLater = 0;
+  for (const r of filtered) {
+    if (r.reservedDate === d1) c1++;
+    else if (r.reservedDate === d2) c2++;
+    else if (r.reservedDate === d3) c3++;
+    else cLater++;
+  }
+  const n = filtered.length;
+  if (counter) counter.textContent =
+    `${n} turno${n !== 1 ? 's' : ''} reservado${n !== 1 ? 's' : ''} ` +
+    `(${c1} mañana, ${c2} en 2 días, ${c3} en 3 días, ${cLater} en fechas posteriores)`;
+
+  const byDate = new Map();
+  for (const r of filtered) {
+    if (!byDate.has(r.reservedDate)) byDate.set(r.reservedDate, new Map());
+    const byMachine = byDate.get(r.reservedDate);
+    if (!byMachine.has(r.machineDisplayName)) byMachine.set(r.machineDisplayName, []);
+    byMachine.get(r.machineDisplayName).push(r);
+  }
+
+  content.innerHTML = '';
+  const patients = state.homeData?.patients ?? [];
+
+  for (const d of [...byDate.keys()].sort()) {
+    const byMachine = byDate.get(d);
+    const dayTotal = [...byMachine.values()].reduce((s, a) => s + a.length, 0);
+
+    const daySection = document.createElement('div');
+    daySection.className = 'inicios-day-section';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'inicios-day-header';
+    hdr.innerHTML =
+      `<span class="inicios-day-title">${_fmtDayOfWeek(d)} ${_fmtDate(d)}</span>` +
+      `<span class="inicios-day-count">${dayTotal} reserva${dayTotal !== 1 ? 's' : ''}</span>`;
+    daySection.appendChild(hdr);
+
+    const grid = document.createElement('div');
+    grid.className = 'inicios-machines-grid';
+
+    for (const [machineName, resvList] of [...byMachine.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      resvList.sort((a, b) => {
+        const pA = patients.find(p => p.patientId === a.patientId)?.priority ?? 99;
+        const pB = patients.find(p => p.patientId === b.patientId)?.priority ?? 99;
+        if (pA !== pB) return pA - pB;
+        return (a.reservedTime || '').localeCompare(b.reservedTime || '');
+      });
+
+      const hasP1 = resvList.some(r => patients.find(p => p.patientId === r.patientId)?.priority === 1);
+
+      const machineCard = document.createElement('div');
+      machineCard.className = `inicios-machine-card${hasP1 ? ' has-p1' : ''}`;
+      machineCard.innerHTML =
+        `<div class="inicios-machine-header">` +
+        `<span class="inicios-machine-name">${esc(machineName)}</span>` +
+        (hasP1 ? `<span class="inicios-p1-badge">P1</span>` : '') +
+        `<span class="inicios-machine-count">${resvList.length}</span>` +
+        `</div>`;
+
+      const patientList = document.createElement('div');
+      patientList.className = 'inicios-patient-list';
+
+      for (const r of resvList) {
+        const pt = patients.find(p => p.patientId === r.patientId)
+          ?? { patientId: r.patientId, patientName: r.patientName, centerName: r.centerName, plannedMachineDisplayName: null };
+        const priority = pt.priority ?? null;
+        const treatmentLabel = pt.treatmentLabel ?? null;
+        const regStr = _fmtDateTime(r.registeredAtUtc);
+        const labelBadge = treatmentLabel ? renderTreatmentLabel({ treatmentLabel }) : '';
+
+        const subcard = document.createElement('div');
+        subcard.className = 'inicios-patient-card resv-subcard';
+
+        let baseHtml =
+          `<div class="inicios-patient-name">${priorityBadge(priority)}<strong>${esc(r.patientName)}</strong>${hcTag(r.patientId)}</div>`;
+        if (r.reservedTime) baseHtml += `<div class="inicios-patient-detail">🕐 ${esc(r.reservedTime)}</div>`;
+        baseHtml += `<div class="inicios-patient-detail">Equipo: ${esc(r.machineDisplayName)}</div>`;
+        if (labelBadge) baseHtml += `<div class="inicios-patient-detail">${labelBadge}</div>`;
+        baseHtml += `<div class="inicios-patient-detail muted-italic">Registrado por ${esc(r.registeredByUsername)} el ${esc(regStr)}</div>`;
+        subcard.innerHTML = baseHtml;
+
+        const expandEl = document.createElement('div');
+        expandEl.className = 'resv-expand';
+        expandEl.hidden = true;
+        expandEl.innerHTML =
+          `<hr class="res-divider" style="margin:6px 0">` +
+          `<div class="inicios-patient-detail"><strong>Observaciones:</strong></div>` +
+          `<div class="inicios-patient-detail">${r.observations ? esc(r.observations) : '<span class="muted-italic">Sin observaciones</span>'}</div>` +
+          `<hr class="res-divider" style="margin:6px 0">` +
+          `<div class="resv-action-btns">` +
+            `<button class="tab-button active resv-edit-btn" type="button">Editar reserva</button>` +
+            `<button class="ghost-button resv-del-btn" type="button">Eliminar</button>` +
+          `</div>`;
+        subcard.appendChild(expandEl);
+
+        subcard.addEventListener('click', e => {
+          if (e.target.closest('button')) return;
+          const expanding = expandEl.hidden;
+          patientList.querySelectorAll('.resv-subcard').forEach(sc => {
+            sc.querySelector('.resv-expand').hidden = true;
+            sc.classList.remove('resv-selected');
+          });
+          if (expanding) {
+            expandEl.hidden = false;
+            subcard.classList.add('resv-selected');
+          }
+        });
+
+        expandEl.querySelector('.resv-edit-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          _openReservationModal(pt, r);
+        });
+        expandEl.querySelector('.resv-del-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          _deleteReservation(r.reservationId, pt);
+        });
+
+        patientList.appendChild(subcard);
+      }
+
+      machineCard.appendChild(patientList);
+      grid.appendChild(machineCard);
+    }
+
+    daySection.appendChild(grid);
     content.appendChild(daySection);
   }
 }
