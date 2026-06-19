@@ -30,15 +30,28 @@ body {
 h1, h2, p { margin: 0; }
 .subtitle { margin-top: 6px; color: var(--muted); font-size: 14px; }
 
-/* ── Tabs bar ─────────────────────────────────────────────────────────────── */
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
 
-.tabs { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.nav-groups { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.nav-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 
 .tab-button {
   border: 1px solid var(--line); background: #fffaf2; color: var(--ink);
   border-radius: 999px; padding: 7px 16px; cursor: pointer; font-size: 14px;
 }
 .tab-button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.nav-group-btn {
+  border: 1px solid var(--line); background: #fffaf2; color: var(--ink);
+  border-radius: 999px; padding: 8px 18px; cursor: pointer; font-size: 14px; font-weight: 600;
+}
+.nav-group-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.tab-btn {
+  border: 1px solid var(--line); background: #fffaf2; color: var(--ink);
+  border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 13px;
+}
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .ghost-button {
   border: 1px dashed var(--accent); background: transparent; color: var(--accent);
@@ -66,22 +79,6 @@ h1, h2, p { margin: 0; }
 }
 .scrape-menu button:last-child { border-bottom: none; }
 .scrape-menu button:hover { background: rgba(15,108,116,0.07); }
-
-/* ── Nav group dropdowns ───────────────────────────────────────────────────── */
-.nav-group-wrap { position: relative; }
-.nav-group-menu {
-  position: absolute; top: calc(100% + 6px); left: 0;
-  background: #fff; border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.13); z-index: 200;
-  min-width: 160px; overflow: hidden;
-}
-.nav-group-menu button {
-  display: block; width: 100%; text-align: left;
-  padding: 10px 16px; border: none; border-bottom: 1px solid var(--line);
-  background: transparent; font-size: 13px; color: var(--ink); cursor: pointer;
-}
-.nav-group-menu button:last-child { border-bottom: none; }
-.nav-group-menu button:hover { background: rgba(15,108,116,0.07); }
 
 /* ── Seguimiento stage sub-filter (animated reveal) ──────────────────────── */
 .stage-sub-filter-row { max-height: 0; opacity: 0; overflow: hidden; transition: max-height .25s ease, opacity .2s ease; }
@@ -341,7 +338,6 @@ h1, h2, p { margin: 0; }
 /* ── Config tab ──────────────────────────────────────────────────────────── */
 
 .layout { display: grid; gap: 14px; grid-template-columns: 1.1fr 0.9fr; }
-.config-layout { grid-template-columns: 1fr 1fr; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
 .panel-header { display: flex; justify-content: space-between; align-items: end; margin-bottom: 12px; }
 .config-list { display: grid; gap: 8px; }
@@ -349,23 +345,40 @@ h1, h2, p { margin: 0; }
 .config-row strong { flex: 1 1 100%; font-size: 13px; }
 .config-row span { color: var(--muted); font-size: 12px; flex: 1 1 auto; }
 .config-row label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
-.config-save-bar { margin-top: 14px; display: flex; align-items: center; gap: 12px; }
+.config-save-bar { margin-top: 24px; display: flex; align-items: center; gap: 12px; }
 .config-input-number {
   width: 5rem; text-align: right;
   border: 1px solid var(--line); border-radius: 6px;
   padding: 3px 6px; font-size: 13px; background: #fff;
 }
-.test-panel { margin-top: 14px; }
-.test-actions { display: grid; gap: 10px; }
-.test-result {
-  border: 1px solid var(--line); border-radius: 10px; padding: 10px;
-  background: #fff; color: var(--muted); font-size: 13px; word-break: break-all;
+
+/* ── Config sections (table layout) ────────────────────────────────────────── */
+.config-sections { display: flex; flex-direction: column; gap: 32px; }
+.config-section-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.config-section-header h2 { margin: 0; font-size: 1rem; }
+.config-section-subtitle { color: var(--muted); font-size: 0.8rem; }
+.config-table-wrap { overflow-x: auto; }
+
+.config-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.config-table th {
+  text-align: left; padding: 6px 10px;
+  background: #f5f5f5; border-bottom: 2px solid #e0e0e0;
+  white-space: nowrap; font-weight: 600; font-size: 0.8rem;
 }
-.test-result.error { border-color: #e2a093; background: #fff4f1; color: var(--warn); }
-.agenda-test-controls { display: grid; gap: 10px; grid-template-columns: 1fr auto; margin-bottom: 10px; }
-.agenda-test-controls select, .agenda-test-controls input {
-  border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; background: #fff;
+.config-table td { padding: 5px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+.config-table tbody tr:nth-child(even) td { background: #fafafa; }
+.config-table td.readonly { color: var(--muted); }
+.config-table input[type="number"] {
+  width: 60px; padding: 3px 6px; border: 1px solid #e0e0e0;
+  border-radius: 4px; text-align: center; font-size: 0.875rem;
 }
+.config-table input[type="number"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.config-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.config-table input:disabled {
+  background: #f0f0f0; color: #aaa; cursor: not-allowed; border-color: transparent;
+}
+.config-table tr.row-active > td { background: #f0f7f4 !important; }
+.config-table th.col-active { background: #d4ede6 !important; }
 
 /* ── Tab dashed (provisional) ────────────────────────────────────────────── */
 
@@ -694,7 +707,7 @@ h1, h2, p { margin: 0; }
   .agenda-machines-grid { grid-template-columns: 1fr; }
   #tomographMachineCards { grid-template-columns: 1fr; }
   .right-col { max-height: none; }
-  .layout, .config-layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: 1fr; }
   .scrape-menu-wrap { margin-left: 0; }
 }
 

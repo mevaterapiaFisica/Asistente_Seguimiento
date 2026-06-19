@@ -107,8 +107,8 @@ public static class AppConfiguration
             {
                 new TechniqueDurationSetting { TreatmentLabel = "IGRT",              ValidDurationMinutes = { 20 } },
                 new TechniqueDurationSetting { TreatmentLabel = "SBRT",              ValidDurationMinutes = { 30 } },
-                new TechniqueDurationSetting { TreatmentLabel = "RC fraccionada",    ValidDurationMinutes = { 15 } },
-                new TechniqueDurationSetting { TreatmentLabel = "RC fracción única", ValidDurationMinutes = { 20, 45 } },
+                new TechniqueDurationSetting { TreatmentLabel = "RC - haz SRS",      ValidDurationMinutes = { 20, 45 } },
+                new TechniqueDurationSetting { TreatmentLabel = "RC",               ValidDurationMinutes = { 15 } },
                 new TechniqueDurationSetting { TreatmentLabel = "IMRT - estático",   ValidDurationMinutes = { 15 } },
                 new TechniqueDurationSetting { TreatmentLabel = "VMAT",              ValidDurationMinutes = { 15 } },
                 new TechniqueDurationSetting { TreatmentLabel = "3DC - 6X",          ValidDurationMinutes = { 15 } },

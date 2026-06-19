@@ -354,22 +354,69 @@ function requestAuth(profile, options = {}) {
   });
 }
 
-function _updateGroupActive(tab) {
-  document.querySelectorAll('.nav-group-wrap').forEach(wrap => {
-    wrap.querySelector('.nav-group-btn').classList.toggle('active',
-      !!wrap.querySelector(`[data-tab="${tab}"]`));
-  });
-  document.querySelectorAll('.tab-panel').forEach(p =>
-    p.classList.toggle('active', p.id === `tab-${tab}`));
+const NAV_GROUPS = {
+  pacientes: { tabs: [
+    { id: 'followup',   label: 'Seguimiento' },
+    { id: 'especiales', label: 'Técnicas Especiales' },
+    { id: 'fisica',     label: 'Física' },
+    { id: 'pacientes',  label: 'Buscar' },
+  ]},
+  agendas: { tabs: [
+    { id: 'agenda',     label: 'Equipos' },
+    { id: 'tomograph',  label: 'Tomógrafos' },
+    { id: 'inicios',    label: 'Inicios' },
+    { id: 'derivacion', label: 'Derivación' },
+  ]},
+  analisis: { tabs: [
+    { id: 'alertas',    label: 'Alertas' },
+    { id: 'resumen',    label: 'Tendencias' },
+  ]},
+  admin: { tabs: [
+    { id: 'config',     label: 'Configuración' },
+  ]},
+};
+
+function _renderTabRow(groupId) {
+  const row = document.querySelector('.nav-row--tabs');
+  row.innerHTML = '';
+  for (const t of NAV_GROUPS[groupId].tabs) {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (t.id === state.activeTab ? ' active' : '');
+    btn.type = 'button';
+    btn.dataset.tab = t.id;
+    btn.textContent = t.label;
+    btn.addEventListener('click', () => activateTab(t.id));
+    row.appendChild(btn);
+  }
+}
+
+function _syncGroupActive(groupId) {
+  document.querySelectorAll('.nav-group-btn').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.group === groupId));
+}
+
+async function activateGroup(groupId) {
+  const prevGroup = document.querySelector('.nav-group-btn.active')?.dataset.group ?? 'pacientes';
+  _syncGroupActive(groupId);
+  _renderTabRow(groupId);
+  const firstTab = NAV_GROUPS[groupId].tabs[0].id;
+  const ok = await activateTab(firstTab);
+  if (!ok) {
+    _syncGroupActive(prevGroup);
+    _renderTabRow(prevGroup);
+  }
 }
 
 async function activateTab(targetTab) {
   if (targetTab === 'config') {
     const auth = await requestAuth('sysadmin', { title: 'Acceso a Configuración' });
-    if (!auth || !auth.authenticated) return;
+    if (!auth || !auth.authenticated) return false;
   }
   state.activeTab = targetTab;
-  _updateGroupActive(targetTab);
+  document.querySelectorAll('.nav-row--tabs .tab-btn').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.tab === targetTab));
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${targetTab}`));
   if (targetTab === 'pacientes') loadPacientesTab();
   if (targetTab === 'inicios') loadIniciosTab();
   if (targetTab === 'resumen') renderResumen();
@@ -380,39 +427,23 @@ async function activateTab(targetTab) {
   if (targetTab === 'fisica') renderFisicaView();
   if (targetTab === 'especiales') renderEspeciales();
   if (targetTab === 'derivacion') openDerivacion();
+  return true;
 }
 
 function wireTabs() {
-  function closeAll() {
-    document.querySelectorAll('.nav-group-menu').forEach(m => { m.hidden = true; });
-  }
-  document.querySelectorAll('.nav-group-btn').forEach(btn => {
-    btn.addEventListener('click', e => {
-      const menu = btn.nextElementSibling;
-      const wasHidden = menu.hidden;
-      closeAll();
-      menu.hidden = !wasHidden;
-      e.stopPropagation();
-    });
-  });
-  document.addEventListener('click', closeAll);
-  document.querySelectorAll('.nav-group-menu button[data-tab]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      closeAll();
-      activateTab(btn.dataset.tab);
-    });
-  });
-  _updateGroupActive(state.activeTab);
+  document.querySelectorAll('.nav-group-btn').forEach(btn =>
+    btn.addEventListener('click', () => activateGroup(btn.dataset.group)));
+  const initGroup = Object.keys(NAV_GROUPS).find(g =>
+    NAV_GROUPS[g].tabs.some(t => t.id === state.activeTab)) ?? 'pacientes';
+  _syncGroupActive(initGroup);
+  _renderTabRow(initGroup);
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${state.activeTab}`));
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 function wireActions() {
-  document.getElementById('runScrapingTest').addEventListener('click', runScrapingTest);
-  document.getElementById('runAgendaTest').addEventListener('click', runAgendaTest);
-  document.getElementById('runTomographTest').addEventListener('click', runTomographTest);
-
   // Dropdown scrape menu
   const menuBtn = document.getElementById('scrapMenuBtn');
   const menu = document.getElementById('scrapMenu');
@@ -455,50 +486,6 @@ function wireActions() {
 }
 
 // ── API wrappers ──────────────────────────────────────────────────────────────
-
-async function runScrapingTest() {
-  const t = document.getElementById('scrapingTestResult');
-  t.textContent = 'Probando...'; t.className = 'test-result';
-  try {
-    const r = await (await fetch('/api/scraping/test', { method: 'POST' })).json();
-    t.textContent = r.success ? `${r.message} | ${r.pageTitle} | html ${r.htmlLength}` : r.message;
-    t.classList.toggle('error', !r.success);
-  } catch (e) { t.textContent = `Error: ${e.message}`; t.classList.add('error'); }
-}
-
-async function runAgendaTest() {
-  const t = document.getElementById('agendaTestResult');
-  t.textContent = 'Probando...'; t.className = 'test-result';
-  const machine = document.getElementById('agendaTestMachine').value;
-  const date = document.getElementById('agendaTestDate').value;
-  try {
-    const q = new URLSearchParams();
-    if (machine) q.set('machine', machine);
-    if (date) q.set('date', date);
-    const r = await (await fetch(`/api/scraping/test-agenda?${q}`, { method: 'POST' })).json();
-    t.textContent = r.success
-      ? `${r.message} | ${r.pageTitle} | html ${r.htmlLength} | dom ${r.agendaDomRows ?? 0}` : r.message;
-    t.classList.toggle('error', !r.success);
-  } catch (e) { t.textContent = `Error: ${e.message}`; t.classList.add('error'); }
-}
-
-async function runTomographTest() {
-  const t = document.getElementById('tomographTestResult');
-  t.textContent = 'Probando...'; t.className = 'test-result';
-  const centerName = document.getElementById('tomographTestCenter').value;
-  const date = document.getElementById('tomographTestDate').value;
-  try {
-    const q = new URLSearchParams();
-    if (centerName) q.set('centerName', centerName);
-    if (date) q.set('date', date);
-    const r = await (await fetch(`/api/scraping/test-tomograph?${q}`, { method: 'POST' })).json();
-    const rows = (r.rawRowSamples ?? []).join('\n');
-    t.textContent = r.success
-      ? `${r.message}\nURL: ${r.url}\nHTML: ${r.htmlLength} bytes\n\nFilas crudas:\n${rows || '(ninguna)'}\n\nHtmlPreview:\n${r.htmlPreview ?? ''}`
-      : r.message;
-    t.classList.toggle('error', !r.success);
-  } catch (e) { t.textContent = `Error: ${e.message}`; t.classList.add('error'); }
-}
 
 async function actionUpdateSitramed() {
   document.getElementById('scrapMenu').hidden = true;
@@ -1994,83 +1981,129 @@ function renderConfig() {
   // Stages
   const stageList = document.getElementById('stageConfigList');
   stageList.innerHTML = '';
+  const stageTable = document.createElement('table');
+  stageTable.className = 'config-table';
+  stageTable.innerHTML = '<thead><tr><th>Código</th><th>Nombre</th><th>Grupo</th><th>Días ref</th></tr></thead>';
+  const stageTbody = document.createElement('tbody');
   (state.configData.stages ?? []).forEach(s => {
-    const row = document.createElement('article');
-    row.className = 'config-row';
-    row.innerHTML =
-      `<strong>${s.code} – ${s.displayName}</strong>` +
-      `<span>${s.groupName}</span>` +
-      `<label>Dias ref: <input type="number" class="config-input-number" id="cfgStage_${s.code}" min="1" value="${s.expectedDays}"></label>`;
-    stageList.appendChild(row);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="readonly">${esc(s.code)}</td><td class="readonly">${esc(s.displayName)}</td><td class="readonly">${esc(s.groupName)}</td><td><input type="number" id="cfgStage_${s.code}" min="1" value="${s.expectedDays}"></td>`;
+    stageTbody.appendChild(tr);
   });
+  stageTable.appendChild(stageTbody);
+  stageList.appendChild(stageTable);
+  wireTableHighlight(stageTable, false);
 
   // Machine capacities
-  renderCapacityList('machineConfigList', state.configData.machineCapacities ?? [], 'mach', state.configData.machineCapabilities ?? []);
+  renderMachineTable('machineConfigList', state.configData.machineCapacities ?? [], state.configData.machineCapabilities ?? []);
 
   // Tomograph capacities
-  renderCapacityList('tomographConfigList', state.configData.tomographCapacities ?? [], 'tomo', null);
+  renderTomographTable('tomographConfigList', state.configData.tomographCapacities ?? []);
 
   // Technique durations
   const techList = document.getElementById('techniqueDurationList');
   techList.innerHTML = '';
+  const techTable = document.createElement('table');
+  techTable.className = 'config-table';
+  techTable.innerHTML = '<thead><tr><th>Técnica</th><th>Min opción 1</th><th>Min opción 2</th></tr></thead>';
+  const techTbody = document.createElement('tbody');
   (state.configData.techniqueDurations ?? []).forEach((t, i) => {
-    const row = document.createElement('article');
-    row.className = 'config-row';
     const mins = t.validDurationMinutes ?? [];
-    if (mins.length <= 1) {
-      row.innerHTML =
-        `<strong>${esc(t.treatmentLabel)}</strong>` +
-        `<label>Minutos: <input type="number" class="config-input-number" id="td_${i}_0" min="1" value="${mins[0] ?? 15}"></label>`;
-    } else {
-      row.innerHTML =
-        `<strong>${esc(t.treatmentLabel)}</strong>` +
-        mins.map((v, j) =>
-          `<label>Min. opción ${j+1}: <input type="number" class="config-input-number" id="td_${i}_${j}" min="1" value="${v}"></label>`
-        ).join('');
+    const hasSecond = mins.length > 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="readonly">${esc(t.treatmentLabel)}</td><td><input type="number" id="td_${i}_0" min="1" value="${mins[0] ?? 15}"></td><td><input type="number" id="td_${i}_1" min="1" value="${mins[1] ?? ''}" ${hasSecond ? '' : 'disabled placeholder="—"'}></td>`;
+    techTbody.appendChild(tr);
+  });
+  techTable.appendChild(techTbody);
+  techList.appendChild(techTable);
+  wireTableHighlight(techTable, false);
+}
+
+function wireTableHighlight(table, includeCol) {
+  table.addEventListener('focusin', e => {
+    const inp = e.target.closest('input');
+    if (!inp) return;
+    table.querySelectorAll('.row-active').forEach(r => r.classList.remove('row-active'));
+    table.querySelectorAll('.col-active').forEach(h => h.classList.remove('col-active'));
+    inp.closest('tr').classList.add('row-active');
+    if (includeCol) {
+      const td = inp.closest('td');
+      const colIdx = [...td.parentElement.children].indexOf(td);
+      const th = table.querySelector(`thead tr th:nth-child(${colIdx + 1})`);
+      if (th) th.classList.add('col-active');
     }
-    techList.appendChild(row);
+  });
+  table.addEventListener('focusout', () => {
+    table.querySelectorAll('.row-active').forEach(r => r.classList.remove('row-active'));
+    table.querySelectorAll('.col-active').forEach(h => h.classList.remove('col-active'));
   });
 }
 
-function renderCapacityList(containerId, capacities, prefix, machCaps) {
-  const list = document.getElementById(containerId);
-  list.innerHTML = '';
-  capacities.forEach((c, i) => {
-    const row = document.createElement('article');
-    row.className = 'config-row';
-    const shortName = c.machineName.replace(/^[^-]+ - /, '');
-    row.innerHTML =
-      `<strong>${shortName}</strong>` +
-      `<span>${c.centerName}</span>` +
-      `<label>Hs: <input type="number" class="config-input-number" id="${prefix}_hs_${i}" min="1" step="0.5" value="${c.workingHours}"></label>` +
-      `<label>Min turno: <input type="number" class="config-input-number" id="${prefix}_slot_${i}" min="1" value="${c.standardSlotMinutes}"></label>` +
-      `<label>Hs reservadas: <input type="number" class="config-input-number" id="${prefix}_res_${i}" min="0" step="0.5" value="${c.reservedSpecialHours}"></label>`;
+const CAP_COLS = [
+  { key: 'vmat',      label: 'VMAT',  prop: 'canDoVMAT'      },
+  { key: 'electrons', label: 'Electr', prop: 'canDoElectrons' },
+  { key: 'sbrt',      label: 'SBRT',  prop: 'canDoSBRT'      },
+  { key: 'rc',        label: 'RC',    prop: 'canDoRC'        },
+  { key: 'tbi',       label: 'TBI',   prop: 'canDoTBI'       },
+  { key: 'tset',      label: 'TSET',  prop: 'canDoTSET'      },
+  { key: 'igrt',      label: 'IGRT',  prop: 'canDoIGRT'      },
+];
+const ENERGY_COLS = [{ label: '10X', id: '10x' }, { label: '15X', id: '15x' }, { label: '18X', id: '18x' }];
 
-    if (machCaps) {
-      const mc = machCaps.find(m => m.machineName === c.machineName);
-      if (mc) {
-        const heb = mc.highEnergyBeams ?? [];
-        row.innerHTML +=
-          `<details class="cap-details">` +
-            `<summary>Capacidades técnicas</summary>` +
-            `<div class="cap-checkboxes">` +
-              `<label><input type="checkbox" id="cap_${i}_vmat" ${mc.canDoVMAT ? 'checked' : ''}> VMAT</label>` +
-              `<label><input type="checkbox" id="cap_${i}_electrons" ${mc.canDoElectrons ? 'checked' : ''}> Electrones</label>` +
-              `<label><input type="checkbox" id="cap_${i}_sbrt" ${mc.canDoSBRT ? 'checked' : ''}> SBRT</label>` +
-              `<label><input type="checkbox" id="cap_${i}_rc" ${mc.canDoRC ? 'checked' : ''}> RC</label>` +
-              `<label><input type="checkbox" id="cap_${i}_tbi" ${mc.canDoTBI ? 'checked' : ''}> TBI</label>` +
-              `<label><input type="checkbox" id="cap_${i}_tset" ${mc.canDoTSET ? 'checked' : ''}> TSET</label>` +
-              `<label><input type="checkbox" id="cap_${i}_igrt" ${mc.canDoIGRT ? 'checked' : ''}> IGRT</label>` +
-              `<span class="cap-label">Alta energía:</span>` +
-              `<label><input type="checkbox" id="cap_${i}_10x" ${heb.includes('10X') ? 'checked' : ''}> 10X</label>` +
-              `<label><input type="checkbox" id="cap_${i}_15x" ${heb.includes('15X') ? 'checked' : ''}> 15X</label>` +
-              `<label><input type="checkbox" id="cap_${i}_18x" ${heb.includes('18X') ? 'checked' : ''}> 18X</label>` +
-            `</div>` +
-          `</details>`;
-      }
-    }
-    list.appendChild(row);
+function renderMachineTable(containerId, capacities, machCaps) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'config-table';
+  table.innerHTML = `<thead><tr>
+    <th>Equipo</th><th>Centro</th><th>Hs</th><th>Min</th><th>Hs res</th>
+    ${CAP_COLS.map(c => `<th>${c.label}</th>`).join('')}
+    ${ENERGY_COLS.map(e => `<th>${e.label}</th>`).join('')}
+  </tr></thead>`;
+  const tbody = document.createElement('tbody');
+  capacities.forEach((c, i) => {
+    const mc = machCaps.find(m => m.machineName === c.machineName);
+    const heb = mc?.highEnergyBeams ?? [];
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="readonly">${esc(c.machineName)}</td>` +
+      `<td class="readonly">${esc(c.centerName)}</td>` +
+      `<td><input type="number" id="mach_hs_${i}" min="1" step="0.5" value="${c.workingHours}"></td>` +
+      `<td><input type="number" id="mach_slot_${i}" min="1" value="${c.standardSlotMinutes}"></td>` +
+      `<td><input type="number" id="mach_res_${i}" min="0" step="0.5" value="${c.reservedSpecialHours}"></td>` +
+      CAP_COLS.map(col => mc
+        ? `<td><input type="checkbox" id="cap_${i}_${col.key}" ${mc[col.prop] ? 'checked' : ''}></td>`
+        : '<td>—</td>').join('') +
+      ENERGY_COLS.map(e => mc
+        ? `<td><input type="checkbox" id="cap_${i}_${e.id}" ${heb.includes(e.label) ? 'checked' : ''}></td>`
+        : '<td>—</td>').join('');
+    tbody.appendChild(tr);
   });
+  table.appendChild(tbody);
+  container.appendChild(table);
+  wireTableHighlight(table, true);
+}
+
+function renderTomographTable(containerId, capacities) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'config-table';
+  table.innerHTML = '<thead><tr><th>Tomógrafo</th><th>Centro</th><th>Hs</th><th>Min turno</th><th>Hs res</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  capacities.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="readonly">${esc(c.machineName)}</td>` +
+      `<td class="readonly">${esc(c.centerName)}</td>` +
+      `<td><input type="number" id="tomo_hs_${i}" min="1" step="0.5" value="${c.workingHours}"></td>` +
+      `<td><input type="number" id="tomo_slot_${i}" min="1" value="${c.standardSlotMinutes}"></td>` +
+      `<td><input type="number" id="tomo_res_${i}" min="0" step="0.5" value="${c.reservedSpecialHours}"></td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+  wireTableHighlight(table, false);
 }
 
 async function saveConfig() {

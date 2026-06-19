@@ -60,6 +60,12 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
                 }
             }
 
+            // Migrate stale RC duration labels to match BuildLabel output
+            var rcFrac = config.TechniqueDurations.FirstOrDefault(t => t.TreatmentLabel == "RC fraccionada");
+            var rcUniq = config.TechniqueDurations.FirstOrDefault(t => t.TreatmentLabel == "RC fracción única");
+            if (rcFrac != null) { rcFrac.TreatmentLabel = "RC"; dirty = true; }
+            if (rcUniq != null) { rcUniq.TreatmentLabel = "RC - haz SRS"; dirty = true; }
+
             if (dirty) Persist(config);
             return config;
         }
@@ -69,8 +75,12 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
         }
     }
 
-    private void Persist(RtSystemConfiguration configuration) =>
-        File.WriteAllText(_configurationPath, JsonSerializer.Serialize(configuration, _jsonOptions));
+    private void Persist(RtSystemConfiguration configuration)
+    {
+        var tmp = _configurationPath + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(configuration, _jsonOptions));
+        File.Move(tmp, _configurationPath, overwrite: true);
+    }
 
     public void Save(RtSystemConfiguration configuration)
     {

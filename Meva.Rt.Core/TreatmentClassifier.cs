@@ -11,8 +11,10 @@ public static class TreatmentClassifier
         if (t.Contains("TBI", StringComparison.OrdinalIgnoreCase)
             || t.Contains("irradiacion corporal total", StringComparison.OrdinalIgnoreCase)) return "TBI";
         if (t.Contains("SBRT", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("radiocirugía extracraneal", StringComparison.OrdinalIgnoreCase)
             || t.Contains("radiocirugia extracraneal", StringComparison.OrdinalIgnoreCase)) return "SBRT";
-        if (t.Contains("radiocirugia", StringComparison.OrdinalIgnoreCase)
+        if (t.Contains("radiocirugía", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("radiocirugia", StringComparison.OrdinalIgnoreCase)
             || t.Contains("radiosurgery", StringComparison.OrdinalIgnoreCase)
             || t.Contains("RxCx", StringComparison.OrdinalIgnoreCase)
             || t.Equals("RC", StringComparison.OrdinalIgnoreCase)) return "RC";

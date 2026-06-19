@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css?v=20260619">
+  <link rel="stylesheet" href="styles.css?v=20260619d">
 </head>
 <body>
   <div id="feriados-alert-banner" style="display:none; background:#fff3cd; color:#856404; border:1px solid #ffc107; border-radius:6px; padding:8px 16px; margin:8px 16px; font-size:13px; font-weight:600;"></div>
@@ -17,39 +17,13 @@
       <p class="subtitle">Seguimiento de proceso, agenda de equipos e integracion con ARIA.</p>
     </header>
 
-    <nav class="tabs">
-      <div class="nav-group-wrap">
-        <button class="tab-button nav-group-btn" type="button">Pacientes &#9660;</button>
-        <div class="nav-group-menu" hidden>
-          <button type="button" data-tab="followup">Seguimiento</button>
-          <button type="button" data-tab="especiales">Técnicas Especiales</button>
-          <button type="button" data-tab="fisica">Física</button>
-          <button type="button" data-tab="pacientes">Buscar</button>
-        </div>
-      </div>
-      <div class="nav-group-wrap">
-        <button class="tab-button nav-group-btn" type="button">Agendas &#9660;</button>
-        <div class="nav-group-menu" hidden>
-          <button type="button" data-tab="agenda">Equipos</button>
-          <button type="button" data-tab="tomograph">Tomógrafos</button>
-          <button type="button" data-tab="inicios">Inicios</button>
-          <button type="button" data-tab="derivacion">Derivación</button>
-        </div>
-      </div>
-      <div class="nav-group-wrap">
-        <button class="tab-button nav-group-btn" type="button">Análisis &#9660;</button>
-        <div class="nav-group-menu" hidden>
-          <button type="button" data-tab="alertas">Alertas</button>
-          <button type="button" data-tab="resumen">Tendencias</button>
-        </div>
-      </div>
-      <div class="nav-group-wrap">
-        <button class="tab-button nav-group-btn" type="button">Admin &#9660;</button>
-        <div class="nav-group-menu" hidden>
-          <button type="button" data-tab="config">Configuración</button>
-        </div>
-      </div>
-      <div class="scrape-menu-wrap">
+    <nav class="nav-groups">
+      <div class="nav-row nav-row--groups">
+        <button class="nav-group-btn active" type="button" data-group="pacientes">Pacientes</button>
+        <button class="nav-group-btn" type="button" data-group="agendas">Agendas</button>
+        <button class="nav-group-btn" type="button" data-group="analisis">Análisis</button>
+        <button class="nav-group-btn" type="button" data-group="admin">Admin</button>
+        <div class="scrape-menu-wrap">
         <button type="button" class="ghost-button scrape-menu-trigger" id="scrapMenuBtn">
           <span id="generatedAt">sin datos</span> &#9660;
         </button>
@@ -59,6 +33,8 @@
           <button type="button" id="actionUpdateAll">Actualizar todo</button>
         </div>
       </div>
+      </div>
+      <div class="nav-row nav-row--tabs"></div>
     </nav>
 
     <main>
@@ -260,61 +236,47 @@
 
       <!-- ── Configuracion ──────────────────────────────────────────────── -->
       <section id="tab-config" class="tab-panel">
-        <div class="layout config-layout">
-          <section class="panel">
-            <div class="panel-header"><h2>General</h2><p>Parametros globales</p></div>
+        <div class="config-sections">
+          <div class="config-section">
+            <div class="config-section-header">
+              <h2>General</h2>
+              <span class="config-section-subtitle">Parámetros globales</span>
+            </div>
             <div id="generalConfigSection" class="config-list"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-header"><h2>Etapas</h2><p>Dias esperados por etapa</p></div>
-            <div id="stageConfigList" class="config-list"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-header"><h2>Equipos</h2><p>Capacidad por equipo</p></div>
-            <div id="machineConfigList" class="config-list"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-header"><h2>Tomografos</h2><p>Capacidad por tomografo</p></div>
-            <div id="tomographConfigList" class="config-list"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-header"><h2>Tiempos por tecnica</h2><p>Duraciones validas de turno en minutos por etiqueta de tratamiento</p></div>
-            <div id="techniqueDurationList" class="config-list"></div>
-          </section>
+          </div>
+          <div class="config-section">
+            <div class="config-section-header">
+              <h2>Etapas</h2>
+              <span class="config-section-subtitle">Días esperados por etapa</span>
+            </div>
+            <div id="stageConfigList" class="config-table-wrap"></div>
+          </div>
+          <div class="config-section">
+            <div class="config-section-header">
+              <h2>Equipos</h2>
+              <span class="config-section-subtitle">Capacidad y técnicas habilitadas por equipo</span>
+            </div>
+            <div id="machineConfigList" class="config-table-wrap"></div>
+          </div>
+          <div class="config-section">
+            <div class="config-section-header">
+              <h2>Tomógrafos</h2>
+              <span class="config-section-subtitle">Capacidad por tomógrafo</span>
+            </div>
+            <div id="tomographConfigList" class="config-table-wrap"></div>
+          </div>
+          <div class="config-section">
+            <div class="config-section-header">
+              <h2>Tiempos por técnica</h2>
+              <span class="config-section-subtitle">Duraciones válidas por etiqueta de tratamiento</span>
+            </div>
+            <div id="techniqueDurationList" class="config-table-wrap"></div>
+          </div>
         </div>
         <div class="config-save-bar">
-          <button id="saveConfigBtn" class="tab-button active" type="button">Guardar configuracion</button>
+          <button id="saveConfigBtn" class="tab-button active" type="button">Guardar configuración</button>
           <span id="saveConfigStatus" class="agenda-status"></span>
         </div>
-        <section class="panel test-panel">
-          <div class="panel-header"><h2>Test Scraping</h2><p>Prueba login + descarga de seguimiento</p></div>
-          <div class="test-actions">
-            <button id="runScrapingTest" class="tab-button active" type="button">Probar scraping</button>
-            <div id="scrapingTestResult" class="test-result">Sin ejecutar.</div>
-          </div>
-        </section>
-        <section class="panel test-panel">
-          <div class="panel-header"><h2>Test Agenda</h2><p>Prueba login + descarga de agenda de equipos</p></div>
-          <div class="agenda-test-controls">
-            <select id="agendaTestMachine"></select>
-            <input id="agendaTestDate" type="date" />
-          </div>
-          <div class="test-actions">
-            <button id="runAgendaTest" class="tab-button active" type="button">Probar agenda</button>
-            <div id="agendaTestResult" class="test-result">Sin ejecutar.</div>
-          </div>
-        </section>
-        <section class="panel test-panel">
-          <div class="panel-header"><h2>Test Tomografo</h2><p>Diagnostico de scraping de tomografos (filas sin filtro de keywords)</p></div>
-          <div class="agenda-test-controls">
-            <select id="tomographTestCenter"></select>
-            <input id="tomographTestDate" type="date" />
-          </div>
-          <div class="test-actions">
-            <button id="runTomographTest" class="tab-button active" type="button">Probar tomografo</button>
-            <div id="tomographTestResult" class="test-result">Sin ejecutar.</div>
-          </div>
-        </section>
       </section>
 
     </main>
@@ -392,6 +354,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260619"></script>
+  <script src="app.js?v=20260619d"></script>
 </body>
 </html>
