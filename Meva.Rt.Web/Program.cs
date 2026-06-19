@@ -141,7 +141,7 @@ app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
     var stageMap = configurationProvider.Configuration.Stages
         .ToDictionary(s => s.Code, s => s.SortOrder, StringComparer.OrdinalIgnoreCase);
     var ariaThreshold = configurationProvider.Configuration.Stages
-        .Where(s => string.Equals(s.GroupName, "Planificacion", StringComparison.OrdinalIgnoreCase))
+        .Where(s => string.Equals(s.GroupName, "Planificación", StringComparison.OrdinalIgnoreCase))
         .Select(s => (int?)s.SortOrder)
         .Min() ?? 40;
 
@@ -378,37 +378,8 @@ app.MapPost("/api/aria/import-results", async Task<IResult> (
     if (runnerOutput?.Patients == null)
         return TypedResults.BadRequest(new { error = "Archivo vacio o formato invalido." });
 
-    var machines = configurationProvider.Configuration.Machines;
-    var plans = new List<AriaPlanSnapshot>();
-    var withMachine = 0;
-
-    foreach (var patient in runnerOutput.Patients)
-    {
-        if (!patient.Found || patient.ActivePlan == null) continue;
-
-        var snap = new AriaPlanSnapshot
-        {
-            PatientId = patient.PatientId,
-            PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
-            PlanStatus = patient.ActivePlan.Status,
-            BeamType = patient.ActivePlan.BeamType,
-            NumberOfFractions = patient.ActivePlan.NumberOfFractions,
-            IrradiationModality = patient.ActivePlan.IrradiationModality,
-            ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
-        };
-
-        if (!string.IsNullOrWhiteSpace(patient.ActivePlan.MachineAriaId))
-        {
-            var machine = machines.FirstOrDefault(m =>
-                string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
-            snap.PlannedMachineDisplayName = machine?.DisplayName;
-        }
-
-        if (!string.IsNullOrWhiteSpace(snap.PlannedMachineDisplayName))
-            withMachine++;
-
-        plans.Add(snap);
-    }
+    var plans = ParseAriaOutput(runnerOutput, configurationProvider.Configuration.Machines);
+    var withMachine = plans.Count(p => !string.IsNullOrWhiteSpace(p.PlannedMachineDisplayName));
 
     var mockPath = ariaOptions.MockPlansJsonPath;
     if (string.IsNullOrWhiteSpace(mockPath))
@@ -525,29 +496,9 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
         }
     }
 
-    var stageByCodeApply = configurationProvider.Configuration.Stages
-        .ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
-    data.StageSummary = data.FollowUpPatients
-        .GroupBy(x => new { x.CenterName, x.StageCode })
-        .Select(group =>
-        {
-            var stageDef = stageByCodeApply.GetValueOrDefault(group.Key.StageCode);
-            var countable = group.Where(x => !x.IsLongWait).ToList();
-            return new StageSummaryItem
-            {
-                CenterName = group.Key.CenterName,
-                StageCode = group.Key.StageCode,
-                StageGroupName = stageDef?.GroupName ?? group.First().StageGroupName,
-                PatientCount = group.Count(),
-                AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
-                ExpectedDays = stageDef?.ExpectedDays ?? 0,
-                DelayedCount = group.Count(x => x.IsDelayed),
-                LongWaitCount = group.Count(x => x.IsLongWait)
-            };
-        })
-        .OrderBy(x => x.CenterName)
-        .ThenBy(x => x.StageGroupName)
-        .ToList();
+    data.StageSummary = BootstrapService.ComputeStageSummary(
+        data.FollowUpPatients,
+        configurationProvider.Configuration.Stages.ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase));
 
     data.AriaPlans = aria;
     data.GeneratedAtUtc = DateTime.UtcNow;
@@ -660,26 +611,7 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
 
                 if (output?.Patients == null) { jobState.Complete(false, 0, "Archivo de resultados vacío."); return; }
 
-                var machines = configurationProvider.Configuration.Machines;
-                var plans = new List<AriaPlanSnapshot>();
-                foreach (var patient in output.Patients)
-                {
-                    if (!patient.Found || patient.ActivePlan == null) continue;
-                    var snap = new AriaPlanSnapshot
-                    {
-                        PatientId = patient.PatientId,
-                        PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
-                        PlanStatus = patient.ActivePlan.Status,
-                        BeamType = patient.ActivePlan.BeamType,
-                        NumberOfFractions = patient.ActivePlan.NumberOfFractions,
-                        IrradiationModality = patient.ActivePlan.IrradiationModality,
-                        ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
-                    };
-                    var machine = machines.FirstOrDefault(m =>
-                        string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
-                    snap.PlannedMachineDisplayName = machine?.DisplayName;
-                    plans.Add(snap);
-                }
+                var plans = ParseAriaOutput(output, configurationProvider.Configuration.Machines);
 
                 var mockPath = ariaOptions.MockPlansJsonPath;
                 if (!string.IsNullOrWhiteSpace(mockPath))
@@ -732,26 +664,7 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
     if (runnerOutput2?.Patients == null)
         return TypedResults.BadRequest(new { error = "Archivo vacio o formato invalido." });
 
-    var machines2 = configurationProvider.Configuration.Machines;
-    var plans2 = new List<AriaPlanSnapshot>();
-    foreach (var patient in runnerOutput2.Patients)
-    {
-        if (!patient.Found || patient.ActivePlan == null) continue;
-        var snap = new AriaPlanSnapshot
-        {
-            PatientId = patient.PatientId,
-            PlannedMachineAriaId = patient.ActivePlan.MachineAriaId,
-            PlanStatus = patient.ActivePlan.Status,
-            BeamType = patient.ActivePlan.BeamType,
-            NumberOfFractions = patient.ActivePlan.NumberOfFractions,
-            IrradiationModality = patient.ActivePlan.IrradiationModality,
-            ExactBeamEnergy = patient.ActivePlan.ExactBeamEnergy
-        };
-        var machine = machines2.FirstOrDefault(m =>
-            string.Equals(m.AriaName, patient.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase));
-        snap.PlannedMachineDisplayName = machine?.DisplayName;
-        plans2.Add(snap);
-    }
+    var plans2 = ParseAriaOutput(runnerOutput2, configurationProvider.Configuration.Machines);
 
     var mockPath2 = ariaOptions.MockPlansJsonPath;
     if (string.IsNullOrWhiteSpace(mockPath2))
@@ -1099,24 +1012,8 @@ app.MapPost("/api/reservations", async (HttpContext httpContext, IMemoryCache me
         string.IsNullOrWhiteSpace(req.Password))
         return Results.BadRequest(new { error = "Faltan campos requeridos" });
 
-    var expectedHash = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
-    if (string.IsNullOrEmpty(expectedHash))
-        return Results.Json(new { error = "Perfil no configurado" }, statusCode: 503);
-
-    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var rateCacheKey = $"auth_rate_{ip}_oftech";
-    memoryCache.TryGetValue(rateCacheKey, out int failCount);
-    if (failCount >= 5)
-        return Results.Json(new { error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
-
-    var actualHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(req.Password)));
-    if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
-    {
-        memoryCache.Set(rateCacheKey, failCount + 1,
-            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
-        return Results.Json(new { valid = false }, statusCode: 401);
-    }
-    memoryCache.Remove(rateCacheKey);
+    var authReject = CheckOftechPassword(httpContext, memoryCache, req.Password);
+    if (authReject is not null) return authReject;
 
     if (!DateOnly.TryParse(req.ReservedDate, out var reservedDate))
         return Results.BadRequest(new { error = "Fecha inválida" });
@@ -1154,24 +1051,8 @@ app.MapDelete("/api/reservations/{reservationId}", async (string reservationId, 
     if (req is null || string.IsNullOrWhiteSpace(req.Password))
         return Results.BadRequest(new { error = "Contraseña requerida" });
 
-    var expectedHash = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
-    if (string.IsNullOrEmpty(expectedHash))
-        return Results.Json(new { error = "Perfil no configurado" }, statusCode: 503);
-
-    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var rateCacheKey = $"auth_rate_{ip}_oftech";
-    memoryCache.TryGetValue(rateCacheKey, out int failCount);
-    if (failCount >= 5)
-        return Results.Json(new { error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
-
-    var actualHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(req.Password)));
-    if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
-    {
-        memoryCache.Set(rateCacheKey, failCount + 1,
-            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
-        return Results.Json(new { valid = false }, statusCode: 401);
-    }
-    memoryCache.Remove(rateCacheKey);
+    var authRejectDel = CheckOftechPassword(httpContext, memoryCache, req.Password);
+    if (authRejectDel is not null) return authRejectDel;
 
     await reservationStore.DeleteByIdAsync(reservationId, ct);
     return TypedResults.NoContent();
@@ -1259,6 +1140,53 @@ app.MapGet("/api/derivation/attended-patients", async (
         return Results.Ok(new { attendedGuids = Array.Empty<string>(), error = ex.Message });
     }
 });
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+static IResult? CheckOftechPassword(HttpContext ctx, IMemoryCache cache, string? password)
+{
+    var expected = Environment.GetEnvironmentVariable("MEVA_PWD_OFTECH_HASH");
+    if (string.IsNullOrEmpty(expected))
+        return Results.Json(new { error = "Perfil no configurado" }, statusCode: 503);
+
+    var key = $"auth_rate_{ctx.Connection.RemoteIpAddress ?? (object)"unknown"}_oftech";
+    cache.TryGetValue(key, out int fails);
+    if (fails >= 5)
+        return Results.Json(new { error = "Demasiados intentos. Espere 5 minutos." }, statusCode: 429);
+
+    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(password ?? "")));
+    if (!string.Equals(hash, expected, StringComparison.OrdinalIgnoreCase))
+    {
+        cache.Set(key, fails + 1, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
+        return Results.Json(new { valid = false }, statusCode: 401);
+    }
+    cache.Remove(key);
+    return null;
+}
+
+static List<AriaPlanSnapshot> ParseAriaOutput(AriaRunnerOutput output, IReadOnlyList<RtMachine> machines)
+{
+    var plans = new List<AriaPlanSnapshot>();
+    foreach (var p in output.Patients)
+    {
+        if (!p.Found || p.ActivePlan == null) continue;
+        var snap = new AriaPlanSnapshot
+        {
+            PatientId            = p.PatientId,
+            PlannedMachineAriaId = p.ActivePlan.MachineAriaId,
+            PlanStatus           = p.ActivePlan.Status,
+            BeamType             = p.ActivePlan.BeamType,
+            NumberOfFractions    = p.ActivePlan.NumberOfFractions,
+            IrradiationModality  = p.ActivePlan.IrradiationModality,
+            ExactBeamEnergy      = p.ActivePlan.ExactBeamEnergy
+        };
+        snap.PlannedMachineDisplayName = machines
+            .FirstOrDefault(m => string.Equals(m.AriaName, p.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase))
+            ?.DisplayName;
+        plans.Add(snap);
+    }
+    return plans;
+}
 
 // ─── App run ──────────────────────────────────────────────────────────────────
 

@@ -47,6 +47,19 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
                 config.P1AlertThresholdDays = AppConfiguration.BuildDefault().P1AlertThresholdDays;
                 dirty = true;
             }
+            // Backfill Stage DisplayName and GroupName from current AppConfiguration by Code
+            var defaultByCode = AppConfiguration.BuildDefault().Stages.ToDictionary(s => s.Code);
+            foreach (var stage in config.Stages)
+            {
+                if (!defaultByCode.TryGetValue(stage.Code, out var def)) continue;
+                if (stage.DisplayName != def.DisplayName || stage.GroupName != def.GroupName)
+                {
+                    stage.DisplayName = def.DisplayName;
+                    stage.GroupName = def.GroupName;
+                    dirty = true;
+                }
+            }
+
             if (dirty) Persist(config);
             return config;
         }

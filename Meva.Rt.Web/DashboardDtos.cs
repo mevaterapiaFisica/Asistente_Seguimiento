@@ -30,7 +30,7 @@ public static class HomeResponseMapper
         {
             GeneratedAtUtc = data.GeneratedAtUtc,
             Centers = data.Centers,
-            Stages = data.Stages,
+            Stages = configurationModel.Stages.OrderBy(x => x.SortOrder).ToList(),
             StageSummary = data.StageSummary,
             Patients = data.FollowUpPatients,
             Agenda = data.AgendaItems,

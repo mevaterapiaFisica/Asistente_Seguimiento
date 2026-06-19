@@ -67,6 +67,26 @@ h1, h2, p { margin: 0; }
 .scrape-menu button:last-child { border-bottom: none; }
 .scrape-menu button:hover { background: rgba(15,108,116,0.07); }
 
+/* ── Nav group dropdowns ───────────────────────────────────────────────────── */
+.nav-group-wrap { position: relative; }
+.nav-group-menu {
+  position: absolute; top: calc(100% + 6px); left: 0;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.13); z-index: 200;
+  min-width: 160px; overflow: hidden;
+}
+.nav-group-menu button {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 16px; border: none; border-bottom: 1px solid var(--line);
+  background: transparent; font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.nav-group-menu button:last-child { border-bottom: none; }
+.nav-group-menu button:hover { background: rgba(15,108,116,0.07); }
+
+/* ── Seguimiento stage sub-filter (animated reveal) ──────────────────────── */
+.stage-sub-filter-row { max-height: 0; opacity: 0; overflow: hidden; transition: max-height .25s ease, opacity .2s ease; }
+.stage-sub-filter-row.visible { max-height: 80px; opacity: 1; }
+
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 

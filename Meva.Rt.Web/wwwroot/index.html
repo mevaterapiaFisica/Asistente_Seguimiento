@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>Meva RT</title>
-  <link rel="stylesheet" href="styles.css?v=20260618">
+  <link rel="stylesheet" href="styles.css?v=20260619">
 </head>
 <body>
   <div id="feriados-alert-banner" style="display:none; background:#fff3cd; color:#856404; border:1px solid #ffc107; border-radius:6px; padding:8px 16px; margin:8px 16px; font-size:13px; font-weight:600;"></div>
@@ -18,16 +18,37 @@
     </header>
 
     <nav class="tabs">
-      <button class="tab-button active" data-tab="alertas" type="button">Alertas</button>
-      <button class="tab-button" data-tab="pacientes" type="button">Pacientes</button>
-      <button class="tab-button" data-tab="inicios" type="button">Inicios</button>
-      <button class="tab-button" data-tab="followup" type="button">Seguimiento</button>
-      <button class="tab-button" data-tab="tomograph" type="button">Agenda Tomografos</button>
-      <button class="tab-button" data-tab="agenda" type="button">Agenda Equipos</button>
-      <button class="tab-button" data-tab="derivacion" type="button">Derivacion</button>
-      <button class="tab-button" data-tab="resumen" type="button">Tendencias</button>
-      <button class="tab-button" data-tab="fisica" type="button">Fisica</button>
-      <button class="tab-button" data-tab="especiales" type="button">Técnicas Especiales</button>
+      <div class="nav-group-wrap">
+        <button class="tab-button nav-group-btn" type="button">Pacientes &#9660;</button>
+        <div class="nav-group-menu" hidden>
+          <button type="button" data-tab="followup">Seguimiento</button>
+          <button type="button" data-tab="especiales">Técnicas Especiales</button>
+          <button type="button" data-tab="fisica">Física</button>
+          <button type="button" data-tab="pacientes">Buscar</button>
+        </div>
+      </div>
+      <div class="nav-group-wrap">
+        <button class="tab-button nav-group-btn" type="button">Agendas &#9660;</button>
+        <div class="nav-group-menu" hidden>
+          <button type="button" data-tab="agenda">Equipos</button>
+          <button type="button" data-tab="tomograph">Tomógrafos</button>
+          <button type="button" data-tab="inicios">Inicios</button>
+          <button type="button" data-tab="derivacion">Derivación</button>
+        </div>
+      </div>
+      <div class="nav-group-wrap">
+        <button class="tab-button nav-group-btn" type="button">Análisis &#9660;</button>
+        <div class="nav-group-menu" hidden>
+          <button type="button" data-tab="alertas">Alertas</button>
+          <button type="button" data-tab="resumen">Tendencias</button>
+        </div>
+      </div>
+      <div class="nav-group-wrap">
+        <button class="tab-button nav-group-btn" type="button">Admin &#9660;</button>
+        <div class="nav-group-menu" hidden>
+          <button type="button" data-tab="config">Configuración</button>
+        </div>
+      </div>
       <div class="scrape-menu-wrap">
         <button type="button" class="ghost-button scrape-menu-trigger" id="scrapMenuBtn">
           <span id="generatedAt">sin datos</span> &#9660;
@@ -38,13 +59,12 @@
           <button type="button" id="actionUpdateAll">Actualizar todo</button>
         </div>
       </div>
-      <button class="tab-button config-tab-btn" data-tab="config" type="button">Configuracion</button>
     </nav>
 
     <main>
 
       <!-- ── Alertas ───────────────────────────────────────────────────── -->
-      <section id="tab-alertas" class="tab-panel active">
+      <section id="tab-alertas" class="tab-panel">
         <div class="alertas-toolbar">
           <button id="refreshAlertasBtn" class="tab-button active" type="button">Actualizar alertas</button>
           <span id="alertasStatus" class="agenda-status"></span>
@@ -88,13 +108,17 @@
       </section>
 
       <!-- ── Seguimiento ─────────────────────────────────────────────────── -->
-      <section id="tab-followup" class="tab-panel">
+      <section id="tab-followup" class="tab-panel active">
         <div class="filter-bar filter-bar-stacked">
           <div class="filter-row">
             <span class="filter-label">Centro:</span>
             <div id="centerFilterPills" class="pill-row"></div>
           </div>
           <div class="filter-row">
+            <span class="filter-label">Grupo etapa:</span>
+            <div id="stageGroupFilterPills" class="pill-row"></div>
+          </div>
+          <div class="filter-row stage-sub-filter-row" id="stageSubFilterRow">
             <span class="filter-label">Etapa:</span>
             <div id="stageFilterPills" class="pill-row"></div>
           </div>
@@ -113,7 +137,7 @@
         </div>
       </section>
 
-      <!-- ── Agenda Tomografos ─────────────────────────────────────────── -->
+      <!-- ── Tomógrafos ───────────────────────────────────────────────── -->
       <section id="tab-tomograph" class="tab-panel">
         <div class="filter-bar">
           <label class="filter-label">Fecha:</label>
@@ -129,7 +153,7 @@
         </div>
       </section>
 
-      <!-- ── Agenda Equipos ─────────────────────────────────────────────── -->
+      <!-- ── Equipos ──────────────────────────────────────────────────── -->
       <section id="tab-agenda" class="tab-panel">
         <div class="filter-bar">
           <label class="filter-label">Fecha:</label>
@@ -368,6 +392,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260618"></script>
+  <script src="app.js?v=20260619"></script>
 </body>
 </html>

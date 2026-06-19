@@ -293,27 +293,7 @@ public sealed class BootstrapService
         var stageByCode = _configurationProvider.Configuration.Stages
             .ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
 
-        var summary = followUp
-            .GroupBy(x => new { x.CenterName, x.StageCode })
-            .Select(group =>
-            {
-                var stageDef = stageByCode.GetValueOrDefault(group.Key.StageCode);
-                var countable = group.Where(x => !x.IsLongWait).ToList();
-                return new StageSummaryItem
-                {
-                    CenterName = group.Key.CenterName,
-                    StageCode = group.Key.StageCode,
-                    StageGroupName = stageDef?.GroupName ?? group.First().StageGroupName,
-                    PatientCount = countable.Count,
-                    AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
-                    ExpectedDays = stageDef?.ExpectedDays ?? 0,
-                    DelayedCount = group.Count(x => x.IsDelayed),
-                    LongWaitCount = group.Count(x => x.IsLongWait)
-                };
-            })
-            .OrderBy(x => x.CenterName)
-            .ThenBy(x => x.StageGroupName)
-            .ToList();
+        var summary = ComputeStageSummary(followUp, stageByCode);
 
         var data = new DashboardBootstrapData
         {
@@ -448,5 +428,32 @@ public sealed class BootstrapService
 
         await _snapshotStore.SaveAsync("dashboard_bootstrap", data, cancellationToken);
         return data;
+    }
+
+    public static List<StageSummaryItem> ComputeStageSummary(
+        IEnumerable<ProcessPatientSnapshot> patients,
+        Dictionary<string, ProcessStageDefinition> stageByCode)
+    {
+        return patients
+            .GroupBy(x => new { x.CenterName, x.StageCode })
+            .Select(group =>
+            {
+                var stageDef = stageByCode.GetValueOrDefault(group.Key.StageCode);
+                var countable = group.Where(x => !x.IsLongWait).ToList();
+                return new StageSummaryItem
+                {
+                    CenterName        = group.Key.CenterName,
+                    StageCode         = group.Key.StageCode,
+                    StageGroupName    = stageDef?.GroupName ?? group.First().StageGroupName,
+                    PatientCount      = countable.Count,
+                    AverageDaysInStage = countable.Count > 0 ? countable.Average(x => x.DaysInStage) : 0,
+                    ExpectedDays      = stageDef?.ExpectedDays ?? 0,
+                    DelayedCount      = group.Count(x => x.IsDelayed),
+                    LongWaitCount     = group.Count(x => x.IsLongWait)
+                };
+            })
+            .OrderBy(x => x.CenterName)
+            .ThenBy(x => x.StageGroupName)
+            .ToList();
     }
 }

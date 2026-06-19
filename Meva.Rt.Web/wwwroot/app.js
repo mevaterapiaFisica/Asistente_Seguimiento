@@ -1,11 +1,12 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  activeTab: 'alertas',
+  activeTab: 'followup',
   homeData: null,
 
   followup: {
     centerFilter: null,
+    stageGroupFilter: null,
     stageFilter: null,
     profesionalFilter: null,
     activeCenter: null,
@@ -353,33 +354,56 @@ function requestAuth(profile, options = {}) {
   });
 }
 
+function _updateGroupActive(tab) {
+  document.querySelectorAll('.nav-group-wrap').forEach(wrap => {
+    wrap.querySelector('.nav-group-btn').classList.toggle('active',
+      !!wrap.querySelector(`[data-tab="${tab}"]`));
+  });
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${tab}`));
+}
+
+async function activateTab(targetTab) {
+  if (targetTab === 'config') {
+    const auth = await requestAuth('sysadmin', { title: 'Acceso a Configuración' });
+    if (!auth || !auth.authenticated) return;
+  }
+  state.activeTab = targetTab;
+  _updateGroupActive(targetTab);
+  if (targetTab === 'pacientes') loadPacientesTab();
+  if (targetTab === 'inicios') loadIniciosTab();
+  if (targetTab === 'resumen') renderResumen();
+  if (targetTab === 'alertas') loadAlertasTab();
+  if (targetTab === 'agenda') refreshAgendaView();
+  if (targetTab === 'tomograph') refreshTomographAgendaView();
+  if (targetTab === 'config') loadConfigData();
+  if (targetTab === 'fisica') renderFisicaView();
+  if (targetTab === 'especiales') renderEspeciales();
+  if (targetTab === 'derivacion') openDerivacion();
+}
+
 function wireTabs() {
-  document.querySelectorAll('nav.tabs .tab-button[data-tab]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const targetTab = btn.dataset.tab;
-
-      if (targetTab === 'config') {
-        const auth = await requestAuth('sysadmin', { title: 'Acceso a Configuración' });
-        if (!auth || !auth.authenticated) return;
-      }
-
-      state.activeTab = targetTab;
-      document.querySelectorAll('nav.tabs .tab-button[data-tab]').forEach(b =>
-        b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab-panel').forEach(p =>
-        p.classList.toggle('active', p.id === `tab-${state.activeTab}`));
-      if (state.activeTab === 'pacientes') loadPacientesTab();
-      if (state.activeTab === 'inicios') loadIniciosTab();
-      if (state.activeTab === 'resumen') renderResumen();
-      if (state.activeTab === 'alertas') loadAlertasTab();
-      if (state.activeTab === 'agenda') refreshAgendaView();
-      if (state.activeTab === 'tomograph') refreshTomographAgendaView();
-      if (state.activeTab === 'config') loadConfigData();
-      if (state.activeTab === 'fisica') renderFisicaView();
-      if (state.activeTab === 'especiales') renderEspeciales();
-      if (state.activeTab === 'derivacion') openDerivacion();
+  function closeAll() {
+    document.querySelectorAll('.nav-group-menu').forEach(m => { m.hidden = true; });
+  }
+  document.querySelectorAll('.nav-group-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const menu = btn.nextElementSibling;
+      const wasHidden = menu.hidden;
+      closeAll();
+      menu.hidden = !wasHidden;
+      e.stopPropagation();
     });
   });
+  document.addEventListener('click', closeAll);
+  document.querySelectorAll('.nav-group-menu button[data-tab]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      closeAll();
+      activateTab(btn.dataset.tab);
+    });
+  });
+  _updateGroupActive(state.activeTab);
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -617,21 +641,68 @@ function buildFollowUpFilters(data) {
     })
   ));
 
-  buildStageFilterPills(data);
+  buildStageGroupFilterPills(data);
   buildProfesionalFilterPills();
 }
 
-function buildStageFilterPills(data) {
-  const row = document.getElementById('stageFilterPills');
+function buildStageGroupFilterPills(data) {
+  const stages = data.stages ?? [];
+  const groupMap = new Map();
+  stages.forEach(s => {
+    if (!groupMap.has(s.groupName)) groupMap.set(s.groupName, { stages: [], minSort: s.sortOrder ?? 999 });
+    const g = groupMap.get(s.groupName);
+    g.stages.push(s);
+    if ((s.sortOrder ?? 999) < g.minSort) g.minSort = s.sortOrder ?? 999;
+  });
+  const groups = [...groupMap.entries()].sort((a, b) => a[1].minSort - b[1].minSort);
+
+  const row = document.getElementById('stageGroupFilterPills');
   if (!row) return;
   row.innerHTML = '';
-  row.appendChild(makePill('Todas', state.followup.stageFilter === null, () => {
+  row.appendChild(makePill('Todas', state.followup.stageGroupFilter === null, () => {
+    state.followup.stageGroupFilter = null;
+    state.followup.stageFilter = null;
+    state.followup.activeCenter = null;
+    state.followup.activeStage = null;
+    _updateStageSubFilter();
+    renderFollowUp();
+  }));
+  groups.forEach(([groupName, { stages: gs }]) => row.appendChild(
+    makePill(groupName, state.followup.stageGroupFilter === groupName, () => {
+      state.followup.stageGroupFilter = groupName;
+      state.followup.stageFilter = gs.length === 1 ? gs[0].code : null;
+      state.followup.activeCenter = null;
+      state.followup.activeStage = null;
+      _updateStageSubFilter();
+      renderFollowUp();
+    })
+  ));
+  _updateStageSubFilter();
+}
+
+function _updateStageSubFilter() {
+  const stages = state.homeData?.stages ?? [];
+  const subRow = document.getElementById('stageSubFilterRow');
+  const pillsEl = document.getElementById('stageFilterPills');
+  if (!subRow || !pillsEl) return;
+
+  const groupName = state.followup.stageGroupFilter;
+  const gs = groupName
+    ? stages.filter(s => s.groupName === groupName).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    : [];
+
+  const showSub = gs.length > 1;
+  subRow.classList.toggle('visible', showSub);
+  if (!showSub) { pillsEl.innerHTML = ''; return; }
+
+  pillsEl.innerHTML = '';
+  pillsEl.appendChild(makePill('Todas', state.followup.stageFilter === null, () => {
     state.followup.stageFilter = null;
     state.followup.activeCenter = null;
     state.followup.activeStage = null;
     renderFollowUp();
   }));
-  (data.stages ?? []).forEach(s => row.appendChild(
+  gs.forEach(s => pillsEl.appendChild(
     makePill(s.displayName, state.followup.stageFilter === s.code, () => {
       state.followup.stageFilter = s.code;
       state.followup.activeCenter = null;
@@ -647,17 +718,21 @@ function buildProfesionalFilterPills() {
   row.innerHTML = '';
   row.appendChild(makePill('Todos', state.followup.profesionalFilter === null, () => {
     state.followup.profesionalFilter = null;
+    state.followup.stageGroupFilter = null;
     state.followup.stageFilter = null;
     state.followup.activeCenter = null;
     state.followup.activeStage = null;
+    _updateStageSubFilter();
     renderFollowUp();
   }));
   ['Medicos', 'Fisicos'].forEach(prof => row.appendChild(
     makePill(prof, state.followup.profesionalFilter === prof, () => {
       state.followup.profesionalFilter = prof;
+      state.followup.stageGroupFilter = null;
       state.followup.stageFilter = null;
       state.followup.activeCenter = null;
       state.followup.activeStage = null;
+      _updateStageSubFilter();
       renderFollowUp();
     })
   ));
@@ -676,7 +751,15 @@ function renderFollowUp() {
         : btn.textContent === state.followup.centerFilter);
   });
 
-  // Sync etapa pills
+  // Sync grupo etapa pills
+  document.querySelectorAll('#stageGroupFilterPills .pill-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      btn.textContent === 'Todas'
+        ? state.followup.stageGroupFilter === null
+        : btn.textContent === state.followup.stageGroupFilter);
+  });
+
+  // Sync sub-etapa pills
   document.querySelectorAll('#stageFilterPills .pill-btn').forEach(btn => {
     const matchingStage = stageDefs.find(s => s.displayName === btn.textContent);
     btn.classList.toggle('active',
@@ -950,9 +1033,9 @@ async function loadAvailableDates() {
   populateAgendaDateSelect();
 }
 
-function populateAgendaDateSelect() {
+function _populateDateSelect(stateSlice, elementId) {
   const today = todayStr();
-  const futureScraped = state.agenda.availableDates.filter(d => d >= today).sort();
+  const futureScraped = stateSlice.availableDates.filter(d => d >= today).sort();
   const lastScraped = futureScraped.length > 0 ? futureScraped[futureScraped.length - 1] : today;
 
   // Fechas desde hoy hasta el último día scrapeado (inclusive), todas las intermedias incluidas
@@ -964,14 +1047,14 @@ function populateAgendaDateSelect() {
     d.setDate(d.getDate() + 1);
   }
 
-  const sel = document.getElementById('agendaDateSelect');
+  const sel = document.getElementById(elementId);
   const prev = sel.value;
-  const target = state.agenda.selectedDate || prev;
+  const target = stateSlice.selectedDate || prev;
   sel.innerHTML = '<option value="">-- elegir fecha --</option>';
   all.forEach(date => {
     const opt = document.createElement('option');
     opt.value = date;
-    const scraped = state.agenda.availableDates.includes(date);
+    const scraped = stateSlice.availableDates.includes(date);
     const isToday = date === today;
     opt.textContent = isToday ? `${formatDisplayDate(date)} (hoy)` : scraped ? `${formatDisplayDate(date)} ✓` : formatDisplayDate(date);
     if (!scraped && !isToday) { opt.disabled = true; opt.style.color = '#aaa'; }
@@ -979,8 +1062,11 @@ function populateAgendaDateSelect() {
     sel.appendChild(opt);
   });
 
-  if (!state.agenda.selectedDate && prev) state.agenda.selectedDate = prev;
+  if (!stateSlice.selectedDate && prev) stateSlice.selectedDate = prev;
 }
+
+function populateAgendaDateSelect()    { _populateDateSelect(state.agenda,          'agendaDateSelect'); }
+function populateTomographDateSelect() { _populateDateSelect(state.tomographAgenda, 'tomographDateSelect'); }
 
 async function loadAgendaForSelectedDate() {
   const date = state.agenda.selectedDate;
@@ -1234,36 +1320,6 @@ async function loadAvailableTomographDates() {
   populateTomographDateSelect();
 }
 
-function populateTomographDateSelect() {
-  const today = todayStr();
-  const futureScraped = state.tomographAgenda.availableDates.filter(d => d >= today).sort();
-  const lastScraped = futureScraped.length > 0 ? futureScraped[futureScraped.length - 1] : today;
-
-  const all = [];
-  const d = new Date(today + 'T00:00:00');
-  const last = new Date(lastScraped + 'T00:00:00');
-  while (d <= last) {
-    all.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
-    d.setDate(d.getDate() + 1);
-  }
-
-  const sel = document.getElementById('tomographDateSelect');
-  const prev = sel.value;
-  const target = state.tomographAgenda.selectedDate || prev;
-  sel.innerHTML = '<option value="">-- elegir fecha --</option>';
-  all.forEach(date => {
-    const opt = document.createElement('option');
-    opt.value = date;
-    const scraped = state.tomographAgenda.availableDates.includes(date);
-    const isToday = date === today;
-    opt.textContent = isToday ? `${formatDisplayDate(date)} (hoy)` : scraped ? `${formatDisplayDate(date)} ✓` : formatDisplayDate(date);
-    if (!scraped && !isToday) { opt.disabled = true; opt.style.color = '#aaa'; }
-    if (date === target && !opt.disabled) opt.selected = true;
-    sel.appendChild(opt);
-  });
-
-  if (!state.tomographAgenda.selectedDate && prev) state.tomographAgenda.selectedDate = prev;
-}
 
 function refreshTomographAgendaView() {
   if (!state.homeData) return;
