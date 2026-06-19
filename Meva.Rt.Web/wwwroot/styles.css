@@ -25,10 +25,14 @@ body {
 
 .page { max-width: 1500px; margin: 0 auto; padding: 18px 22px; }
 
-.hero { margin-bottom: 16px; }
+.hero { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.hero-content { flex: 1; }
+.hero-logo { flex-shrink: 0; margin-left: 24px; }
+.logo-institucional { height: 56px; width: auto; object-fit: contain; }
 .eyebrow { text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); font-size: 12px; margin: 0; }
 h1, h2, p { margin: 0; }
 .subtitle { margin-top: 6px; color: var(--muted); font-size: 14px; }
+@media (max-width: 600px) { .hero-logo { display: none; } }
 
 /* ── Nav ─────────────────────────────────────────────────────────────────── */
 

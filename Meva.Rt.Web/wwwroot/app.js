@@ -2927,7 +2927,7 @@ tr:nth-child(even) td{background:#fafaf7}
 <h1>Plan de Derivacion — ${esc(equipo)}</h1>
 <div class="meta">
   Periodo del evento: ${fi}${fi!==ff?' al '+ff:''}<br>
-  Generado el: ${now}&nbsp;·&nbsp;Generado por: Meva RT
+  Generado el: ${now}&nbsp;·&nbsp;Generado por: MevaDash
 </div>
 ${atendidos.length ? `<h2>Pacientes ya atendidos al momento del calculo</h2>
 <table style="margin-bottom:24px"><thead><tr><th>Paciente</th><th>HC</th><th>Tecnica</th><th>Turno(s) / Etapa</th></tr></thead>
