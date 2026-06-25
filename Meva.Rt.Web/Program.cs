@@ -15,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 var snapshotsDirectory = Environment.GetEnvironmentVariable("MEVA_DATA_DIR")
     ?? Path.Combine(builder.Environment.ContentRootPath, "data");
-var configurationHolder = new RtConfigurationHolder(builder.Environment.ContentRootPath);
+var configurationHolder = new RtConfigurationHolder(snapshotsDirectory);
 
 var sitraMedOptions = new SitraMedRuntimeOptions
 {

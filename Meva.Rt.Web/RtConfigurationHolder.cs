@@ -9,9 +9,9 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
     private readonly string _configurationPath;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
-    public RtConfigurationHolder(string contentRootPath)
+    public RtConfigurationHolder(string dataDirectory)
     {
-        _configurationPath = Path.Combine(contentRootPath, "data", "rt_configuration.json");
+        _configurationPath = Path.Combine(dataDirectory, "rt_configuration.json");
         Configuration = LoadOrCreateDefault();
     }
 
@@ -22,6 +22,7 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
         if (!File.Exists(_configurationPath))
         {
             var def = AppConfiguration.BuildDefault();
+            Directory.CreateDirectory(Path.GetDirectoryName(_configurationPath)!);
             Persist(def);
             return def;
         }
@@ -65,6 +66,12 @@ public sealed class RtConfigurationHolder : IRtSystemConfigurationProvider
             var rcUniq = config.TechniqueDurations.FirstOrDefault(t => t.TreatmentLabel == "RC fracción única");
             if (rcFrac != null) { rcFrac.TreatmentLabel = "RC"; dirty = true; }
             if (rcUniq != null) { rcUniq.TreatmentLabel = "RC - haz SRS"; dirty = true; }
+
+            // Remove "6X" from HighEnergyBeams: it is the standard energy, not a high-energy beam
+            foreach (var cap in config.MachineCapabilities)
+            {
+                if (cap.HighEnergyBeams.Remove("6X")) dirty = true;
+            }
 
             if (dirty) Persist(config);
             return config;

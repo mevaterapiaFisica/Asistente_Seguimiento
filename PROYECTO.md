@@ -2,7 +2,7 @@
 
 > Sistema de seguimiento de pacientes en radioterapia oncológica para **Meva Terapia** (mevaterapia.com.ar).
 > Tecnologías: .NET 9, ASP.NET Core Minimal APIs, Playwright, Entity Framework 6, Windows Service.
-> Última actualización: 2026-06-18 (sesión tarde)
+> Última actualización: 2026-06-22
 
 ---
 
@@ -61,6 +61,16 @@ Dos métodos estáticos:
 
 La clasificación BQT/IORT se ignora si el paciente tiene otra técnica en SitraMed (`ResolveTreatmentZone` en extractores).
 
+**Fixes de clasificación (sesión 2026-06-19b):**
+- **RC:** agrega variante sin tilde `"radiocirugia"` (OrdinalIgnoreCase no normaliza diacríticos; `"Radiocirugía"` con `í` U+00ED ≠ `"radiocirugia"`). Todos los pacientes RC caían al fallback `"3DC"`.
+- **SBRT extracraneal:** ídem, variante sin tilde agregada.
+- **Labels RC renombrados:** `"RC fraccionada"` → `"RC"` (15 min), `"RC fracción única"` → `"RC - haz SRS"` (20/45 min). Migración automática al cargar el JSON persistido.
+
+**Fix extracción de técnica en SitraMed (sesión 2026-06-18):**
+- `PlaywrightSitraMedClient.cs`: extrae primero del link `conduct_definitions` (fuente autoritativa). En el fallback por keywords, salta celdas que contengan `.modal` o `button.modal-button` (la celda "Comunicaciones Internas" —índice 5— contenía el HTML completo del modal con notas históricas que mencionaban técnicas anteriores).
+- `TreatmentClassifier.cs`: agrega `"Intensidad Modulada"` como alias de IMRT.
+- `ResolveTreatmentZone`: ordena candidatos no-BQT/IORT por fecha descendente.
+
 ---
 
 ## Etapas del proceso (F-stages)
@@ -106,7 +116,7 @@ Hay 19 etapas en total (F1–F11), las críticas de planificación activa son la
 | CETRO | Cetro | Varian 21 EX | CETRO - Cetro | ✓ |
 | QUILMES | Quilmes - Equipo 1 | QBA_600CD_523 | QUILMES - Equipo 1 | ✓ |
 | QUILMES | Quilmes - Equipo 2 | EQ2_iX_827 | QUILMES - Equipo 2 | ✓ |
-| SAN JUSTO | San Justo - Equipo 1 | 6oo C/D | SAN JUSTO - Equipo 1 | ✓ |
+| SAN JUSTO | San Justo - Equipo 1 | 6oo C/D | SAN JUSTO - Equipo 1 | ✓ (fuera de servicio desde 2026-06-19, temporario) |
 | SAN JUSTO | San Justo - Equipo 2 | (no confirmado) | SAN JUSTO - Equipo 2 | ✓ |
 | RT MEDRANO | RT Medrano | CL21EX | RT MEDRANO - RT Medrano | ✓ |
 | MEVA-Viamonte | Viamonte - Equipo 1 | (no confirmado) | MEVA-Viamonte - Equipo 1 | ✗ |
@@ -138,6 +148,7 @@ Fuente de verdad: `AppConfiguration.cs`. Se puede sobrescribir vía `data/rt_con
 - **`SitraMedTomographExtractor`** — análogo a agenda para tomógrafos.
 - **`SitraMedPatientHcFetcher`** — resuelve GUID interno → HC. Necesario para correlacionar con ARIA.
 - **`FollowUpDateParser`** — parsea fechas de etapa del HTML de SitraMed (marcadores `<!-- fX -->`). También extrae `ResponsibleDoctor` (médico responsable) y `TomographyDate`.
+- **`SitraMedAttendedPatientsExtractor`** — scrapea la agenda del equipo fuera de servicio y detecta botones "Atendido" para extraer los GUIDs de pacientes ya atendidos. Usado por el tab Derivación.
 
 ### ARIA (base de datos Varian)
 
@@ -202,6 +213,12 @@ Archivos clave en `data/`:
 | `GET /api/aria/query-status` | `{ isRunning, progressPct, currentPatient, totalPatients, lastRunSucceeded }`. Lee log del AriaRunner para calcular progreso. |
 | `POST /api/aria/import-results` | Lee `aria_results_*.json`, genera/mergea `aria_plans_mock.json`. |
 | `POST /api/aria/run-query` | Lanza AriaRunner.exe; devuelve **202 Accepted** inmediatamente (fire-and-forget). El progreso se consulta con `GET /api/aria/query-status`. |
+
+### Derivación
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/derivation/attended-patients?machine=...&date=...` | Lista de GUIDs de pacientes ya atendidos en el equipo para esa fecha. Scrapea la agenda de SitraMed y detecta botones "Atendido". |
 
 ### Estadísticas, eventos y configuración
 
@@ -270,19 +287,18 @@ Reemplaza las 938 consultas individuales por 6 consultas WHERE IN:
 
 ## Frontend (Meva.Rt.Web/wwwroot)
 
-### Tabs del dashboard (en orden)
+### Navegación y tabs
 
-1. **Alertas** (tab por defecto)
-2. **Pacientes**
-3. **Inicios**
-4. **Seguimiento**
-5. **Agenda Tomografos**
-6. **Agenda Equipos**
-7. **Derivacion**
-8. **Tendencias**
-9. **Fisica**
-10. **Técnicas Especiales**
-11. **Configuracion** (alineado a la derecha)
+Desde la sesión 2026-06-19b, los tabs se organizan en **grupos de navegación** (pills de primer nivel), con sub-tabs que se muestran al seleccionar cada grupo:
+
+| Grupo | Tabs |
+|---|---|
+| **Pacientes** | Alertas · Pacientes · Inicios · Seguimiento |
+| **Agendas** | Agenda Tomógrafos · Agenda Equipos · Turnos Reservados · Derivación |
+| **Análisis** | Tendencias · Física · Técnicas Especiales |
+| **Admin** | Configuración |
+
+El tab activo al cargar es **Seguimiento** (grupo Pacientes). El menú de actualización de datos (Actualizar Sitramed / ARIA / todo) es un dropdown tipo "ghost button" en la esquina derecha de la nav, siempre visible.
 
 ### Tab Alertas
 
@@ -337,6 +353,16 @@ Tabla de pacientes por etapa y centro. Los pacientes con larga espera van al fon
 
 - Slots BQT/IORT excluidos del conteo y de la vista (`isExcludedSlot(slot)`).
 - Equipos con error de scraping muestran borde naranja + "⚠ Error de scraping".
+
+### Tab Turnos Reservados (desde sesión 2026-06-19b)
+
+Muestra **todas** las reservas activas (sin límite de días, a diferencia de Inicios). Datos de `GET /api/reservations` (caché 5 min en `state.reservations`).
+
+- **Filtro de centro:** pills igual que Inicios.
+- **Contador:** `"N turnos reservados (X mañana, Y en 2 días, ...)"`.
+- **Agrupación:** por fecha ASC → por equipo → subcards de pacientes. Dentro de cada equipo: prioridad ASC (P1 primero), luego hora.
+- **Subcard expandible:** click expande/colapsa (solo una por card de equipo). Estado expandido muestra observaciones + botones Editar/Eliminar que reutilizan los modales existentes.
+- **Integración:** tras guardar o eliminar desde cualquier tab, `window.activeReservations` se actualiza en memoria y se re-renderiza si el tab activo es Turnos Reservados.
 
 ### Tab Derivación
 
@@ -492,15 +518,35 @@ C:\Pablo\Meva.Rt\
 
 ---
 
+## Deployment
+
+El sistema corre como **Windows Service** (`MevaRT`) en la PC servidora.
+
+| Situación | Qué corre | Directorio | Puerto |
+|---|---|---|---|
+| Uso diario | Servicio Windows (automático) | `C:\MevaRT\` | 5062 |
+| Modificando código | `dotnet run` (servicio detenido) | `C:\Pablo\Meva.Rt\` | 5063 |
+
+- **Publicar al servicio:** `C:\Pablo\Meva.Rt\scripts\publish.ps1` (como Administrador)
+- **Publish manual:** `dotnet publish Meva.Rt.Web/Meva.Rt.Web.csproj -c Release -o C:\MevaRT --nologo`
+- **Datos compartidos:** ambos entornos usan `C:\MevaRT\data\` (mismos snapshots)
+- **Diagnósticos SitraMed:** agregar `MEVA_SITRAMED_DIAGNOSTICS=true` en `HKLM:\SYSTEM\CurrentControlSet\Services\MevaRT\Environment` y reiniciar el servicio. Screenshots en `C:\MevaRT\data\diagnostics\`
+- **Forzar rescrape:** `Invoke-RestMethod -Uri "http://localhost:5062/api/home/refresh" -Method POST`
+
+---
+
 ## Notas de contexto
 
-- **Puerto 5000.** La web corre en `http://localhost:5000`. Snapshots en `data/` dentro del directorio de la app.
+- **Puertos:** producción en `http://localhost:5062`, desarrollo en `http://localhost:5063`.
+- **Branding (sesión 2026-06-19b):** el sistema se llama **MevaDash** (`<title>`, `<h1>`, export HTML de derivación). Header reestructurado: logo institucional a la derecha (`LogoMeva.png`, 67px alto), título a la izquierda. Eliminados el eyebrow "RADIOTERAPIA" y el subtítulo.
+- **Logo:** `LogoMeva.png` en `wwwroot/`. El PNG definitivo usa fondo blanco puro (R=G=B=255) — versiones anteriores tenían el patrón de tablero de ajedrez bakeado como píxeles grises desde la exportación original. Verificado en `C:\MevaRT\wwwroot\` (producción). Cache-buster: `?v=20260622b`.
 - **AriaQ.dll no está en el repo.** DLL propietaria de Varian. Se copia manualmente a `C:\MevaRT\AriaRunner\` antes de desplegar.
 - **AriaRunner desplegado** en `C:\MevaRT\AriaRunner\AriaRunner.exe` (net9.0-windows: exe apphost + dll managed).
 - **SAN JUSTO Equipo 2 y MEVA-Viamonte** — los AriaNames no están confirmados (vacíos en config).
 - **`data/rt_configuration.json`** — si existe, sobrescribe los defaults de `AppConfiguration.cs`.
 - **`aria_plans_mock.json` se mergea** al actualizar desde AriaRunner: pacientes agenda-pura conservan sus datos indefinidamente.
 - **Cache HTML:** `index.html` tiene `Cache-Control: no-store` tanto en el meta tag como en `UseStaticFiles` de Program.cs. El auto-refresh del frontend detecta cambios de `appVersion` (basada en timestamp de `app.js`) y recarga automáticamente.
+- **CSS (sesión 2026-06-22):** correcciones de consistencia: `--border` definido como alias de `--line` (4 bordes de tabla eran invisibles), banners de feriados/auto-update usan clases CSS con paleta del sistema (antes usaban inline styles con colores Bootstrap), badges P1/P2 referencian `--red`/`--muted` correctamente, hover y `:focus-visible` en todos los botones. Dead code removido: `.eyebrow`, `.subtitle`.
 - **weekly_stats.json:** requiere 4 semanas de datos reales acumulados antes de usarse para estimaciones de fecha de inicio. Los archivos históricos masivos (importación inicial) están renombrados a `.backup.json`.
 - **PatientProcessEvents:** solo detecta TechniqueChanged y StageRegressed. La desaparición de un paciente del seguimiento = inició tratamiento (no se detecta como suspensión).
 - **Feriados:** `data/feriados.txt` con una fecha por línea en formato `YYYY-MM-DD`. La alerta de fin de año avisa cuando falta agregar el año siguiente.

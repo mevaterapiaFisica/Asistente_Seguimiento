@@ -77,17 +77,17 @@ public static class AppConfiguration
             },
             MachineCapabilities =
             {
-                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 1", CanDoVMAT = true, CanDoSBRT = true, CanDoRC = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 2", HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 3", CanDoElectrons = true, CanDoTSET = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 4", HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "CETRO - Cetro", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 1", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 2", CanDoVMAT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "SAN JUSTO - Equipo 2", HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "RT MEDRANO - RT Medrano", CanDoVMAT = true, CanDoIGRT = true, HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 1", HighEnergyBeams = ["6X"] },
-                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 2", HighEnergyBeams = ["6X"] }
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 1", CanDoVMAT = true, CanDoSBRT = true, CanDoRC = true, CanDoIGRT = true },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 2" },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 3", CanDoElectrons = true, CanDoTSET = true },
+                new RtMachineCapabilities { MachineName = "MEVA-Central - Equipo 4" },
+                new RtMachineCapabilities { MachineName = "CETRO - Cetro", CanDoVMAT = true, CanDoIGRT = true },
+                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 1", CanDoVMAT = true, CanDoIGRT = true },
+                new RtMachineCapabilities { MachineName = "QUILMES - Equipo 2", CanDoVMAT = true },
+                new RtMachineCapabilities { MachineName = "SAN JUSTO - Equipo 2" },
+                new RtMachineCapabilities { MachineName = "RT MEDRANO - RT Medrano", CanDoVMAT = true, CanDoIGRT = true },
+                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 1" },
+                new RtMachineCapabilities { MachineName = "MEVA-Viamonte - Equipo 2" }
             },
             Tomographs =
             {
