@@ -1,0 +1,10 @@
+Equipo1,MEVA-Central|Equipo 1
+Equipo 2 6EX,MEVA-Central|Equipo 2
+Equipo3,MEVA-Central|Equipo 3
+D-2300CD,MEVA-Central|Equipo 4
+CL21EX,RT MEDRANO|RT Medrano
+PBA_6EX_730,CETRO|Cetro
+QBA_600CD_523,QUILMES|Quilmes - Equipo 1
+EQ2_iX_827,QUILMES|Quilmes - Equipo 2
+6oo C/D,SAN JUSTO|San Justo - Equipo 1
+Varian 21 EX,SAN JUSTO|San Justo - Equipo 2

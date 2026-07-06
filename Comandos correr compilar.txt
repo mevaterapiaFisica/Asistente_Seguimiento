@@ -1,0 +1,58 @@
+ Compilar toda la solución
+  dotnet build Meva.Rt.sln
+
+  Compilar solo el proyecto web (más rápido)
+
+  dotnet build Meva.Rt.Web\Meva.Rt.Web.csproj
+
+  Correr la app web
+
+  dotnet run --project Meva.Rt.Web\Meva.Rt.Web.csproj
+
+  Compilar y correr en un solo paso
+
+  dotnet run --project Meva.Rt.Web\Meva.Rt.Web.csproj --no-build
+
+  ▎ (usá --no-build solo si ya compilaste antes y no cambiaste código)
+
+  ---
+  Opciones útiles
+
+  ┌──────────────────────────────────────────────────────────┬─────────────────────────────────┐
+  │                         Comando                          │           Descripción           │
+  ├──────────────────────────────────────────────────────────┼─────────────────────────────────┤
+  │ dotnet build -c Release                                  │ Compilar en Release             │
+  ├──────────────────────────────────────────────────────────┼─────────────────────────────────┤
+  │ dotnet run --project ... --launch-profile https          │ Usar perfil HTTPS               │
+  ├──────────────────────────────────────────────────────────┼─────────────────────────────────┤
+  │ dotnet run --project ... -- --urls http://localhost:5050 │ Puerto personalizado            │
+  ├──────────────────────────────────────────────────────────┼─────────────────────────────────┤
+  │ dotnet build --no-restore                                │ Saltar restauración de paquetes │
+  └──────────────────────────────────────────────────────────┴─────────────────────────────────┘
+
+  ---
+  AriaRunner (net48)
+
+  dotnet build Meva.Rt.AriaRunner\Meva.Rt.AriaRunner.csproj
+  # El exe queda en:
+  .\Meva.Rt.AriaRunner\bin\Debug\net48\AriaRunner.exe
+
+
+  - Debug (VS Code / dotnet run): http://localhost:5063  - Producción (servicio MevaRT): http://localhost:5062
+  Para deployar el nuevo código al servicio producción, ejecutás como Administrador:
+  C:\Pablo\Meva.Rt\scripts\publish.ps1
+
+  Y para debuggear apuntás el navegador a localhost:5063.
+  
+  
+  Listo. La regla es simple: un solo puerto (5062), pero solo uno a la vez:
+
+  ┌────────────────────┬────────────────────────────────┬───────────────────┐
+  │     Situación      │           Qué corre            │       Dónde       │
+  ├────────────────────┼────────────────────────────────┼───────────────────┤
+  │ Uso diario         │ Servicio Windows (automático)  │ C:\MevaRT\        │
+  ├────────────────────┼────────────────────────────────┼───────────────────┤
+  │ Modificando código │ dotnet run (servicio detenido) │ C:\Pablo\Meva.Rt\ │
+  └────────────────────┴────────────────────────────────┴───────────────────┘
+
+  Ambos usan los mismos datos (C:\MevaRT\data\) y la misma URL. Al terminar de desarrollar: .\scripts\publish.ps1 y el servicio vuelve a estar disponible.

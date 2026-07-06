@@ -28,6 +28,53 @@ internal static class FollowUpDateParser
         @"<!--\s*f\d",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex ModalDivOpenRegex = new(
+        @"<div\b[^>]*\bclass\s*=\s*""[^""]*modal[^""]*""[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex DivTagRegex = new(
+        @"<(/?)div\b[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Elimina bloques &lt;div class="...modal..."&gt;...&lt;/div&gt; (con balanceo de anidamiento).
+    /// Necesario porque SitraMed embebe modales de historial dentro de celdas de la tabla de
+    /// seguimiento; esos modales contienen sus propios &lt;td&gt;, lo que desalinea el conteo
+    /// naive de columnas de <see cref="GetNthTdContent"/> (mismo patrón de bug que rompía la
+    /// extracción de técnica en la celda "Comunicaciones Internas", ver PlaywrightSitraMedClient).
+    /// </summary>
+    private static string StripModalBlocks(string html)
+    {
+        var sb = new System.Text.StringBuilder();
+        var pos = 0;
+        while (true)
+        {
+            var openMatch = ModalDivOpenRegex.Match(html, pos);
+            if (!openMatch.Success)
+            {
+                sb.Append(html, pos, html.Length - pos);
+                break;
+            }
+            sb.Append(html, pos, openMatch.Index - pos);
+
+            var depth = 1;
+            var scan = openMatch.Index + openMatch.Length;
+            while (depth > 0)
+            {
+                var tag = DivTagRegex.Match(html, scan);
+                if (!tag.Success)
+                {
+                    scan = html.Length;
+                    break;
+                }
+                depth += tag.Groups[1].Value == "/" ? -1 : 1;
+                scan = tag.Index + tag.Length;
+            }
+            pos = scan;
+        }
+        return sb.ToString();
+    }
+
     private static readonly string[] DateFormats =
         ["dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd"];
 
@@ -68,7 +115,7 @@ internal static class FollowUpDateParser
         var afterMarker = markerIdx + info.SectionMarker.Length;
         var nextSection = NextSectionRegex.Match(rowHtml, afterMarker);
         var sectionEnd = nextSection.Success ? nextSection.Index : rowHtml.Length;
-        var sectionHtml = rowHtml.Substring(afterMarker, sectionEnd - afterMarker);
+        var sectionHtml = StripModalBlocks(rowHtml.Substring(afterMarker, sectionEnd - afterMarker));
 
         var cellContent = GetNthTdContent(sectionHtml, info.TdIndex);
         if (cellContent == null) return null;
@@ -172,7 +219,7 @@ internal static class FollowUpDateParser
         var afterMarker = markerIdx + sectionMarker.Length;
         var nextSection = NextSectionRegex.Match(rowHtml, afterMarker);
         var sectionEnd = nextSection.Success ? nextSection.Index : rowHtml.Length;
-        var sectionHtml = rowHtml.Substring(afterMarker, sectionEnd - afterMarker);
+        var sectionHtml = StripModalBlocks(rowHtml.Substring(afterMarker, sectionEnd - afterMarker));
 
         var cellContent = GetNthTdContent(sectionHtml, tdIndex);
         if (string.IsNullOrWhiteSpace(cellContent)) return null;
