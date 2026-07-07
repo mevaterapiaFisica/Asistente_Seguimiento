@@ -109,12 +109,6 @@ function daysBadge(p, dc) {
   return `<span class="days-badge ${dc}">${p.daysInStage}d</span>`;
 }
 
-function delayDot(days, expected, isLongWait) {
-  const cls = delayClass(days, expected, isLongWait);
-  const col = cls === 'long-wait' ? 'dot-gray' : cls === 'on-time' ? 'dot-green' : cls === 'at-limit' ? 'dot-yellow' : 'dot-red';
-  return `<span class="dot ${col}"></span>`;
-}
-
 function freeMinutes(cap, scrapedCount) {
   const workMin = (Number(cap.workingHours) - Number(cap.reservedSpecialHours)) * 60;
   return Math.max(0, workMin - scrapedCount * cap.standardSlotMinutes);
@@ -168,13 +162,15 @@ function priorityBadge(priority) {
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function hcTag(patientId) {
+function hcTag(patientId, sitraMedGuid) {
   if (!patientId || GUID_RE.test(patientId))
     return `<span class="hc-tag muted-italic">Sin HC</span>`;
   const isHc = /^\d{1,3}-\d{4,7}-\d{1,3}$/.test(patientId);
-  return isHc
-    ? `<span class="hc-tag">HC ${patientId}</span>`
-    : `<span class="hc-tag muted-italic">${patientId}</span>`;
+  if (!isHc) return `<span class="hc-tag muted-italic">${patientId}</span>`;
+  const text = `HC ${patientId}`;
+  return sitraMedGuid
+    ? `<a class="hc-tag" href="https://sitramed.mevaterapia.com.ar/medical_histories/${sitraMedGuid}/internal_messages" target="_blank" rel="noopener noreferrer" title="Ir a comunicaciones internas">${text}</a>`
+    : `<span class="hc-tag">${text}</span>`;
 }
 
 function fmtHc(hc) {
@@ -185,9 +181,7 @@ function fmtHc(hc) {
 function renderTreatmentLabel(item) {
   const label = item.treatmentLabel;
   if (!label) return '';
-  // Usar el primer token del label como clave CSS (ej: "IMRT" de "IMRT - estático")
-  const cssKey = label.split(/[\s-]/)[0];
-  return `<span class="treatment-badge tt-${cssKey}">${label}</span>`;
+  return `<span class="treatment-badge">${esc(label)}</span>`;
 }
 
 function isExcludedTechnique(p) {
@@ -898,12 +892,11 @@ function renderFollowupDetail() {
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
       const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${p.patientName}</strong></a>`
         : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         nameHtml +
-        hcTag(p.patientId) +
+        hcTag(p.patientId, p.sitraMedGuid) +
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
@@ -934,13 +927,12 @@ function renderFollowupDetail() {
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
       const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${p.patientName}</strong></a>`
         : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
           nameHtml +
-          hcTag(p.patientId) +
+          hcTag(p.patientId, p.sitraMedGuid) +
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
           `<span class="patient-context">${p.centerName}</span>` +
         `</div>` +
@@ -975,13 +967,12 @@ function renderFollowupDetail() {
         const row = document.createElement('article');
         row.className = `patient-row ${dc}`;
         const nameHtml = p.sitraMedGuid
-          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${p.patientName}</strong></a>`
           : `<strong>${p.patientName}</strong>`;
         row.innerHTML =
-          delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
           `<div class="patient-main">` +
             nameHtml +
-            hcTag(p.patientId) +
+            hcTag(p.patientId, p.sitraMedGuid) +
             (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
             `<span class="patient-context">${p.centerName}</span>` +
           `</div>` +
@@ -1258,7 +1249,7 @@ function renderAgendaDetail() {
     } else {
       const guid = slot.sitraMedGuid || findPatientGuid(slot.patientName);
       displayName = priorityBadge(slot.priority) + (guid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente">${slot.patientName}</a>`
         : slot.patientName);
     }
     let estimatedBadge = '';
@@ -1461,7 +1452,7 @@ function renderTomographAgendaDetail() {
     } else {
       const guid = findPatientGuid(slot.patientName);
       displayName = priorityBadge(slot.priority) + (guid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer">${slot.patientName}</a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente">${slot.patientName}</a>`
         : slot.patientName);
     }
     row.innerHTML =
@@ -1876,10 +1867,9 @@ function renderFisicaDetail() {
       const row = document.createElement('article');
       row.className = `patient-row ${dc}`;
       const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${p.patientName}</strong></a>`
         : `<strong>${p.patientName}</strong>`);
       row.innerHTML =
-        delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
         `<div class="patient-main">` +
           nameHtml +
           hcTag(p.patientId) +
@@ -1922,11 +1912,10 @@ function renderFisicaDetail() {
         const dc = delayClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
         const row = document.createElement('article');
         row.className = `patient-row ${dc}`;
-        const nameHtml = p.sitraMedGuid
-          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${p.patientName}</strong></a>`
-          : `<strong>${p.patientName}</strong>`;
+        const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
+          ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${p.patientName}</strong></a>`
+          : `<strong>${p.patientName}</strong>`);
         row.innerHTML =
-          delayDot(p.daysInStage, p.expectedDaysInStage, p.isLongWait) +
           `<div class="patient-main">` +
             nameHtml +
             hcTag(p.patientId) +
@@ -3553,16 +3542,47 @@ async function loadAlertasTab() {
   _renderAlertasEquipos(agendaItems, machCaps, techDurs);
   _renderAlertasPacientes(patients, stageDefs, state.alertas.weeklyStats, p1Thresh);
   _renderAlertasEventos(processEvents);
+  _renderAlertasSummaryStrip();
 
   state.alertas.loaded = true;
   statusEl.textContent = `Actualizado ${new Date().toLocaleTimeString()}`;
+}
+
+// Franja de resumen — lee los badges ya calculados por cada grupo y arma
+// accesos rápidos, para no repetir el conteo (cada _renderAlertasX ya lo hizo).
+function _renderAlertasSummaryStrip() {
+  const strip = document.getElementById('alertasSummary');
+  if (!strip) return;
+
+  const groups = [
+    { id: 'alertasCentros',   label: 'Centros' },
+    { id: 'alertasEquipos',   label: 'Equipos' },
+    { id: 'alertasPacientes', label: 'Pacientes' },
+    { id: 'alertasEventos',   label: 'Eventos' }
+  ];
+
+  strip.innerHTML = groups.map(g => {
+    const badge = document.querySelector(`#${g.id} .alertas-group-title .alertas-badge`);
+    const count = badge?.textContent.trim() ?? '0';
+    const ok = !badge || badge.classList.contains('alertas-badge-green');
+    return `<button type="button" class="alertas-summary-tile ${ok ? 'ok' : 'alert'}" data-target="${g.id}">
+      <span class="alertas-summary-count">${esc(count)}</span>
+      <span class="alertas-summary-label">${esc(g.label)}</span>
+    </button>`;
+  }).join('');
+
+  strip.querySelectorAll('.alertas-summary-tile').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById(btn.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }
 
 // ── Técnicas Especiales tab ───────────────────────────────────────────────────
 
 const ESPECIALES_TECHNIQUES = ['SBRT', 'RC'];
 
-const ESPECIALES_STAGES = ['F4B', 'F5', 'F6A', 'F6B', 'F6C', 'F7A', 'F7C', 'F11'];
+const ESPECIALES_STAGES = ['F4B', 'F5', 'F6A', 'F6B', 'F6C', 'F7A', 'F7C', 'F9', 'F11'];
 
 const _STAGE_ORDER = [
   'F1','F2A','F2B','F3','F4','F4B','F5',
@@ -3638,6 +3658,16 @@ function renderEspeciales() {
     if (col === 'days') return mult * (a.daysInStage - b.daysInStage);
     if (col === 'doctor') return mult * (a.responsibleDoctor ?? '').localeCompare(b.responsibleDoctor ?? '');
     if (col === 'physicist') return mult * (a.assignedPhysicist ?? '').localeCompare(b.assignedPhysicist ?? '');
+    if (col === 'reservation') {
+      const ra = window.activeReservations.get(a.patientId);
+      const rb = window.activeReservations.get(b.patientId);
+      const ka = ra ? `${ra.reservedDate} ${ra.reservedTime}` : '';
+      const kb = rb ? `${rb.reservedDate} ${rb.reservedTime}` : '';
+      if (!ka && !kb) return 0;
+      if (!ka) return 1;
+      if (!kb) return -1;
+      return mult * ka.localeCompare(kb);
+    }
     // Default: priority ASC nulls-last → stageCode sortOrder → daysInStage DESC
     const pa = a.priority ?? 999, pb = b.priority ?? 999;
     if (pa !== pb) return pa - pb;
@@ -3667,7 +3697,7 @@ function renderEspeciales() {
       : '—';
     const nameHtml = priorityBadge(p.priority) +
       (p.sitraMedGuid
-        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer">${esc(p.patientName)}</a>`
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer" title="Ir a resumen paciente">${esc(p.patientName)}</a>`
         : esc(p.patientName));
     const resv = window.activeReservations.get(p.patientId);
     let resvCell = '<span class="muted-italic">—</span>';
@@ -3699,7 +3729,7 @@ function renderEspeciales() {
       ${thSort('Días en etapa', 'days')}
       ${thSort('Médico', 'doctor')}
       ${thSort('Físico asignado', 'physicist')}
-      <th>Turno reservado</th>
+      ${thSort('Turno reservado', 'reservation')}
     </tr></thead>
     <tbody>${rows || '<tr><td colspan="9" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
@@ -3880,7 +3910,7 @@ function _renderPacienteCard(result) {
     const stageDef = stageMap[p.stageCode];
 
     const nameHtml = priorityBadge(p.priority) + (p.sitraMedGuid
-      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(p.patientName)}</strong></a>`
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${esc(p.patientName)}</strong></a>`
       : `<strong>${esc(p.patientName)}</strong>`);
 
     // Línea 1: header
@@ -3953,7 +3983,7 @@ function _renderPacienteCard(result) {
   } else {
     const slot0 = agendaSlots[0];
     const nameHtml = slot0.sitraMedGuid
-      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${slot0.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(slot0.patientName)}</strong></a>`
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${slot0.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${esc(slot0.patientName)}</strong></a>`
       : `<strong>${esc(slot0.patientName)}</strong>`;
 
     const dates = [...new Set(agendaSlots.map(s => s.agendaDate).filter(Boolean))].sort();
@@ -4711,7 +4741,7 @@ function renderIniciosTab() {
 
           const nameHtml = priorityBadge(slot.priority) +
             (guid
-              ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer"><strong>${esc(slot.patientName)}</strong></a>`
+              ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente"><strong>${esc(slot.patientName)}</strong></a>`
               : `<strong>${esc(slot.patientName)}</strong>`);
           const hcHtml = fp ? hcTag(fp.patientId) : '';
 
@@ -4987,6 +5017,40 @@ function renderReservationsTab() {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 let _poll = { knownDataTime: null, knownVersion: null };
 
+function _isUserBusy() {
+  // Modal abierto (login, reserva, confirmación de borrado) = no interrumpir.
+  return !!document.querySelector('.auth-overlay:not([hidden])');
+}
+
+// Paneles con scroll propio que se reconstruyen enteros en cada renderHome().
+// Se identifican por tab-panel + clase porque left-col/right-col se repiten en varios tabs.
+const _SCROLLABLE_SELECTOR = '.left-col, .right-col, .pacientes-list-col, .fisica-reco-col';
+
+function _scrollKey(el) {
+  return (el.closest('.tab-panel')?.id ?? '') + '|' + el.className;
+}
+
+function _captureScrollPositions() {
+  const map = new Map();
+  document.querySelectorAll(_SCROLLABLE_SELECTOR).forEach(el => map.set(_scrollKey(el), el.scrollTop));
+  map.set('__window__', window.scrollY);
+  return map;
+}
+
+function _restoreScrollPositions(map) {
+  document.querySelectorAll(_SCROLLABLE_SELECTOR).forEach(el => {
+    const y = map.get(_scrollKey(el));
+    if (y) el.scrollTop = y;
+  });
+  window.scrollTo(0, map.get('__window__') || 0);
+}
+
+async function _loadHomeKeepingScroll() {
+  const scroll = _captureScrollPositions();
+  await loadHome();
+  _restoreScrollPositions(scroll);
+}
+
 async function _checkStatus() {
   try {
     const resp = await fetch('/api/status');
@@ -5000,22 +5064,62 @@ async function _checkStatus() {
     }
 
     if (appVersion !== _poll.knownVersion) {
-      _showAutoUpdateBanner('Nueva versión disponible. Actualizando...');
-      setTimeout(() => location.reload(true), 2500);
+      _poll.knownVersion = appVersion;
+      if (_isUserBusy()) {
+        _showAutoUpdateBanner('Nueva versión disponible.', {
+          action: { label: 'Recargar ahora', onClick: () => location.reload(true) }
+        });
+      } else {
+        _showAutoUpdateBanner('Nueva versión disponible. Actualizando...');
+        setTimeout(() => location.reload(true), 2500);
+      }
       return;
     }
 
     if (generatedAtUtc && generatedAtUtc !== _poll.knownDataTime) {
       _poll.knownDataTime = generatedAtUtc;
-      _showAutoUpdateBanner('Datos actualizados. Recargando...');
-      setTimeout(() => location.reload(), 1500);
+      if (_isUserBusy()) {
+        _showAutoUpdateBanner('Hay datos nuevos.', {
+          action: { label: 'Actualizar ahora', onClick: async (btn) => {
+            btn.disabled = true;
+            await _loadHomeKeepingScroll();
+            _hideAutoUpdateBanner();
+          } }
+        });
+      } else {
+        await _loadHomeKeepingScroll();
+        _showAutoUpdateBanner('Datos actualizados.', { autoHideMs: 4000 });
+      }
     }
   } catch { /* ignorar errores de red */ }
 }
 
-function _showAutoUpdateBanner(msg) {
+function _showAutoUpdateBanner(msg, opts = {}) {
   const b = document.getElementById('auto-update-banner');
-  if (b) { b.textContent = msg; b.style.display = 'block'; }
+  if (!b) return;
+  b.innerHTML = `<span>${esc(msg)}</span>`;
+  if (opts.action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'alert-banner-action';
+    btn.textContent = opts.action.label;
+    btn.addEventListener('click', () => opts.action.onClick(btn));
+    b.appendChild(btn);
+  }
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'alert-banner-close';
+  closeBtn.setAttribute('aria-label', 'Cerrar');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', _hideAutoUpdateBanner);
+  b.appendChild(closeBtn);
+  b.style.display = 'flex';
+  if (opts.autoHideMs) setTimeout(_hideAutoUpdateBanner, opts.autoHideMs);
+}
+
+function _hideAutoUpdateBanner() {
+  const b = document.getElementById('auto-update-banner');
+  if (b) b.style.display = 'none';
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

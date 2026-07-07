@@ -994,7 +994,10 @@ app.MapGet("/api/tomograph-agenda", async Task<IResult> (
 // ─── Reservas de turno ───────────────────────────────────────────────────────
 
 app.MapGet("/api/reservations", async (TurnReservationStore reservationStore, CancellationToken ct) =>
-    TypedResults.Ok(await reservationStore.LoadAllActiveAsync(ct)));
+{
+    await reservationStore.PruneExpiredAsync(2, ct);
+    return TypedResults.Ok(await reservationStore.LoadAllActiveAsync(ct));
+});
 
 app.MapGet("/api/reservations/{patientId}", async (string patientId, TurnReservationStore reservationStore, CancellationToken ct) =>
 {
