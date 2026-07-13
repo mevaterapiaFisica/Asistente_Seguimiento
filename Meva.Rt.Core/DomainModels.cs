@@ -54,6 +54,10 @@ public sealed class ProcessPatientSnapshot
     public string? TreatmentLabel { get; set; }
     public int? Priority { get; set; }
     public DateOnly? PostponedUntil { get; set; }
+    public DateOnly? ExpectantStartDate { get; set; }
+    public string? ExpectantObservations { get; set; }
+    public string? ExpectantUser { get; set; }
+    public List<string> PatientPhones { get; set; } = new();
 }
 
 public sealed class MachineAppointmentSnapshot

@@ -57,6 +57,12 @@ const state = {
     sort: { col: null, dir: 'asc' }
   },
 
+  expectantes: {
+    sort: { col: 'date', dir: 'asc' },
+    centerFilter: null,
+    userFilter: null
+  },
+
   inicios: {
     centerFilter: null,
     agendaByDate: {},       // date → slots[] (undefined = not loaded yet)
@@ -358,6 +364,7 @@ const NAV_GROUPS = {
     { id: 'followup',   label: 'Seguimiento' },
     { id: 'especiales', label: 'Técnicas Especiales' },
     { id: 'fisica',     label: 'Física' },
+    { id: 'expectantes', label: 'Conductas Expectantes' },
     { id: 'pacientes',  label: 'Buscar' },
   ]},
   agendas: { tabs: [
@@ -426,6 +433,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'config') loadConfigData();
   if (targetTab === 'fisica') renderFisicaView();
   if (targetTab === 'especiales') renderEspeciales();
+  if (targetTab === 'expectantes') renderExpectantes();
   if (targetTab === 'derivacion') openDerivacion();
   if (targetTab === 'reservations') loadReservationsTab();
   return true;
@@ -3749,6 +3757,122 @@ function renderEspeciales() {
   });
 }
 
+// ── Conductas Expectantes tab ───────────────────────────────────────────────
+
+function _expectantesPatients() {
+  return (state.homeData?.patients ?? []).filter(p => p.expectantStartDate);
+}
+
+function buildExpectantesFilters() {
+  const all = _expectantesPatients();
+
+  const centerRow = document.getElementById('expectantes-center-pills');
+  if (!centerRow) return;
+  centerRow.innerHTML = '';
+  centerRow.appendChild(makePill('Todos', state.expectantes.centerFilter === null, () => {
+    state.expectantes.centerFilter = null; renderExpectantes();
+  }));
+  const centers = [...new Set(all.map(p => p.centerName).filter(Boolean))].sort();
+  centers.forEach(c => centerRow.appendChild(
+    makePill(c, state.expectantes.centerFilter === c, () => {
+      state.expectantes.centerFilter = c; renderExpectantes();
+    })
+  ));
+
+  const userRow = document.getElementById('expectantes-user-pills');
+  userRow.innerHTML = '';
+  userRow.appendChild(makePill('Todos', state.expectantes.userFilter === null, () => {
+    state.expectantes.userFilter = null; renderExpectantes();
+  }));
+  const users = [...new Set(all.map(p => p.expectantUser).filter(Boolean))].sort();
+  users.forEach(u => userRow.appendChild(
+    makePill(u, state.expectantes.userFilter === u, () => {
+      state.expectantes.userFilter = u; renderExpectantes();
+    })
+  ));
+}
+
+function renderExpectantes() {
+  const wrap = document.getElementById('expectantes-table-wrap');
+  if (!wrap) return;
+
+  buildExpectantesFilters();
+
+  let patients = _expectantesPatients();
+  if (state.expectantes.centerFilter)
+    patients = patients.filter(p => p.centerName === state.expectantes.centerFilter);
+  if (state.expectantes.userFilter)
+    patients = patients.filter(p => p.expectantUser === state.expectantes.userFilter);
+
+  const { col, dir } = state.expectantes.sort;
+  const mult = dir === 'asc' ? 1 : -1;
+  patients = patients.slice().sort((a, b) => {
+    if (col === 'name') return mult * (a.patientName ?? '').localeCompare(b.patientName ?? '');
+    if (col === 'center') return mult * (a.centerName ?? '').localeCompare(b.centerName ?? '');
+    if (col === 'stage') return mult * (a.stageDisplayName ?? a.stageCode ?? '').localeCompare(b.stageDisplayName ?? b.stageCode ?? '');
+    if (col === 'user') return mult * (a.expectantUser ?? '').localeCompare(b.expectantUser ?? '');
+    // 'date' (default)
+    const da = a.expectantStartDate ?? '', db = b.expectantStartDate ?? '';
+    return mult * (da < db ? -1 : da > db ? 1 : 0);
+  });
+
+  function thSort(label, key) {
+    const active = col === key;
+    const arrow = active ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+    return `<th class="spec-th-sort${active ? ' active' : ''}" data-col="${key}">${label}${arrow}</th>`;
+  }
+
+  const rows = patients.map(p => {
+    const dateStr = p.expectantStartDate
+      ? p.expectantStartDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1')
+      : '<span class="muted-italic">—</span>';
+    const nameHtml = priorityBadge(p.priority) +
+      (p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer" title="Ir a resumen paciente">${esc(p.patientName)}</a>`
+        : esc(p.patientName));
+    const phonesStr = (p.patientPhones ?? []).length
+      ? esc(p.patientPhones.join(', '))
+      : '<span class="muted-italic">—</span>';
+    return `<tr>
+      <td>${esc(fmtHc(p.patientId))}</td>
+      <td>${nameHtml}</td>
+      <td>${esc(p.centerName ?? '—')}</td>
+      <td>${esc(p.stageDisplayName ?? p.stageCode ?? '—')}</td>
+      <td>${dateStr}</td>
+      <td>${esc(p.expectantObservations ?? '—')}</td>
+      <td>${esc(p.expectantUser ?? '—')}</td>
+      <td>${phonesStr}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>
+      <th>HC</th>
+      ${thSort('Nombre', 'name')}
+      ${thSort('Centro', 'center')}
+      ${thSort('Etapa de seguimiento', 'stage')}
+      ${thSort('Fecha posible inicio', 'date')}
+      <th>Observaciones</th>
+      ${thSort('Usuario', 'user')}
+      <th>Teléfono(s)</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin conductas expectantes activas</td></tr>'}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('.spec-th-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.col;
+      if (state.expectantes.sort.col === key) {
+        state.expectantes.sort.dir = state.expectantes.sort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.expectantes.sort.col = key;
+        state.expectantes.sort.dir = 'asc';
+      }
+      renderExpectantes();
+    });
+  });
+}
+
 // ── Pacientes tab ─────────────────────────────────────────────────────────────
 
 async function loadPacientesTab() {
@@ -4863,7 +4987,7 @@ function renderReservationsTab() {
   const counter = document.getElementById('reservationsCounter');
   if (!content) return;
 
-  const all = [...window.activeReservations.values()];
+  const all = [...window.activeReservations.values()].filter(r => r.reservedDate >= todayStr());
   const filtered = state.reservations.centerFilter
     ? all.filter(r => r.centerName === state.reservations.centerFilter)
     : all;

@@ -49,6 +49,13 @@ public interface IPatientHcResolver
         CancellationToken cancellationToken);
 }
 
+public interface IPatientPhoneResolver
+{
+    Task<IReadOnlyDictionary<string, List<string>>> ResolveAsync(
+        IEnumerable<string> sitraMedGuids,
+        CancellationToken cancellationToken);
+}
+
 public interface IAttendedPatientsExtractor
 {
     Task<IReadOnlySet<string>> ExtractAttendedGuidsAsync(
@@ -97,6 +104,7 @@ public sealed class BootstrapService
     private readonly ISnapshotStore _snapshotStore;
     private readonly IRtSystemConfigurationProvider _configurationProvider;
     private readonly IPatientHcResolver _hcResolver;
+    private readonly IPatientPhoneResolver _phoneResolver;
     private readonly IStageTransitionStore _transitionStore;
     private readonly IWeeklyStatsStore _weeklyStatsStore;
     private readonly BusinessDayCalculator _bdCalc;
@@ -109,6 +117,7 @@ public sealed class BootstrapService
         ISnapshotStore snapshotStore,
         IRtSystemConfigurationProvider configurationProvider,
         IPatientHcResolver hcResolver,
+        IPatientPhoneResolver phoneResolver,
         IStageTransitionStore transitionStore,
         IWeeklyStatsStore weeklyStatsStore,
         BusinessDayCalculator bdCalc,
@@ -120,6 +129,7 @@ public sealed class BootstrapService
         _snapshotStore = snapshotStore;
         _configurationProvider = configurationProvider;
         _hcResolver = hcResolver;
+        _phoneResolver = phoneResolver;
         _transitionStore = transitionStore;
         _weeklyStatsStore = weeklyStatsStore;
         _bdCalc = bdCalc;
@@ -200,6 +210,35 @@ public sealed class BootstrapService
             .Where(kv => activeGuids.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
         await _snapshotStore.SaveAsync("guid_hc_map", prunedMap, cancellationToken);
+
+        // Teléfonos: solo se buscan para pacientes en conducta expectante (evita una navegación
+        // Playwright por cada paciente activo). No se cachean listas vacías — a diferencia de la HC,
+        // un teléfono puede cargarse después en SitraMed, así que un miss se reintenta cada refresh.
+        var expectantGuids = followUp
+            .Where(p => p.ExpectantStartDate.HasValue && !string.IsNullOrWhiteSpace(p.SitraMedGuid))
+            .Select(p => p.SitraMedGuid!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var phoneMap = await _snapshotStore.TryLoadAsync<Dictionary<string, List<string>>>("guid_phone_map", cancellationToken)
+                       ?? new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        var uncachedExpectantGuids = expectantGuids.Where(g => !phoneMap.ContainsKey(g)).ToList();
+        if (uncachedExpectantGuids.Count > 0)
+        {
+            var resolvedPhones = await _phoneResolver.ResolveAsync(uncachedExpectantGuids, cancellationToken);
+            foreach (var (guid, phones) in resolvedPhones)
+                phoneMap[guid] = phones;
+        }
+
+        var prunedPhoneMap = phoneMap
+            .Where(kv => expectantGuids.Contains(kv.Key, StringComparer.OrdinalIgnoreCase) && kv.Value.Count > 0)
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+        await _snapshotStore.SaveAsync("guid_phone_map", prunedPhoneMap, cancellationToken);
+
+        foreach (var p in followUp)
+            if (!string.IsNullOrWhiteSpace(p.SitraMedGuid) && prunedPhoneMap.TryGetValue(p.SitraMedGuid, out var patientPhones))
+                p.PatientPhones = patientPhones;
 
         // HC → agenda items (one HC may have multiple slots)
         var agendaByHc = new Dictionary<string, List<MachineAppointmentSnapshot>>(StringComparer.OrdinalIgnoreCase);

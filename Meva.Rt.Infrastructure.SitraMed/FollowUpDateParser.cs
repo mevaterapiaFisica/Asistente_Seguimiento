@@ -211,6 +211,31 @@ internal static class FollowUpDateParser
     public static string? ExtractResponsibleDoctor(string rowHtml)
         => ExtractCellText(rowHtml, "<!-- f1", 4);
 
+    /// <summary>
+    /// Extrae la fecha de posible inicio de la sección "Conductas expectantes"
+    /// (1ª &lt;td&gt;). SitraMed usa indistintamente "Expectant" y "Expectanct" (typo)
+    /// según la página, por eso el marcador corta antes de esa letra ambigua.
+    /// </summary>
+    public static DateOnly? ExtractExpectantStartDate(string rowHtml)
+    {
+        var cellText = ExtractCellText(rowHtml, "<!-- Expectan", 1);
+        if (string.IsNullOrWhiteSpace(cellText)) return null;
+        var m = DateInCellRegex.Match(cellText);
+        return m.Success ? ParseDateOnly(m.Groups[1].Value) : null;
+    }
+
+    /// <summary>
+    /// Extrae las observaciones de la sección "Conductas expectantes" (2ª &lt;td&gt;).
+    /// </summary>
+    public static string? ExtractExpectantObservations(string rowHtml)
+        => ExtractCellText(rowHtml, "<!-- Expectan", 2);
+
+    /// <summary>
+    /// Extrae el usuario de la sección "Conductas expectantes" (3ª &lt;td&gt;).
+    /// </summary>
+    public static string? ExtractExpectantUser(string rowHtml)
+        => ExtractCellText(rowHtml, "<!-- Expectan", 3);
+
     private static string? ExtractCellText(string rowHtml, string sectionMarker, int tdIndex)
     {
         var markerIdx = rowHtml.IndexOf(sectionMarker, StringComparison.OrdinalIgnoreCase);

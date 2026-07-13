@@ -23,6 +23,10 @@ obj/
 aria_runner_*.log
 aria_results_*.json
 
+# ── Capturas de ejemplo con datos reales de pacientes (PII) ──────────────────
+Ejemplo_*.html
+Ejemplo_*_files/
+
 # ── Secretos y configuracion local ──────────────────────────────────────────
 *.user
 appsettings.Local.json

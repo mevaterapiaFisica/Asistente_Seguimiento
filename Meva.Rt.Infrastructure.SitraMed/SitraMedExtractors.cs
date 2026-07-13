@@ -295,6 +295,9 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                         TomographyDate = row.TomographyDate,
                         ResponsibleDoctor = row.ResponsibleDoctor,
                         PostponedUntil = row.PostponedUntil,
+                        ExpectantStartDate = row.ExpectantStartDate,
+                        ExpectantObservations = row.ExpectantObservations,
+                        ExpectantUser = row.ExpectantUser,
                         DaysInStage = daysInStage,
                         ExpectedDaysInStage = stageDefinition.ExpectedDays,
                         IsDelayed = daysInStage > stageDefinition.ExpectedDays,
@@ -353,6 +356,9 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                 var tomographyDate = FollowUpDateParser.ExtractTomographyDate(segment);
                 var responsibleDoctor = FollowUpDateParser.ExtractResponsibleDoctor(segment);
                 var postponedUntil = FollowUpDateParser.ExtractPostponedUntil(segment);
+                var expectantStartDate = FollowUpDateParser.ExtractExpectantStartDate(segment);
+                var expectantObservations = FollowUpDateParser.ExtractExpectantObservations(segment);
+                var expectantUser = FollowUpDateParser.ExtractExpectantUser(segment);
 
                 if (string.IsNullOrWhiteSpace(patientName) || string.IsNullOrWhiteSpace(patientId))
                 {
@@ -380,6 +386,9 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     TomographyDate = tomographyDate,
                     ResponsibleDoctor = responsibleDoctor,
                     PostponedUntil = postponedUntil,
+                    ExpectantStartDate = expectantStartDate,
+                    ExpectantObservations = expectantObservations,
+                    ExpectantUser = expectantUser,
                     DaysInStage = daysInStage,
                     ExpectedDaysInStage = stageDefinition.ExpectedDays,
                     IsDelayed = daysInStage > stageDefinition.ExpectedDays,

@@ -563,6 +563,62 @@ public sealed class PlaywrightSitraMedClient
         return result;
     }
 
+    public async Task<IReadOnlyDictionary<string, List<string>>> FetchPhonesForGuidsAsync(
+        IEnumerable<string> guids,
+        CancellationToken cancellationToken)
+    {
+        var guidList = guids.Where(g => !string.IsNullOrWhiteSpace(g)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (guidList.Count == 0 || !CanUseRemoteScraping())
+            return new Dictionary<string, List<string>>();
+
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+        var page = session.Page;
+        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var guid in guidList)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var url = $"https://sitramed.mevaterapia.com.ar/medical_histories/{guid}/overview";
+                await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+
+                List<string>? phones = null;
+                try
+                {
+                    var json = await page.EvaluateAsync<string>(
+                        """
+                        () => {
+                            const stripAccents = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+                            const subtitles = Array.from(document.querySelectorAll('.subtitle'));
+                            const phonesSubtitle = subtitles.find(el => stripAccents(el.textContent).toLowerCase().includes('lefonos'));
+                            if (!phonesSubtitle) return '[]';
+                            let infoDiv = phonesSubtitle.nextElementSibling;
+                            while (infoDiv && !infoDiv.classList.contains('info')) infoDiv = infoDiv.nextElementSibling;
+                            if (!infoDiv) return '[]';
+                            const values = [];
+                            for (const item of infoDiv.querySelectorAll('.info-item')) {
+                                const dataTags = item.querySelector('.has-data-tags');
+                                const raw = (dataTags ? dataTags.firstChild?.textContent : item.textContent) || '';
+                                const value = raw.trim();
+                                if (value && value !== '-') values.push(value);
+                            }
+                            return JSON.stringify(values);
+                        }
+                        """);
+                    phones = JsonSerializer.Deserialize<List<string>>(json);
+                }
+                catch { }
+
+                if (phones is { Count: > 0 })
+                    result[guid] = phones;
+            }
+            catch { }
+        }
+
+        return result;
+    }
+
     private async Task<PlaywrightSession> CreateLoggedPageAsync(CancellationToken cancellationToken)
     {
         var playwright = await Playwright.CreateAsync();
@@ -1622,6 +1678,18 @@ public sealed class PlaywrightSitraMedClient
                 ? FollowUpDateParser.ExtractPostponedUntil(rowHtml)
                 : null;
 
+            var expectantStartDate = rowHtml != null
+                ? FollowUpDateParser.ExtractExpectantStartDate(rowHtml)
+                : null;
+
+            var expectantObservations = rowHtml != null
+                ? FollowUpDateParser.ExtractExpectantObservations(rowHtml)
+                : null;
+
+            var expectantUser = rowHtml != null
+                ? FollowUpDateParser.ExtractExpectantUser(rowHtml)
+                : null;
+
             var firstConsultDate = stageEntryDate.HasValue
                 ? stageEntryDate.Value.ToString("dd-MM-yyyy")
                 : (await cells.Nth(1).InnerTextAsync()).Trim();
@@ -1737,7 +1805,10 @@ public sealed class PlaywrightSitraMedClient
                 TomographyDate = tomographyDate,
                 ResponsibleDoctor = responsibleDoctor,
                 PostponedUntil = postponedUntil,
-                Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null
+                Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null,
+                ExpectantStartDate = expectantStartDate,
+                ExpectantObservations = expectantObservations,
+                ExpectantUser = expectantUser
             });
         }
 
@@ -1779,6 +1850,9 @@ public sealed class FollowUpPatientDomRow
     public string? ResponsibleDoctor { get; set; }
     public DateOnly? PostponedUntil { get; set; }
     public int? Priority { get; set; }
+    public DateOnly? ExpectantStartDate { get; set; }
+    public string? ExpectantObservations { get; set; }
+    public string? ExpectantUser { get; set; }
 }
 
 public sealed class ScrapingTestResult

@@ -67,6 +67,7 @@ builder.Services.AddSingleton<IFollowUpExtractor, SitraMedFollowUpExtractor>();
 builder.Services.AddSingleton<IAriaPatientRootProvider, NullAriaPatientRootProvider>();
 builder.Services.AddSingleton<IAriaPlanResolver, AriaPlanResolver>();
 builder.Services.AddSingleton<IPatientHcResolver, SitraMedPatientHcFetcher>();
+builder.Services.AddSingleton<IPatientPhoneResolver, SitraMedPatientPhoneFetcher>();
 builder.Services.AddSingleton<IAttendedPatientsExtractor, SitraMedAttendedPatientsExtractor>();
 builder.Services.AddSingleton<BootstrapService>();
 builder.Services.AddMemoryCache();
