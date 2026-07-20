@@ -24,6 +24,7 @@
       <div class="nav-row nav-row--groups">
         <button class="nav-group-btn active" type="button" data-group="pacientes">Pacientes</button>
         <button class="nav-group-btn" type="button" data-group="agendas">Agendas</button>
+        <button class="nav-group-btn" type="button" data-group="fisica">Física</button>
         <button class="nav-group-btn" type="button" data-group="analisis">Análisis</button>
         <button class="nav-group-btn" type="button" data-group="admin">Admin</button>
         <div class="scrape-menu-wrap">
@@ -168,6 +169,19 @@
           <div class="fisica-reco-col" id="fisicaRecoPanel">
           </div>
         </div>
+      </section>
+
+      <!-- ── Física · Pedidos ─────────────────────────────────────────── -->
+      <section id="tab-pedidos" class="tab-panel">
+        <div class="filter-bar" id="pedidosActionBar">
+          <button id="pedidoNewPaciente" class="tab-button active" type="button">Nuevo pedido Paciente</button>
+          <button id="pedidoNewEquipo" class="tab-button active" type="button">Nuevo pedido Equipo</button>
+          <button id="pedidoNewRecordatorio" class="tab-button active" type="button">Nuevo recordatorio</button>
+          <button id="pedidoEditBtn" class="ghost-button" type="button" disabled>Editar</button>
+          <button id="pedidoDeleteBtn" class="ghost-button" type="button" disabled>Eliminar</button>
+          <button id="pedidoCompleteBtn" class="ghost-button" type="button" disabled>Completar</button>
+        </div>
+        <div id="pedidos-table-wrap" class="table-wrap"></div>
       </section>
 
       <!-- ── Técnicas Especiales ──────────────────────────────────────── -->
@@ -367,6 +381,87 @@
     </div>
   </div>
 
+  <!-- ── Pedido Modal ─────────────────────────────────────────────────── -->
+  <div id="pedido-modal-overlay" class="auth-overlay" hidden>
+    <div class="reservation-modal pedido-modal">
+      <h3 id="pedido-modal-title" class="auth-modal-title">Nuevo pedido</h3>
+
+      <!-- Bloque Paciente -->
+      <div id="pedido-paciente-block" hidden>
+        <div class="auth-field" id="pedido-paciente-search-wrap">
+          <label class="auth-label">Buscar paciente</label>
+          <input id="pedido-paciente-search" type="text" class="auth-input" placeholder="Nombre o HC...">
+          <div id="pedido-paciente-results" class="pedido-search-results" hidden></div>
+        </div>
+        <div class="res-modal-row">
+          <div class="auth-field res-field-half">
+            <label class="auth-label">HC</label>
+            <input id="pedido-hc" type="text" class="auth-input" readonly>
+          </div>
+          <div class="auth-field res-field-half">
+            <label class="auth-label">Nombre</label>
+            <input id="pedido-nombre" type="text" class="auth-input" readonly>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Técnica</label>
+          <input id="pedido-tecnica" type="text" class="auth-input">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Médico</label>
+          <input id="pedido-medico" type="text" class="auth-input" list="pedido-medico-list">
+          <datalist id="pedido-medico-list"></datalist>
+        </div>
+      </div>
+
+      <!-- Bloque Equipo -->
+      <div id="pedido-equipo-block" hidden>
+        <div class="auth-field">
+          <label class="auth-label">Equipo</label>
+          <select id="pedido-equipo" class="auth-input"></select>
+        </div>
+      </div>
+
+      <!-- Comunes -->
+      <div class="auth-field">
+        <label class="auth-label">Tarea</label>
+        <input id="pedido-tarea" type="text" class="auth-input" list="pedido-tarea-list">
+        <datalist id="pedido-tarea-list"></datalist>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Fecha límite</label>
+        <input id="pedido-fecha-limite" type="date" class="auth-input">
+      </div>
+      <div class="res-modal-row">
+        <div class="auth-field res-field-half">
+          <label class="auth-label">Solicita</label>
+          <input id="pedido-solicita" type="text" class="auth-input" list="pedido-fisico-list">
+        </div>
+        <div class="auth-field res-field-half">
+          <label class="auth-label">Responsable</label>
+          <input id="pedido-responsable" type="text" class="auth-input" list="pedido-fisico-list">
+        </div>
+      </div>
+      <datalist id="pedido-fisico-list"></datalist>
+      <div class="auth-field">
+        <label class="auth-label">Motivo</label>
+        <input id="pedido-motivo" type="text" class="auth-input" list="pedido-motivo-list">
+        <datalist id="pedido-motivo-list"></datalist>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Observaciones</label>
+        <textarea id="pedido-observaciones" class="auth-input res-textarea" rows="3"></textarea>
+      </div>
+
+      <div id="pedido-error" class="auth-error" hidden></div>
+
+      <div class="auth-buttons">
+        <button id="pedido-cancel-btn" type="button" class="ghost-button">Cancelar</button>
+        <button id="pedido-submit-btn" type="button" class="tab-button active">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Auth Modal ────────────────────────────────────────────────────── -->
   <div id="auth-modal-overlay" class="auth-overlay" hidden>
     <div class="auth-modal">
@@ -383,6 +478,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260707"></script>
+  <script src="app.js?v=20260720"></script>
 </body>
 </html>

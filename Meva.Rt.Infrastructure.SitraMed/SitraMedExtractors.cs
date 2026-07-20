@@ -298,6 +298,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                         ExpectantStartDate = row.ExpectantStartDate,
                         ExpectantObservations = row.ExpectantObservations,
                         ExpectantUser = row.ExpectantUser,
+                        PvAppointmentDate = row.PvAppointmentDate,
                         DaysInStage = daysInStage,
                         ExpectedDaysInStage = stageDefinition.ExpectedDays,
                         IsDelayed = daysInStage > stageDefinition.ExpectedDays,
@@ -359,6 +360,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                 var expectantStartDate = FollowUpDateParser.ExtractExpectantStartDate(segment);
                 var expectantObservations = FollowUpDateParser.ExtractExpectantObservations(segment);
                 var expectantUser = FollowUpDateParser.ExtractExpectantUser(segment);
+                var pvAppointmentDate = FollowUpDateParser.ExtractPvAppointmentDate(segment);
 
                 if (string.IsNullOrWhiteSpace(patientName) || string.IsNullOrWhiteSpace(patientId))
                 {
@@ -389,6 +391,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
                     ExpectantStartDate = expectantStartDate,
                     ExpectantObservations = expectantObservations,
                     ExpectantUser = expectantUser,
+                    PvAppointmentDate = pvAppointmentDate,
                     DaysInStage = daysInStage,
                     ExpectedDaysInStage = stageDefinition.ExpectedDays,
                     IsDelayed = daysInStage > stageDefinition.ExpectedDays,

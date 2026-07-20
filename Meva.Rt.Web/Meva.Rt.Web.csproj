@@ -17,6 +17,14 @@
     </Content>
   </ItemGroup>
 
+  <!-- ponytail: data\ es estado runtime del servicio (vive en C:\MevaRT\data), no payload de build.
+       Sin este Remove, dotnet publish copia esta carpeta local vieja de pruebas y pisa
+       rt_configuration.json en vivo con una versión desactualizada en cada publish. -->
+  <ItemGroup>
+    <Content Remove="data\**" />
+    <None Remove="data\**" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>

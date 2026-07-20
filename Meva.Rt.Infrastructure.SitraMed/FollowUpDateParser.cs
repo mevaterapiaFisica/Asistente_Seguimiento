@@ -24,6 +24,9 @@ internal static class FollowUpDateParser
 
     private static readonly Regex StripTagsRegex = new(@"<[^>]+>", RegexOptions.Compiled);
 
+    private static readonly Regex HtmlCommentRegex = new(
+        @"<!--.*?-->", RegexOptions.Singleline | RegexOptions.Compiled);
+
     private static readonly Regex NextSectionRegex = new(
         @"<!--\s*f\d",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -236,6 +239,18 @@ internal static class FollowUpDateParser
     public static string? ExtractExpectantUser(string rowHtml)
         => ExtractCellText(rowHtml, "<!-- Expectan", 3);
 
+    /// <summary>
+    /// Extrae la fecha del turno de Placa Verificadora (columna "F. Turno", 1ª &lt;td&gt;
+    /// de sección &lt;!-- f12 Turno Equipo --&gt;).
+    /// </summary>
+    public static DateOnly? ExtractPvAppointmentDate(string rowHtml)
+    {
+        var cellText = ExtractCellText(rowHtml, "<!-- f12", 1);
+        if (string.IsNullOrWhiteSpace(cellText)) return null;
+        var m = DateInCellRegex.Match(cellText);
+        return m.Success ? ParseDateOnly(m.Groups[1].Value) : null;
+    }
+
     private static string? ExtractCellText(string rowHtml, string sectionMarker, int tdIndex)
     {
         var markerIdx = rowHtml.IndexOf(sectionMarker, StringComparison.OrdinalIgnoreCase);
@@ -245,6 +260,10 @@ internal static class FollowUpDateParser
         var nextSection = NextSectionRegex.Match(rowHtml, afterMarker);
         var sectionEnd = nextSection.Success ? nextSection.Index : rowHtml.Length;
         var sectionHtml = StripModalBlocks(rowHtml.Substring(afterMarker, sectionEnd - afterMarker));
+        // SitraMed a veces deja comentarios placeholder de features deshabilitadas con un
+        // <td> falso adentro (ej. "<!--<td>Postponed</td> We dont have this feature -->" en F12),
+        // que rompe el conteo naive de columnas de GetNthTdContent si no se descarta antes.
+        sectionHtml = HtmlCommentRegex.Replace(sectionHtml, "");
 
         var cellContent = GetNthTdContent(sectionHtml, tdIndex);
         if (string.IsNullOrWhiteSpace(cellContent)) return null;

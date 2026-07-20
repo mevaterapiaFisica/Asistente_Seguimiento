@@ -58,6 +58,7 @@ public sealed class ProcessPatientSnapshot
     public string? ExpectantObservations { get; set; }
     public string? ExpectantUser { get; set; }
     public List<string> PatientPhones { get; set; } = new();
+    public DateOnly? PvAppointmentDate { get; set; }
 }
 
 public sealed class MachineAppointmentSnapshot
@@ -245,4 +246,28 @@ public sealed class PatientTurnReservation
     public string RegisteredByUsername { get; set; } = string.Empty;
     public DateTime RegisteredAtUtc { get; set; }
     public string? PlannedMachineAtReservation { get; set; }
+}
+
+public sealed class PedidoItem
+{
+    // Formato: "PED_{guid}"
+    public string Id { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty; // Paciente | Equipo | Recordatorio
+    public string Origin { get; set; } = "Manual"; // Manual | Auto
+    public bool Completed { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    // Paciente
+    public string? PatientId { get; set; }
+    public string? PatientName { get; set; }
+    public string? Technique { get; set; }
+    // Equipo
+    public string? EquipoName { get; set; }
+    // Comunes
+    public string? Tarea { get; set; }
+    public DateTime? FechaLimite { get; set; }
+    public string? Medico { get; set; }
+    public string? Solicita { get; set; }
+    public string? Responsable { get; set; }
+    public string? Motivo { get; set; }
+    public string? Observaciones { get; set; }
 }

@@ -72,6 +72,7 @@ builder.Services.AddSingleton<IAttendedPatientsExtractor, SitraMedAttendedPatien
 builder.Services.AddSingleton<BootstrapService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
+builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 
 var app = builder.Build();
 
@@ -1059,6 +1060,45 @@ app.MapDelete("/api/reservations/{reservationId}", async (string reservationId, 
     if (authRejectDel is not null) return authRejectDel;
 
     await reservationStore.DeleteByIdAsync(reservationId, ct);
+    return TypedResults.NoContent();
+});
+
+// ─── Pedidos ─────────────────────────────────────────────────────────────────
+
+app.MapGet("/api/pedidos", async (PedidoStore pedidoStore, CancellationToken ct) =>
+    TypedResults.Ok(await pedidoStore.LoadAllAsync(ct)));
+
+app.MapPost("/api/pedidos", async (PedidoStore pedidoStore, PedidoItem req, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Type))
+        return Results.BadRequest(new { error = "Falta el tipo de pedido" });
+
+    req.Id = $"PED_{Guid.NewGuid():N}";
+    req.CreatedAtUtc = DateTime.UtcNow;
+    await pedidoStore.SaveOrUpdateAsync(req, ct);
+    return TypedResults.Created($"/api/pedidos/{req.Id}", req);
+});
+
+app.MapPut("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, PedidoItem req, CancellationToken ct) =>
+{
+    req.Id = id;
+    await pedidoStore.SaveOrUpdateAsync(req, ct);
+    return TypedResults.Ok(req);
+});
+
+app.MapPost("/api/pedidos/{id}/complete", async (string id, PedidoStore pedidoStore, CancellationToken ct) =>
+{
+    var all = await pedidoStore.LoadAllAsync(ct);
+    var item = all.FirstOrDefault(p => p.Id == id);
+    if (item is null) return Results.NotFound();
+    item.Completed = true;
+    await pedidoStore.SaveOrUpdateAsync(item, ct);
+    return TypedResults.Ok(item);
+});
+
+app.MapDelete("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, CancellationToken ct) =>
+{
+    await pedidoStore.DeleteByIdAsync(id, ct);
     return TypedResults.NoContent();
 });
 

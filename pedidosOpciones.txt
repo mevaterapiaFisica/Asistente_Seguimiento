@@ -1,0 +1,56 @@
+**Tarea
+Planificar
+Replanificar
+Calcular
+Calcular c/1 grado
+Calcular c/1mm
+Medir QA
+Aprobación médica
+Armar carpeta
+Chequear
+Todo para inicio
+***
+**Medico
+Fede
+Mara
+Augusto
+Sole
+Ceci
+Laura
+Caro
+Agenda Sardi
+Paola
+Juan
+Benja
+Ania
+Andres
+Pilar
+Belen
+Juan B.
+Raul
+Clara
+***
+**Motivo
+Urgencia
+P1
+ReTac
+Remarcacion
+Replan
+Pedido Medico
+***
+**Fisico
+Flor
+Ro
+Pablo
+Joaquin
+Gonzalo
+Charly
+Luis
+Mariel
+Nico
+Sofi
+Noe
+Carla
+Jime
+***
+

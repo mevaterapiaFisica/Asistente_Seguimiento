@@ -82,6 +82,12 @@ const state = {
   reservations: {
     centerFilter: null,
     lastLoadTime: 0
+  },
+
+  pedidos: {
+    items: [],
+    selectedId: null,
+    loaded: false
   }
 };
 
@@ -137,6 +143,19 @@ async function _refreshReservations() {
     const list = await resp.json();
     window.activeReservations = new Map(list.map(r => [r.patientId, r]));
   } catch {}
+}
+
+function expectantNote(p) {
+  if (!p.expectantStartDate) return '';
+  const dateStr = p.expectantStartDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1');
+  const obsPart = p.expectantObservations ? ` Obs: ${esc(p.expectantObservations)}` : '';
+  return `<span class="expectant-note">Cond. Expect. hasta ${dateStr}${obsPart}</span>`;
+}
+
+function pvAppointmentNote(p) {
+  if (!p.pvAppointmentDate) return '';
+  const dateStr = p.pvAppointmentDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1');
+  return `<span class="expectant-note">Turno PV: ${dateStr}</span>`;
 }
 
 function _reservationBadge(patientId) {
@@ -363,7 +382,6 @@ const NAV_GROUPS = {
   pacientes: { tabs: [
     { id: 'followup',   label: 'Seguimiento' },
     { id: 'especiales', label: 'Técnicas Especiales' },
-    { id: 'fisica',     label: 'Física' },
     { id: 'expectantes', label: 'Conductas Expectantes' },
     { id: 'pacientes',  label: 'Buscar' },
   ]},
@@ -373,6 +391,10 @@ const NAV_GROUPS = {
     { id: 'inicios',       label: 'Inicios' },
     { id: 'reservations',  label: 'Turnos Reservados' },
     { id: 'derivacion',    label: 'Derivación' },
+  ]},
+  fisica: { tabs: [
+    { id: 'fisica',   label: 'Seguimiento' },
+    { id: 'pedidos',  label: 'Pedidos' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -436,6 +458,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'expectantes') renderExpectantes();
   if (targetTab === 'derivacion') openDerivacion();
   if (targetTab === 'reservations') loadReservationsTab();
+  if (targetTab === 'pedidos') loadPedidosTab();
   return true;
 }
 
@@ -613,7 +636,7 @@ function renderHome(data) {
   renderEspeciales();
   populateAgendaTestControls(data);
   loadAlertasTab();
-  _refreshReservations();
+  _refreshReservations().then(() => loadPedidosData().then(computeAutoPedidos));
 }
 
 // ── Seguimiento tab ───────────────────────────────────────────────────────────
@@ -908,7 +931,9 @@ function renderFollowupDetail() {
           (p.assignedPhysicist && p.stageCode !== 'F6A' ? `<span class="physicist-tag">(asignado a: ${p.assignedPhysicist})</span>` : '') +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        daysBadge(p, dc);
+        daysBadge(p, dc) +
+        expectantNote(p) +
+        pvAppointmentNote(p);
       panel.appendChild(row);
     });
     return;
@@ -946,7 +971,9 @@ function renderFollowupDetail() {
         `</div>` +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        daysBadge(p, dc);
+        daysBadge(p, dc) +
+        expectantNote(p) +
+        pvAppointmentNote(p);
       panel.appendChild(row);
     });
     return;
@@ -986,7 +1013,9 @@ function renderFollowupDetail() {
           `</div>` +
           renderTreatmentLabel(p) +
           ariaBadges(p) +
-          daysBadge(p, dc);
+          daysBadge(p, dc) +
+          expectantNote(p) +
+          pvAppointmentNote(p);
         panel.appendChild(row);
       });
     });
@@ -1861,7 +1890,7 @@ function renderFisicaDetail() {
   if (state.fisica.selectedTask) {
     const code = state.fisica.selectedTask;
     const def = stageDefs.find(s => s.code === code);
-    const pats = physicsPatients.filter(p => p.stageCode === code).sort((a, b) => b.daysInStage - a.daysInStage);
+    const pats = physicsPatients.filter(p => p.stageCode === code).sort(followUpSort);
 
     panel.innerHTML = '';
     panel.appendChild(el('div', 'detail-title', `${def?.displayName ?? code} · ${pats.length} pac.`));
@@ -1886,7 +1915,8 @@ function renderFisicaDetail() {
         `</div>` +
         renderTreatmentLabel(p) +
         ariaBadges(p) +
-        daysBadge(p, dc);
+        daysBadge(p, dc) +
+        expectantNote(p);
       panel.appendChild(row);
       _fisicaPatientRowClickable(row, p);
     });
@@ -1901,7 +1931,7 @@ function renderFisicaDetail() {
     } else {
       pats = physicsPatients.filter(p => p.assignedPhysicist === physicistName && p.stageCode === 'F6B');
     }
-    pats.sort((a, b) => b.daysInStage - a.daysInStage);
+    pats.sort(followUpSort);
 
     panel.innerHTML = '';
     panel.appendChild(el('div', 'detail-title', `${physicistName} · ${pats.length} pac.`));
@@ -1931,7 +1961,8 @@ function renderFisicaDetail() {
           `</div>` +
           renderTreatmentLabel(p) +
           ariaBadges(p) +
-          daysBadge(p, dc);
+          daysBadge(p, dc) +
+          expectantNote(p);
         panel.appendChild(row);
         _fisicaPatientRowClickable(row, p);
       });
@@ -3632,13 +3663,6 @@ function buildEspecialesFilters(data) {
   ));
 }
 
-function _especialesDaysClass(days, expected, isLongWait) {
-  if (isLongWait) return 'spec-days-gray';
-  if (days <= expected) return 'spec-days-ok';
-  if (days <= expected * 2) return 'spec-days-warn';
-  return 'spec-days-crit';
-}
-
 function renderEspeciales() {
   const wrap = document.getElementById('especiales-table-wrap');
   if (!wrap) return;
@@ -3663,9 +3687,15 @@ function renderEspeciales() {
       return mult * (ta < tb ? -1 : ta > tb ? 1 : 0);
     }
     if (col === 'stage') return mult * ((a.stageCode ?? '').localeCompare(b.stageCode ?? ''));
-    if (col === 'days') return mult * (a.daysInStage - b.daysInStage);
     if (col === 'doctor') return mult * (a.responsibleDoctor ?? '').localeCompare(b.responsibleDoctor ?? '');
     if (col === 'physicist') return mult * (a.assignedPhysicist ?? '').localeCompare(b.assignedPhysicist ?? '');
+    if (col === 'expectant') {
+      const ea = a.expectantStartDate ?? '', eb = b.expectantStartDate ?? '';
+      if (!ea && !eb) return 0;
+      if (!ea) return 1;
+      if (!eb) return -1;
+      return mult * ea.localeCompare(eb);
+    }
     if (col === 'reservation') {
       const ra = window.activeReservations.get(a.patientId);
       const rb = window.activeReservations.get(b.patientId);
@@ -3693,7 +3723,6 @@ function renderEspeciales() {
   }
 
   const rows = patients.map(p => {
-    const daysClass = _especialesDaysClass(p.daysInStage, p.expectedDaysInStage, p.isLongWait);
     const tomoStr = p.tomographyDate
       ? p.tomographyDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1')
       : '<span class="muted-italic">—</span>';
@@ -3714,16 +3743,19 @@ function renderEspeciales() {
       resvCell = `<span class="reservation-badge">${rd}/${rm} ${resv.reservedTime}</span>`;
     }
     const trClass = resv ? ' class="has-reservation"' : '';
+    const expectantStr = p.expectantStartDate
+      ? esc(`hasta ${p.expectantStartDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1')}${p.expectantObservations ? ` Obs: ${p.expectantObservations}` : ''}`)
+      : '<span class="muted-italic">—</span>';
     return `<tr${trClass}>
       <td>${esc(fmtHc(p.patientId))}</td>
       <td>${nameHtml}</td>
       <td>${techBadge}</td>
       <td>${tomoStr}</td>
       <td>${esc(p.stageDisplayName ?? p.stageCode)}</td>
-      <td class="${daysClass}">${p.daysInStage}</td>
       <td>${doctorStr}</td>
       <td>${physicistStr}</td>
       <td>${resvCell}</td>
+      <td>${expectantStr}</td>
     </tr>`;
   }).join('');
 
@@ -3734,10 +3766,10 @@ function renderEspeciales() {
       ${thSort('Técnica', 'technique')}
       ${thSort('Fecha Tomo', 'tomo')}
       ${thSort('Etapa actual', 'stage')}
-      ${thSort('Días en etapa', 'days')}
       ${thSort('Médico', 'doctor')}
       ${thSort('Físico asignado', 'physicist')}
       ${thSort('Turno reservado', 'reservation')}
+      ${thSort('Conducta Expectante', 'expectant')}
     </tr></thead>
     <tbody>${rows || '<tr><td colspan="9" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
@@ -3755,6 +3787,409 @@ function renderEspeciales() {
       renderEspeciales();
     });
   });
+}
+
+// ── Pedidos (Física) tab ──────────────────────────────────────────────────
+
+const PEDIDO_OPCIONES = {
+  tarea: ['Planificar','Replanificar','Calcular','Calcular c/1 grado','Calcular c/1mm','Medir QA','Aprobación médica','Armar carpeta','Chequear','Todo para inicio'],
+  medico: ['Fede','Mara','Augusto','Sole','Ceci','Laura','Caro','Agenda Sardi','Paola','Juan','Benja','Ania','Andres','Pilar','Belen','Juan B.','Raul','Clara'],
+  motivo: ['Urgencia','P1','ReTac','Remarcacion','Replan','Pedido Medico'],
+  fisico: ['Flor','Ro','Pablo','Joaquin','Gonzalo','Charly','Luis','Mariel','Nico','Sofi','Noe','Carla','Jime'],
+};
+
+const PEDIDO_EQUIPOS_EXTRA = ['Braquiterapia'];
+
+const PEDIDO_AUTO_MAX_IDX = _STAGE_ORDER.indexOf('F7C');
+
+async function loadPedidosData() {
+  try {
+    const resp = await fetch('/api/pedidos');
+    state.pedidos.items = resp.ok ? await resp.json() : [];
+  } catch { state.pedidos.items = []; }
+  state.pedidos.loaded = true;
+}
+
+async function loadPedidosTab() {
+  if (!state.pedidos.loaded) await loadPedidosData();
+  await computeAutoPedidos();
+  renderPedidos();
+  _wirePedidosActionBar();
+}
+
+function _pedidoEligiblePatients() {
+  if (!state.homeData) return [];
+  const agendaNames = new Set();
+  const agendaGuids = new Set();
+  for (const slot of (state.homeData.agenda ?? [])) {
+    if (isExcludedSlot(slot)) continue; // BQT/IORT no son turnos de acelerador
+    if (slot.sitraMedGuid) agendaGuids.add(slot.sitraMedGuid);
+    else if (slot.patientName) agendaNames.add(slot.patientName.toLowerCase());
+  }
+  return (state.homeData.patients ?? []).filter(p => {
+    if (isExcludedTechnique(p)) return false; // BQT/IORT no inician en acelerador
+    const idx = _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase());
+    if (idx < 0 || idx > PEDIDO_AUTO_MAX_IDX) return false;
+    const hasAgenda = (p.sitraMedGuid && agendaGuids.has(p.sitraMedGuid)) ||
+      (!p.sitraMedGuid && p.patientName && agendaNames.has(p.patientName.toLowerCase()));
+    const hasReservation = window.activeReservations.has(p.patientId);
+    return hasAgenda || hasReservation;
+  });
+}
+
+async function computeAutoPedidos() {
+  if (!state.homeData) return;
+
+  // Limpiar pedidos automáticos ya creados para pacientes BQT/IORT (no inician en acelerador)
+  const patientById = new Map((state.homeData.patients ?? []).map(p => [p.patientId, p]));
+  const staleAuto = state.pedidos.items.filter(p =>
+    p.origin === 'Auto' && p.type === 'Paciente' && !p.completed &&
+    isExcludedTechnique(patientById.get(p.patientId) ?? { treatmentTechnique: p.technique })
+  );
+  for (const stale of staleAuto) {
+    try { await fetch(`/api/pedidos/${stale.id}`, { method: 'DELETE' }); } catch {}
+  }
+  if (staleAuto.length > 0) {
+    const staleIds = new Set(staleAuto.map(p => p.id));
+    state.pedidos.items = state.pedidos.items.filter(p => !staleIds.has(p.id));
+  }
+
+  // Completar Tarea/Fecha Límite/Solicita en pedidos automáticos viejos que quedaron sin esos datos
+  const toBackfill = state.pedidos.items.filter(p =>
+    p.origin === 'Auto' && p.type === 'Paciente' && !p.completed && !p.tarea && patientById.has(p.patientId)
+  );
+  for (const item of toBackfill) {
+    const p = patientById.get(item.patientId);
+    const body = {
+      ...item,
+      tarea: p.stageDisplayName ?? p.stageCode ?? null,
+      fechaLimite: _pedidoInicioFecha(p),
+      solicita: item.solicita ?? 'Automático'
+    };
+    try {
+      const resp = await fetch(`/api/pedidos/${item.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (resp.ok) {
+        const updated = await resp.json();
+        const idx = state.pedidos.items.findIndex(x => x.id === updated.id);
+        if (idx >= 0) state.pedidos.items[idx] = updated;
+      }
+    } catch {}
+  }
+
+  const candidates = _pedidoEligiblePatients();
+  const existingAutoIds = new Set(
+    state.pedidos.items.filter(p => p.origin === 'Auto' && p.type === 'Paciente').map(p => p.patientId)
+  );
+  const toCreate = candidates.filter(p => !existingAutoIds.has(p.patientId));
+  if (toCreate.length === 0) {
+    if ((staleAuto.length > 0 || toBackfill.length > 0) && state.activeTab === 'pedidos') renderPedidos();
+    return;
+  }
+
+  for (const p of toCreate) {
+    const body = {
+      type: 'Paciente', origin: 'Auto', completed: false,
+      patientId: p.patientId, patientName: p.patientName, technique: p.treatmentTechnique ?? null,
+      tarea: p.stageDisplayName ?? p.stageCode ?? null,
+      fechaLimite: _pedidoInicioFecha(p),
+      solicita: 'Automático'
+    };
+    try {
+      const resp = await fetch('/api/pedidos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (resp.ok) state.pedidos.items.push(await resp.json());
+    } catch {}
+  }
+  if (state.activeTab === 'pedidos') renderPedidos();
+}
+
+function _pedidoInicioFecha(p) {
+  const dates = [];
+  const reservation = window.activeReservations.get(p.patientId);
+  if (reservation) dates.push(`${reservation.reservedDate}T${reservation.reservedTime || '00:00'}`);
+  const nameKey = p.patientName?.toLowerCase();
+  for (const slot of (state.homeData.agenda ?? [])) {
+    if (isExcludedSlot(slot)) continue;
+    const matches = p.sitraMedGuid ? slot.sitraMedGuid === p.sitraMedGuid : slot.patientName?.toLowerCase() === nameKey;
+    if (matches) dates.push(`${slot.agendaDate}T${slot.startTime || '00:00'}`);
+  }
+  if (dates.length === 0) return null;
+  dates.sort();
+  const d = new Date(dates[0]);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+function _pedidoUrgencyClass(fechaLimite) {
+  if (!fechaLimite) return '';
+  const diffDays = Math.ceil((new Date(fechaLimite) - new Date()) / 86400000);
+  if (diffDays <= 1) return 'pedido-urgent';
+  if (diffDays <= 4) return 'pedido-warn';
+  return '';
+}
+
+function renderPedidos() {
+  const wrap = document.getElementById('pedidos-table-wrap');
+  if (!wrap) return;
+
+  const items = state.pedidos.items.filter(p => !p.completed);
+
+  const rows = items.map(p => {
+    const urgClass = _pedidoUrgencyClass(p.fechaLimite);
+    const selClass = state.pedidos.selectedId === p.id ? ' pedido-selected' : '';
+    const label = p.type === 'Paciente'
+      ? `${esc(fmtHc(p.patientId))} · ${esc(p.patientName ?? '')}`
+      : p.type === 'Equipo' ? esc(p.equipoName ?? '') : '<span class="muted-italic">Recordatorio</span>';
+    const fechaStr = p.fechaLimite
+      ? new Date(p.fechaLimite).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '<span class="muted-italic">—</span>';
+    return `<tr class="${urgClass}${selClass}" data-id="${p.id}">
+      <td>${label}</td>
+      <td>${esc(p.technique ?? '—')}</td>
+      <td>${esc(p.tarea ?? '—')}</td>
+      <td>${fechaStr}</td>
+      <td>${esc(p.medico ?? '—')}</td>
+      <td>${esc(p.solicita ?? '—')}</td>
+      <td>${esc(p.responsable ?? '—')}</td>
+      <td>${esc(p.motivo ?? '—')}</td>
+      <td>${esc(p.observaciones ?? '—')}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>
+      <th>Paciente/Equipo</th><th>Técnica</th><th>Tarea</th>
+      <th>Fecha Límite</th><th>Médico</th><th>Solicita</th><th>Responsable</th>
+      <th>Motivo</th><th>Observaciones</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="9" class="muted-italic" style="text-align:center;padding:1rem">Sin pedidos</td></tr>'}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      state.pedidos.selectedId = state.pedidos.selectedId === tr.dataset.id ? null : tr.dataset.id;
+      renderPedidos();
+      _updatePedidoActionButtons();
+    });
+  });
+  _updatePedidoActionButtons();
+}
+
+function _updatePedidoActionButtons() {
+  const has = !!state.pedidos.selectedId;
+  ['pedidoEditBtn', 'pedidoDeleteBtn', 'pedidoCompleteBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !has;
+  });
+}
+
+function _wirePedidosActionBar() {
+  const bar = document.getElementById('pedidosActionBar');
+  if (bar._wired) return;
+  bar._wired = true;
+
+  document.getElementById('pedidoNewPaciente').addEventListener('click', () => _openPedidoModal('Paciente'));
+  document.getElementById('pedidoNewEquipo').addEventListener('click', () => _openPedidoModal('Equipo'));
+  document.getElementById('pedidoNewRecordatorio').addEventListener('click', () => _openPedidoModal('Recordatorio'));
+
+  document.getElementById('pedidoEditBtn').addEventListener('click', () => {
+    const item = state.pedidos.items.find(p => p.id === state.pedidos.selectedId);
+    if (item) _openPedidoModal(item.type, item);
+  });
+
+  document.getElementById('pedidoDeleteBtn').addEventListener('click', async () => {
+    const id = state.pedidos.selectedId;
+    if (!id) return;
+    await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
+    state.pedidos.items = state.pedidos.items.filter(p => p.id !== id);
+    state.pedidos.selectedId = null;
+    renderPedidos();
+  });
+
+  document.getElementById('pedidoCompleteBtn').addEventListener('click', async () => {
+    const id = state.pedidos.selectedId;
+    if (!id) return;
+    const resp = await fetch(`/api/pedidos/${id}/complete`, { method: 'POST' });
+    if (resp.ok) {
+      const updated = await resp.json();
+      const idx = state.pedidos.items.findIndex(p => p.id === id);
+      if (idx >= 0) state.pedidos.items[idx] = updated;
+    }
+    state.pedidos.selectedId = null;
+    renderPedidos();
+  });
+}
+
+function _pedidoEquiposList() {
+  const machines = (state.homeData?.configuration?.machines ?? []).map(m => m.displayName);
+  const tomographs = (state.homeData?.configuration?.tomographs ?? []).map(t => t.displayName);
+  return [...machines, ...tomographs, ...PEDIDO_EQUIPOS_EXTRA];
+}
+
+function _fillDatalist(id, options) {
+  const dl = document.getElementById(id);
+  if (!dl) return;
+  dl.innerHTML = options.map(o => `<option value="${esc(o)}">`).join('');
+}
+
+function _toDateValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function _openPedidoModal(type, existing) {
+  const overlay = document.getElementById('pedido-modal-overlay');
+  if (!overlay) return;
+
+  const titleEl = document.getElementById('pedido-modal-title');
+  const pacienteBlock = document.getElementById('pedido-paciente-block');
+  const equipoBlock = document.getElementById('pedido-equipo-block');
+  const searchIn = document.getElementById('pedido-paciente-search');
+  const searchResults = document.getElementById('pedido-paciente-results');
+  const hcIn = document.getElementById('pedido-hc');
+  const nombreIn = document.getElementById('pedido-nombre');
+  const tecnicaIn = document.getElementById('pedido-tecnica');
+  const medicoIn = document.getElementById('pedido-medico');
+  const equipoSel = document.getElementById('pedido-equipo');
+  const tareaIn = document.getElementById('pedido-tarea');
+  const fechaIn = document.getElementById('pedido-fecha-limite');
+  const solicitaIn = document.getElementById('pedido-solicita');
+  const responsableIn = document.getElementById('pedido-responsable');
+  const motivoIn = document.getElementById('pedido-motivo');
+  const obsIn = document.getElementById('pedido-observaciones');
+  const errorDiv = document.getElementById('pedido-error');
+  const cancelBtn = document.getElementById('pedido-cancel-btn');
+  const submitBtn = document.getElementById('pedido-submit-btn');
+
+  titleEl.textContent = `${existing ? 'Editar' : 'Nuevo'} pedido ${type}`;
+  pacienteBlock.hidden = type !== 'Paciente';
+  equipoBlock.hidden = type !== 'Equipo';
+
+  _fillDatalist('pedido-tarea-list', type === 'Paciente' ? PEDIDO_OPCIONES.tarea : []);
+  _fillDatalist('pedido-medico-list', PEDIDO_OPCIONES.medico);
+  _fillDatalist('pedido-motivo-list', type === 'Paciente' ? PEDIDO_OPCIONES.motivo : []);
+  _fillDatalist('pedido-fisico-list', PEDIDO_OPCIONES.fisico);
+
+  let selectedPatient = existing && type === 'Paciente'
+    ? { patientId: existing.patientId, patientName: existing.patientName }
+    : null;
+
+  searchIn.value = '';
+  searchResults.hidden = true;
+  searchResults.innerHTML = '';
+  hcIn.value = existing?.patientId ? fmtHc(existing.patientId) : '';
+  nombreIn.value = existing?.patientName ?? '';
+  tecnicaIn.value = existing?.technique ?? '';
+  medicoIn.value = existing?.medico ?? '';
+
+  if (type === 'Equipo') {
+    equipoSel.innerHTML = '<option value="">— Seleccionar equipo —</option>' +
+      _pedidoEquiposList().map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+    equipoSel.value = existing?.equipoName ?? '';
+  }
+
+  tareaIn.value = existing?.tarea ?? '';
+  fechaIn.value = _toDateValue(existing?.fechaLimite);
+  solicitaIn.value = existing?.solicita ?? '';
+  responsableIn.value = existing?.responsable ?? '';
+  motivoIn.value = existing?.motivo ?? '';
+  obsIn.value = existing?.observaciones ?? '';
+  errorDiv.hidden = true;
+  overlay.hidden = false;
+
+  function onPatientSearchInput() {
+    const q = searchIn.value.trim().toLowerCase();
+    if (!q || !state.homeData) { searchResults.hidden = true; return; }
+    const matches = (state.homeData.patients ?? [])
+      .filter(p => p.patientName?.toLowerCase().includes(q) || p.patientId?.toLowerCase().includes(q))
+      .slice(0, 15);
+    if (matches.length === 0) { searchResults.hidden = true; return; }
+    searchResults.innerHTML = matches.map(p =>
+      `<div class="pedido-search-item" data-pid="${esc(p.patientId)}">${esc(fmtHc(p.patientId))} · ${esc(p.patientName)}</div>`
+    ).join('');
+    searchResults.hidden = false;
+    searchResults.querySelectorAll('.pedido-search-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const p = matches.find(m => m.patientId === el.dataset.pid);
+        selectedPatient = p;
+        hcIn.value = fmtHc(p.patientId);
+        nombreIn.value = p.patientName;
+        tecnicaIn.value = p.treatmentTechnique ?? '';
+        searchIn.value = '';
+        searchResults.hidden = true;
+      });
+    });
+  }
+
+  async function onSubmit() {
+    if (type === 'Paciente' && !selectedPatient) {
+      errorDiv.textContent = 'Seleccione un paciente.';
+      errorDiv.hidden = false;
+      return;
+    }
+    submitBtn.disabled = true;
+    errorDiv.hidden = true;
+    const body = {
+      type,
+      origin: existing?.origin ?? 'Manual',
+      completed: existing?.completed ?? false,
+      patientId: type === 'Paciente' ? selectedPatient.patientId : null,
+      patientName: type === 'Paciente' ? selectedPatient.patientName : null,
+      technique: type === 'Paciente' ? (tecnicaIn.value.trim() || null) : null,
+      equipoName: type === 'Equipo' ? (equipoSel.value || null) : null,
+      tarea: tareaIn.value.trim() || null,
+      fechaLimite: fechaIn.value ? new Date(fechaIn.value).toISOString() : null,
+      medico: type === 'Paciente' ? (medicoIn.value.trim() || null) : null,
+      solicita: solicitaIn.value.trim() || null,
+      responsable: responsableIn.value.trim() || null,
+      motivo: motivoIn.value.trim() || null,
+      observaciones: obsIn.value.trim() || null
+    };
+    try {
+      const resp = existing
+        ? await fetch(`/api/pedidos/${existing.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+          })
+        : await fetch('/api/pedidos', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+          });
+      if (!resp.ok) {
+        errorDiv.textContent = `Error al guardar (${resp.status}).`;
+        errorDiv.hidden = false;
+        submitBtn.disabled = false;
+        return;
+      }
+      const saved = await resp.json();
+      const idx = state.pedidos.items.findIndex(p => p.id === saved.id);
+      if (idx >= 0) state.pedidos.items[idx] = saved; else state.pedidos.items.push(saved);
+      cleanup();
+      renderPedidos();
+    } catch {
+      errorDiv.textContent = 'Error de red al guardar.';
+      errorDiv.hidden = false;
+      submitBtn.disabled = false;
+    }
+  }
+
+  function onCancel() { cleanup(); }
+  function onKeydown(e) { if (e.key === 'Escape') onCancel(); }
+
+  function cleanup() {
+    overlay.hidden = true;
+    submitBtn.disabled = false;
+    searchIn.removeEventListener('input', onPatientSearchInput);
+    cancelBtn.removeEventListener('click', onCancel);
+    submitBtn.removeEventListener('click', onSubmit);
+    document.removeEventListener('keydown', onKeydown);
+  }
+
+  searchIn.addEventListener('input', onPatientSearchInput);
+  cancelBtn.addEventListener('click', onCancel);
+  submitBtn.addEventListener('click', onSubmit);
+  document.addEventListener('keydown', onKeydown);
 }
 
 // ── Conductas Expectantes tab ───────────────────────────────────────────────
@@ -4449,6 +4884,7 @@ function _openReservationModal(patient, existing) {
       cleanup();
       _renderPacientesResults();
       if (state.activeTab === 'reservations') renderReservationsTab();
+      computeAutoPedidos();
     } catch {
       errorDiv.textContent = 'Error de red al guardar.';
       errorDiv.hidden = false;
@@ -5084,6 +5520,7 @@ function renderReservationsTab() {
           `<div class="inicios-patient-name">${priorityBadge(priority)}<strong>${esc(r.patientName)}</strong>${hcTag(r.patientId)}</div>`;
         if (r.reservedTime) baseHtml += `<div class="inicios-patient-detail">🕐 ${esc(r.reservedTime)}</div>`;
         baseHtml += `<div class="inicios-patient-detail">Equipo: ${esc(r.machineDisplayName)}</div>`;
+        if (pt.stageDisplayName || pt.stageCode) baseHtml += `<div class="inicios-patient-detail">Etapa: ${esc(pt.stageDisplayName ?? pt.stageCode)}</div>`;
         if (labelBadge) baseHtml += `<div class="inicios-patient-detail">${labelBadge}</div>`;
         baseHtml += `<div class="inicios-patient-detail muted-italic">Registrado por ${esc(r.registeredByUsername)} el ${esc(regStr)}</div>`;
         subcard.innerHTML = baseHtml;

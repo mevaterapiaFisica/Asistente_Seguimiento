@@ -1690,6 +1690,10 @@ public sealed class PlaywrightSitraMedClient
                 ? FollowUpDateParser.ExtractExpectantUser(rowHtml)
                 : null;
 
+            var pvAppointmentDate = rowHtml != null
+                ? FollowUpDateParser.ExtractPvAppointmentDate(rowHtml)
+                : null;
+
             var firstConsultDate = stageEntryDate.HasValue
                 ? stageEntryDate.Value.ToString("dd-MM-yyyy")
                 : (await cells.Nth(1).InnerTextAsync()).Trim();
@@ -1808,7 +1812,8 @@ public sealed class PlaywrightSitraMedClient
                 Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null,
                 ExpectantStartDate = expectantStartDate,
                 ExpectantObservations = expectantObservations,
-                ExpectantUser = expectantUser
+                ExpectantUser = expectantUser,
+                PvAppointmentDate = pvAppointmentDate
             });
         }
 
@@ -1853,6 +1858,7 @@ public sealed class FollowUpPatientDomRow
     public DateOnly? ExpectantStartDate { get; set; }
     public string? ExpectantObservations { get; set; }
     public string? ExpectantUser { get; set; }
+    public DateOnly? PvAppointmentDate { get; set; }
 }
 
 public sealed class ScrapingTestResult

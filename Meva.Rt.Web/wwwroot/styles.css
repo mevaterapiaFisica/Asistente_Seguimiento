@@ -289,6 +289,7 @@ h2, p { margin: 0; }
 .hc-tag.muted-italic { font-style: italic; opacity: 0.65; }
 a.hc-tag:hover { text-decoration: underline; }
 .physicist-tag { font-size: 11px; color: var(--accent); white-space: nowrap; }
+.expectant-note { flex-basis: 100%; font-size: 11px; color: var(--muted); font-style: italic; }
 .days-badge { font-size: 12px; font-weight: 700; margin-left: auto; flex-shrink: 0; }
 .days-badge.on-time   { color: var(--green); }
 .days-badge.at-limit  { color: var(--orange); }
@@ -1154,6 +1155,23 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 
 /* Técnicas especiales — fila con reserva */
 .spec-table tr.has-reservation td { background: var(--color-reservation-bg); }
+
+/* ── Pedidos (Física) ────────────────────────────────────────────────────── */
+.spec-table tr.pedido-urgent td { background: var(--danger-bg); }
+.spec-table tr.pedido-warn td { background: var(--warn-bg-soft); }
+.spec-table tr.pedido-selected td { background: var(--color-reservation-bg); }
+.pedido-modal { width: 480px; }
+.pedido-search-results {
+  max-height: 180px; overflow-y: auto; margin-top: 6px;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.pedido-search-results[hidden] { display: none; }
+.pedido-search-item {
+  padding: 7px 10px; font-size: 13px; cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.pedido-search-item:last-child { border-bottom: none; }
+.pedido-search-item:hover { background: var(--color-reservation-bg); }
 
 /* Inicios — subcard con reserva */
 .inicios-patient-card.is-reservation {
