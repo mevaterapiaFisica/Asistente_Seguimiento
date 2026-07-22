@@ -2,7 +2,7 @@
 
 > Sistema de seguimiento de pacientes en radioterapia oncológica para **Meva Terapia** (mevaterapia.com.ar).
 > Tecnologías: .NET 9, ASP.NET Core Minimal APIs, Playwright, Entity Framework 6, Windows Service.
-> Última actualización: 2026-06-22
+> Última actualización: 2026-07-22
 
 ---
 
@@ -46,7 +46,8 @@ La app corre como **Windows Service** en el puerto 5000.
 | `ProcessStageDefinition` | Etapa del proceso. Código (`F3`, `F6A`...), nombre, días esperados, microstatus de SitraMed. |
 | `ProcessPatientSnapshot` | Un paciente en una etapa. Campos clave: HC, nombre, centro, máquina planeada, `DaysInStage` (días **hábiles**), `IsLongWait`, `TreatmentTechnique`, `IrradiationModality`, `ExactBeamEnergy`, `TreatmentLabel`, `Priority`, `ResponsibleDoctor`, `AssignedPhysicist`, `TomographyDate`. |
 | `MachineAppointmentSnapshot` | Turno agendado: fecha, hora, paciente, `TreatmentLabel`, `Priority`. |
-| `AriaPlanSnapshot` | Plan activo en ARIA: máquina, estado, `BeamType`, fracciones, `IrradiationModality`, `ExactBeamEnergy`. |
+| `AriaPlanSnapshot` | Plan activo en ARIA: máquina, estado, `BeamType`, fracciones, `IrradiationModality`, `ExactBeamEnergy`, `Plans` (lista `AriaPlanInfo`: todos los planes candidatos del paciente — `PlanId`, `PlanName`, `Status`, `IrradiationModality`, `MachineDisplayName`). |
+| `QaEspecificoItem` | Item de la pestaña QA Paciente Específico: `Id`, `Origin` (Manual/Auto), `Pinned`, `Excluded`, `PatientId`, `PlanId`, `Plan`, `EquipoName`, `Observaciones`. |
 | `PatientProcessEvent` | Evento de proceso: `TechniqueChanged` o `StageRegressed`. Se detecta automáticamente en cada refresh comparando con el snapshot previo. |
 | `StageSummaryItem` | Resumen por etapa/centro: conteo, promedio de días, demorados, long-wait. |
 | `RtSystemConfiguration` | Config completa: centros, máquinas, etapas, capacidades. Se puede sobrescribir vía `data/rt_configuration.json`. |
@@ -173,6 +174,8 @@ Archivos clave en `data/`:
 - `patient_process_events.json` — eventos de proceso detectados (TechniqueChanged, StageRegressed); store append-only con escritura atómica vía `.tmp`
 - `weekly_stats.json` — estadísticas semanales acumuladas (requiere 4 semanas para usarse en estimaciones)
 - `stage_transitions.json` — transiciones de etapa registradas
+- `pedidos.json` — pestaña Pedidos (Física): CRUD manual + auto-generado
+- `qa_especifico.json` — pestaña QA Paciente Específico (Física): CRUD manual + auto-generado por plan ARIA
 - `feriados.txt` — una fecha por línea en formato `YYYY-MM-DD`
 
 ---
@@ -213,6 +216,13 @@ Archivos clave en `data/`:
 | `GET /api/aria/query-status` | `{ isRunning, progressPct, currentPatient, totalPatients, lastRunSucceeded }`. Lee log del AriaRunner para calcular progreso. |
 | `POST /api/aria/import-results` | Lee `aria_results_*.json`, genera/mergea `aria_plans_mock.json`. |
 | `POST /api/aria/run-query` | Lanza AriaRunner.exe; devuelve **202 Accepted** inmediatamente (fire-and-forget). El progreso se consulta con `GET /api/aria/query-status`. |
+
+### Física — Pedidos y QA Paciente Específico
+
+| Endpoint | Descripción |
+|---|---|
+| `GET/POST/PUT/DELETE /api/pedidos` | CRUD de pedidos (Física). `POST .../{id}/complete` marca completado. |
+| `GET/POST/PUT/DELETE /api/qa-especifico` | CRUD de QA paciente-específico (Física). `POST .../{id}/pin` togglea fijado. `POST` es idempotente por (`PatientId`,`PlanId`) para items `Origin=Auto`: si ya existe uno no-excluido, devuelve ese en vez de duplicar. |
 
 ### Derivación
 
@@ -385,6 +395,22 @@ Estadísticas semanales de flujo de pacientes. Requiere 4 semanas de datos reale
 - Ranking de equipos por disponibilidad real (`capacidad_total - agendaPatients`); soporta valores negativos (sobrecapacidad).
 - Estimación de fecha de inicio usando `weeklyStats` si hay ≥4 semanas, sino `expectedDays`.
 
+### Tab Pedidos (Física)
+
+Lista manual/auto de pedidos (Paciente/Equipo/Recordatorio) con fecha límite, médico, motivo, etc.
+Auto-generación: pacientes con turno agendado o reserva activa, etapa ≤ F7C, técnica no BQT/IORT.
+
+### Tab QA Paciente Específico (Física, desde sesión 2026-07-22)
+
+Lista **por plan de ARIA** (no por paciente — un paciente con 2 planes puede tener 2 filas).
+
+- **Entra:** plan con `IrradiationModality` ARIA = IMRT o VMAT, **y** (`Status` = `PlanApproval` **o** paciente completó etapa SitraMed F6C).
+- **Sale:** ese plan pasó a `Status` = `TreatApproval` (sale solo ese plan), **o** paciente completó F7A (salen todos sus planes).
+- **Fijar QA:** un item fijado nunca desaparece solo (ni por TreatApproval ni por F7A) — solo lo saca "Eliminar" manual.
+- **Eliminar** sobre item Auto → exclusión permanente para ese (paciente, plan) puntual (`Excluded=true`, no se regenera). Sobre item Manual → borrado total.
+- Tabla: HC, Apellido y Nombre, Plan (`PlanId` de ARIA, no el nombre), Equipo, Etapa de seguimiento (en vivo), Observaciones. Ordenable por Equipo (desempate por nombre). Pills de centro con selección múltiple.
+- Motor de elegibilidad corre en el frontend (`computeQaEspecifico()`, `app.js`) contra `state.homeData.patients[].plans[]` en cada carga de la pestaña.
+
 ### Tab Técnicas Especiales (desde sesión 2026-06-10)
 
 Pacientes con técnica SBRT o RC, desde etapa F4B en adelante.
@@ -550,3 +576,5 @@ El sistema corre como **Windows Service** (`MevaRT`) en la PC servidora.
 - **weekly_stats.json:** requiere 4 semanas de datos reales acumulados antes de usarse para estimaciones de fecha de inicio. Los archivos históricos masivos (importación inicial) están renombrados a `.backup.json`.
 - **PatientProcessEvents:** solo detecta TechniqueChanged y StageRegressed. La desaparición de un paciente del seguimiento = inició tratamiento (no se detecta como suspensión).
 - **Feriados:** `data/feriados.txt` con una fecha por línea en formato `YYYY-MM-DD`. La alerta de fin de año avisa cuando falta agregar el año siguiente.
+- **Flujo de archivos de datos (dev vs prod):** ver `CLAUDE.md` en la raíz del repo — quién setea `MEVA_DATA_DIR` en cada entorno y las 2 inconsistencias conocidas.
+- **QA Paciente Específico (sesión 2026-07-22):** el endpoint real que usa `refresh.bat` es `POST /api/home/apply-aria` (no `BootstrapService.BuildAsync`) — ahí es donde hay que propagar campos nuevos de ARIA (`Plans`), no solo en el camino "vivo" de `Contracts.cs`. Bug real encontrado: `apply-aria` copiaba `IrradiationModality`/`BeamType`/etc. pero no `Plans`, dejando la lista vacía en producción hasta corregirlo (`Program.cs`).

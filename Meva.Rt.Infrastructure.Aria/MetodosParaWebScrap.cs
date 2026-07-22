@@ -26,6 +26,34 @@ public static class MetodosParaWebScrap
         return null;
     }
 
+    public static List<PlanSetup>? PlanesPlanApproval(Patient paciente)
+    {
+        var planSetups = paciente.Courses
+            .Where(curso => !curso.CourseId.ToLower().Contains("qa") && !curso.CourseId.ToLower().Contains("fisica"))
+            .SelectMany(curso => curso.PlanSetups.Where(p => p.Status != "Rejected"))
+            .ToList();
+
+        if (planSetups.Any(p => p.Status == "PlanApproval" && (p.CreationDate -DateTime.Today).Days<30))
+        {
+            return planSetups.Where(p => p.Status == "PlanApproval" && (p.CreationDate -DateTime.Today).Days<30 ).ToList();
+        }
+        return null;
+    }
+
+        public static List<PlanSetup>? PlanesTreatApproval(Patient paciente)
+    {
+        var planSetups = paciente.Courses
+            .Where(curso => !curso.CourseId.ToLower().Contains("qa") && !curso.CourseId.ToLower().Contains("fisica"))
+            .SelectMany(curso => curso.PlanSetups.Where(p => p.Status != "Rejected"))
+            .ToList();
+
+        if (planSetups.Any(p => p.Status == "TreatApproval" && (p.CreationDate -DateTime.Today).Days<30))
+        {
+            return planSetups.Where(p => p.Status == "TreatApproval" && (p.CreationDate -DateTime.Today).Days<30).ToList();
+        }
+        return null;
+    }
+
     public static PlanSetup? PlanActivo(Patient paciente)
     {
         var planSetups = paciente.Courses

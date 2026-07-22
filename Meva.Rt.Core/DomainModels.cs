@@ -51,6 +51,7 @@ public sealed class ProcessPatientSnapshot
     public int? NumberOfFractions { get; set; }
     public string? IrradiationModality { get; set; }
     public string? ExactBeamEnergy { get; set; }
+    public List<AriaPlanInfo> Plans { get; set; } = new();
     public string? TreatmentLabel { get; set; }
     public int? Priority { get; set; }
     public DateOnly? PostponedUntil { get; set; }
@@ -87,6 +88,16 @@ public sealed class AriaPlanSnapshot
     public int? NumberOfFractions { get; set; }
     public string? IrradiationModality { get; set; }
     public string? ExactBeamEnergy { get; set; }
+    public List<AriaPlanInfo> Plans { get; set; } = new();
+}
+
+public sealed class AriaPlanInfo
+{
+    public string? PlanId { get; set; }
+    public string? PlanName { get; set; }
+    public string? Status { get; set; } // PlanApproval | TreatApproval | Unapproved
+    public string? IrradiationModality { get; set; }
+    public string? MachineDisplayName { get; set; }
 }
 
 
@@ -269,5 +280,22 @@ public sealed class PedidoItem
     public string? Solicita { get; set; }
     public string? Responsable { get; set; }
     public string? Motivo { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public sealed class QaEspecificoItem
+{
+    // Formato: "QA_{guid}"
+    public string Id { get; set; } = string.Empty;
+    public string Origin { get; set; } = "Manual"; // Manual | Auto
+    public bool Pinned { get; set; }
+    public bool Excluded { get; set; } // eliminado a mano sobre item Auto: no se re-genera
+    public DateTime CreatedAtUtc { get; set; }
+    public string? PatientId { get; set; }
+    public string? PatientName { get; set; }
+    public string? CenterName { get; set; }
+    public string? PlanId { get; set; } // null para items Manuales sin plan ARIA asociado
+    public string? Plan { get; set; }
+    public string? EquipoName { get; set; }
     public string? Observaciones { get; set; }
 }

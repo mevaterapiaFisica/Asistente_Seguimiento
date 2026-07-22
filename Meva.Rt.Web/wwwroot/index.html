@@ -77,13 +77,52 @@
 
       <!-- ── Tendencias ───────────────────────────────────────────────────── -->
       <section id="tab-resumen" class="tab-panel">
-        <div class="resumen-layout">
+        <div class="tend-layout">
           <section class="panel">
             <div class="panel-header">
-              <h2>Tendencias</h2>
-              <p>Promedio de dias por etapa, ultimas 4 semanas</p>
+              <h2>Señales del período</h2>
             </div>
-            <div id="resumenTendencias"></div>
+            <div id="tendSignals" class="tend-signals"></div>
+          </section>
+
+          <section class="panel">
+            <div class="filter-bar filter-bar-stacked">
+              <div class="filter-row">
+                <span class="filter-label">Centros:</span>
+                <div id="tendCenterPills" class="pill-row"></div>
+              </div>
+              <div class="filter-row">
+                <span class="filter-label">Técnicas:</span>
+                <div id="tendTechniquePills" class="pill-row"></div>
+              </div>
+              <div class="filter-row">
+                <span class="filter-label">Ventana:</span>
+                <div id="tendWindowPills" class="pill-row"></div>
+              </div>
+            </div>
+            <p class="tend-filter-note">BQT e IORT se excluyen del análisis (no aplican a equipos de irradiación).</p>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>1. Ingreso de pacientes (F1) por centro</h2>
+            </div>
+            <div class="tend-chart-wrap"><canvas id="tendChartIngreso"></canvas></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header tend-header-with-select">
+              <h2>2. Tiempo promedio por etapa</h2>
+              <select id="tendStageSelect" class="filter-select"></select>
+            </div>
+            <div class="tend-chart-wrap"><canvas id="tendChartEtapa"></canvas></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>3. Carga actual por etapa y centro</h2>
+            </div>
+            <div id="tendHeatmap" class="tend-heatmap-wrap"></div>
           </section>
         </div>
       </section>
@@ -182,6 +221,21 @@
           <button id="pedidoCompleteBtn" class="ghost-button" type="button" disabled>Completar</button>
         </div>
         <div id="pedidos-table-wrap" class="table-wrap"></div>
+      </section>
+
+      <!-- ── Física · QA Paciente Específico ──────────────────────────── -->
+      <section id="tab-qa-especifico" class="tab-panel">
+        <div class="filter-bar">
+          <span class="filter-label">Centro:</span>
+          <div id="qa-especifico-center-pills" class="pill-row"></div>
+        </div>
+        <div class="filter-bar" id="qaEspecificoActionBar">
+          <button id="qaAddManualBtn" class="tab-button active" type="button">Agregar Manual</button>
+          <button id="qaEditBtn" class="ghost-button" type="button" disabled>Editar</button>
+          <button id="qaPinBtn" class="ghost-button" type="button" disabled>Fijar QA</button>
+          <button id="qaDeleteBtn" class="ghost-button" type="button" disabled>Eliminar</button>
+        </div>
+        <div id="qa-especifico-table-wrap" class="table-wrap"></div>
       </section>
 
       <!-- ── Técnicas Especiales ──────────────────────────────────────── -->
@@ -462,6 +516,50 @@
     </div>
   </div>
 
+  <!-- ── QA Paciente Específico Modal ────────────────────────────────────── -->
+  <div id="qa-modal-overlay" class="auth-overlay" hidden>
+    <div class="reservation-modal pedido-modal">
+      <h3 id="qa-modal-title" class="auth-modal-title">Agregar QA Paciente Específico</h3>
+
+      <div id="qa-paciente-search-block">
+        <div class="auth-field" id="qa-paciente-search-wrap">
+          <label class="auth-label">Buscar paciente</label>
+          <input id="qa-paciente-search" type="text" class="auth-input" placeholder="Nombre o HC...">
+          <div id="qa-paciente-results" class="pedido-search-results" hidden></div>
+        </div>
+      </div>
+      <div class="res-modal-row">
+        <div class="auth-field res-field-half">
+          <label class="auth-label">HC</label>
+          <input id="qa-hc" type="text" class="auth-input" readonly>
+        </div>
+        <div class="auth-field res-field-half">
+          <label class="auth-label">Nombre</label>
+          <input id="qa-nombre" type="text" class="auth-input" readonly>
+        </div>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Plan</label>
+        <input id="qa-plan" type="text" class="auth-input">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Equipo</label>
+        <input id="qa-equipo" type="text" class="auth-input">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Observaciones</label>
+        <textarea id="qa-observaciones" class="auth-input res-textarea" rows="3"></textarea>
+      </div>
+
+      <div id="qa-error" class="auth-error" hidden></div>
+
+      <div class="auth-buttons">
+        <button id="qa-cancel-btn" type="button" class="ghost-button">Cancelar</button>
+        <button id="qa-submit-btn" type="button" class="tab-button active">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Auth Modal ────────────────────────────────────────────────────── -->
   <div id="auth-modal-overlay" class="auth-overlay" hidden>
     <div class="auth-modal">
@@ -478,6 +576,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260720"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="app.js?v=20260722"></script>
 </body>
 </html>

@@ -57,6 +57,29 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                 var row = byId[id];
                 row.PlanStatus ??= plan?.Status;
 
+                var planCandidates = new List<AriaQ.PlanSetup>();
+                if (plan != null) planCandidates.Add(plan);
+                planCandidates.AddRange(MetodosParaWebScrap.PlanesPlanApproval(patient) ?? []);
+                planCandidates.AddRange(MetodosParaWebScrap.PlanesTreatApproval(patient) ?? []);
+                if (row.Plans.Count == 0)
+                {
+                    row.Plans = planCandidates
+                        .GroupBy(p => p.PlanSetupId, StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.First())
+                        .Select(p => new AriaPlanInfo
+                        {
+                            PlanId = p.PlanSetupId,
+                            PlanName = p.PlanSetupName,
+                            Status = p.Status,
+                            IrradiationModality = ResolveIrradiationModality(p),
+                            MachineDisplayName = ResolveMachineDisplay(
+                                p.Radiations.FirstOrDefault()?.RadiationDevice.Machine.MachineId is { } machId
+                                    ? MetodosParaWebScrap.EquipoAriaASitra(machId, mapPath)
+                                    : null)
+                        })
+                        .ToList();
+                }
+
                 var rad = plan?.Radiations.FirstOrDefault();
                 if (rad?.RadiationDevice.Machine.MachineId is { } ariaMachineId)
                 {
@@ -155,6 +178,11 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             if (!string.IsNullOrWhiteSpace(mock.ExactBeamEnergy))
             {
                 row.ExactBeamEnergy = mock.ExactBeamEnergy;
+            }
+
+            if (mock.Plans is { Count: > 0 })
+            {
+                row.Plans = mock.Plans;
             }
         }
     }

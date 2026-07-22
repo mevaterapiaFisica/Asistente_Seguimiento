@@ -12,10 +12,13 @@ internal sealed class AriaRunnerPatient
     public string PatientId { get; set; } = string.Empty;
     public bool Found { get; set; }
     public AriaRunnerPlan? ActivePlan { get; set; }
+    public List<AriaRunnerPlan> AllPlans { get; set; } = new();
 }
 
 internal sealed class AriaRunnerPlan
 {
+    public string? PlanId { get; set; }
+    public string? PlanName { get; set; }
     public string? MachineAriaId { get; set; }
     public string? MachineName { get; set; }
     public string? Status { get; set; }

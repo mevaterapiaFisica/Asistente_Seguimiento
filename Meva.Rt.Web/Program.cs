@@ -25,9 +25,9 @@ var sitraMedOptions = new SitraMedRuntimeOptions
     UseLocalExamplesFallback = !string.Equals(Environment.GetEnvironmentVariable("MEVA_SITRAMED_NO_FALLBACK"), "true", StringComparison.OrdinalIgnoreCase),
     TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("MEVA_SITRAMED_TIMEOUT_SECONDS"), out var timeoutSeconds) ? timeoutSeconds : 30,
     SaveAgendaHtmlCapture = string.Equals(Environment.GetEnvironmentVariable("MEVA_SITRAMED_SAVE_AGENDA_HTML"), "true", StringComparison.OrdinalIgnoreCase),
-    AgendaHtmlCaptureDirectory = Path.Combine(builder.Environment.ContentRootPath, "data", "agenda-captures"),
+    AgendaHtmlCaptureDirectory = Path.Combine(snapshotsDirectory, "agenda-captures"),
     EnableDiagnostics = string.Equals(Environment.GetEnvironmentVariable("MEVA_SITRAMED_DIAGNOSTICS"), "true", StringComparison.OrdinalIgnoreCase),
-    DiagnosticsDirectory = Path.Combine(builder.Environment.ContentRootPath, "data", "diagnostics")
+    DiagnosticsDirectory = Path.Combine(snapshotsDirectory, "diagnostics")
 };
 
 var ariaMapDefaultPath = Path.Combine(AppContext.BaseDirectory, "config", "mapEquiposAriaSitra.txt");
@@ -73,6 +73,7 @@ builder.Services.AddSingleton<BootstrapService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
 
 var app = builder.Build();
 
@@ -176,6 +177,18 @@ app.MapGet("/api/stats/weekly", async Task<IResult> (
         IWeeklyStatsStore weeklyStatsStore,
         CancellationToken cancellationToken) =>
     TypedResults.Ok(await weeklyStatsStore.LoadAsync()));
+
+app.MapGet("/api/stats/transitions", async Task<IResult> (
+        IStageTransitionStore stageTransitionStore,
+        CancellationToken cancellationToken) =>
+{
+    var cutoff = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-90);
+    var events = (await stageTransitionStore.LoadAsync())
+        .Where(e => e.StageEndDate >= cutoff)
+        .OrderByDescending(e => e.StageEndDate)
+        .ToList();
+    return TypedResults.Ok(events);
+});
 
 app.MapGet("/api/patient-events", async Task<IResult> (
         IPatientProcessEventStore eventStore,
@@ -447,6 +460,7 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
             patient.IrradiationModality = plan.IrradiationModality;
         if (!string.IsNullOrWhiteSpace(plan.ExactBeamEnergy))
             patient.ExactBeamEnergy = plan.ExactBeamEnergy;
+        patient.Plans = plan.Plans;
     }
 
     foreach (var item in data.AgendaItems)
@@ -1102,6 +1116,62 @@ app.MapDelete("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, Ca
     return TypedResults.NoContent();
 });
 
+// ─── QA Paciente Específico ────────────────────────────────────────────────
+
+app.MapGet("/api/qa-especifico", async (QaEspecificoStore qaStore, CancellationToken ct) =>
+    TypedResults.Ok(await qaStore.LoadAllAsync(ct)));
+
+app.MapPost("/api/qa-especifico", async (QaEspecificoStore qaStore, QaEspecificoItem req, CancellationToken ct) =>
+{
+    if (req.Origin == "Auto" && !string.IsNullOrWhiteSpace(req.PlanId))
+    {
+        var all = await qaStore.LoadAllAsync(ct);
+        var existing = all.FirstOrDefault(x =>
+            x.Origin == "Auto" && !x.Excluded &&
+            string.Equals(x.PatientId, req.PatientId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(x.PlanId, req.PlanId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) return Results.Ok(existing);
+    }
+    req.Id = $"QA_{Guid.NewGuid():N}";
+    req.CreatedAtUtc = DateTime.UtcNow;
+    await qaStore.SaveOrUpdateAsync(req, ct);
+    return Results.Created($"/api/qa-especifico/{req.Id}", req);
+});
+
+app.MapPut("/api/qa-especifico/{id}", async (string id, QaEspecificoStore qaStore, QaEspecificoItem req, CancellationToken ct) =>
+{
+    req.Id = id;
+    await qaStore.SaveOrUpdateAsync(req, ct);
+    return TypedResults.Ok(req);
+});
+
+app.MapPost("/api/qa-especifico/{id}/pin", async (string id, QaEspecificoStore qaStore, CancellationToken ct) =>
+{
+    var all = await qaStore.LoadAllAsync(ct);
+    var item = all.FirstOrDefault(p => p.Id == id);
+    if (item is null) return Results.NotFound();
+    item.Pinned = !item.Pinned;
+    await qaStore.SaveOrUpdateAsync(item, ct);
+    return TypedResults.Ok(item);
+});
+
+app.MapDelete("/api/qa-especifico/{id}", async (string id, QaEspecificoStore qaStore, CancellationToken ct) =>
+{
+    var all = await qaStore.LoadAllAsync(ct);
+    var item = all.FirstOrDefault(p => p.Id == id);
+    if (item is null) return TypedResults.NoContent();
+    if (item.Origin == "Auto")
+    {
+        item.Excluded = true;
+        await qaStore.SaveOrUpdateAsync(item, ct);
+    }
+    else
+    {
+        await qaStore.DeleteByIdAsync(id, ct);
+    }
+    return TypedResults.NoContent();
+});
+
 app.MapGet("/api/machine-capacity", async (string date, string machine,
     ISnapshotStore snapshotStore, IRtSystemConfigurationProvider configProvider, CancellationToken ct) =>
 {
@@ -1210,6 +1280,10 @@ static IResult? CheckOftechPassword(HttpContext ctx, IMemoryCache cache, string?
 
 static List<AriaPlanSnapshot> ParseAriaOutput(AriaRunnerOutput output, IReadOnlyList<RtMachine> machines)
 {
+    string? MachineDisplayFor(string? ariaMachineId) => machines
+        .FirstOrDefault(m => string.Equals(m.AriaName, ariaMachineId, StringComparison.OrdinalIgnoreCase))
+        ?.DisplayName;
+
     var plans = new List<AriaPlanSnapshot>();
     foreach (var p in output.Patients)
     {
@@ -1224,9 +1298,24 @@ static List<AriaPlanSnapshot> ParseAriaOutput(AriaRunnerOutput output, IReadOnly
             IrradiationModality  = p.ActivePlan.IrradiationModality,
             ExactBeamEnergy      = p.ActivePlan.ExactBeamEnergy
         };
-        snap.PlannedMachineDisplayName = machines
-            .FirstOrDefault(m => string.Equals(m.AriaName, p.ActivePlan.MachineAriaId, StringComparison.OrdinalIgnoreCase))
-            ?.DisplayName;
+        snap.PlannedMachineDisplayName = MachineDisplayFor(p.ActivePlan.MachineAriaId);
+
+        var candidates = new List<AriaRunnerPlan> { p.ActivePlan };
+        candidates.AddRange(p.AllPlans.Where(x => x.Status is "PlanApproval" or "TreatApproval"));
+        snap.Plans = candidates
+            .Where(x => !string.IsNullOrWhiteSpace(x.PlanId))
+            .GroupBy(x => x.PlanId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .Select(x => new AriaPlanInfo
+            {
+                PlanId = x.PlanId,
+                PlanName = x.PlanName,
+                Status = x.Status,
+                IrradiationModality = x.IrradiationModality,
+                MachineDisplayName = MachineDisplayFor(x.MachineAriaId)
+            })
+            .ToList();
+
         plans.Add(snap);
     }
     return plans;

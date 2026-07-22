@@ -283,6 +283,8 @@ public sealed class BootstrapService
                     patient.IrradiationModality = plan.IrradiationModality;
                 if (!string.IsNullOrWhiteSpace(plan.ExactBeamEnergy))
                     patient.ExactBeamEnergy = plan.ExactBeamEnergy;
+                if (plan.Plans.Count > 0)
+                    patient.Plans = plan.Plans;
             }
 
             foreach (var (hc, items) in agendaByHc)

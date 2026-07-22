@@ -34,8 +34,14 @@ const state = {
 
   configData: null,
 
-  resumen: {
-    weeklyData: null
+  tendencias: {
+    weeklyData: null,
+    centerFilter: null,
+    techniqueFilter: null,
+    windowMode: '8',
+    selectedStage: 'F6B',
+    chartIngreso: null,
+    chartEtapa: null
   },
 
   fisica: {
@@ -88,6 +94,14 @@ const state = {
     items: [],
     selectedId: null,
     loaded: false
+  },
+
+  qaEspecifico: {
+    items: [],
+    selectedId: null,
+    loaded: false,
+    centerFilters: new Set(),
+    sort: { col: null, dir: 'asc' }
   }
 };
 
@@ -395,6 +409,7 @@ const NAV_GROUPS = {
   fisica: { tabs: [
     { id: 'fisica',   label: 'Seguimiento' },
     { id: 'pedidos',  label: 'Pedidos' },
+    { id: 'qa-especifico', label: 'QA Paciente Específico' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -448,7 +463,7 @@ async function activateTab(targetTab) {
     p.classList.toggle('active', p.id === `tab-${targetTab}`));
   if (targetTab === 'pacientes') loadPacientesTab();
   if (targetTab === 'inicios') loadIniciosTab();
-  if (targetTab === 'resumen') renderResumen();
+  if (targetTab === 'resumen') renderTendencias();
   if (targetTab === 'alertas') loadAlertasTab();
   if (targetTab === 'agenda') refreshAgendaView();
   if (targetTab === 'tomograph') refreshTomographAgendaView();
@@ -459,6 +474,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'derivacion') openDerivacion();
   if (targetTab === 'reservations') loadReservationsTab();
   if (targetTab === 'pedidos') loadPedidosTab();
+  if (targetTab === 'qa-especifico') loadQaEspecificoTab();
   return true;
 }
 
@@ -2225,112 +2241,593 @@ async function saveConfig() {
   }
 }
 
-// ── Resumen tab ───────────────────────────────────────────────────────────────
+// ── Tendencias tab ──────────────────────────────────────────────────────────────
 
-const RESUMEN_F6B_ALERT = 8;
-const RESUMEN_CRITICAL_STAGES = ['F4', 'F6B', 'F6C', 'F7A'];
+const TEND_CONFIG = {
+  ingreso_umbral_pct: 0.20,
+  ingreso_base_minima: 3,
+  tendencia_semanas: 3,
+  tendencia_factor_historico: 1.5,
+  anomalia_sigmas: 2,
+  anomalia_min_semanas_historico: 4,
+  comparacion_centros_factor: 2.0,
+  max_signals_visible: 6
+};
 
-function mondayOf(isoDate) {
-  const d = new Date(isoDate + 'T00:00:00');
-  const dow = d.getDay();
-  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const TEND_COLORS = ['#0f6c74', '#e65100', '#2e7d32', '#7b4fa3', '#b74832', '#6b7b83'];
+
+function tendWeekLabel(weekStart) {
+  const [, m, d] = weekStart.split('-');
+  return `${d}/${m}`;
 }
 
-function last4Weeks() {
-  const mon = mondayOf(todayStr());
-  const weeks = [];
-  for (let i = 3; i >= 0; i--) {
-    const d = new Date(mon + 'T00:00:00');
-    d.setDate(d.getDate() - i * 7);
-    weeks.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+function movingAvg3(arr) {
+  return arr.map((_, i) => {
+    const slice = arr.slice(Math.max(0, i - 2), i + 1);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+}
+
+function tendAllWeeks() {
+  return [...new Set((state.tendencias.weeklyData || []).map(r => r.weekStart))].sort();
+}
+
+function tendWeeksInWindow() {
+  const all = tendAllWeeks();
+  const mode = state.tendencias.windowMode;
+  if (mode === '4') return all.slice(-4);
+  if (mode === '8') return all.slice(-8);
+  return all;
+}
+
+function tendUniverseCenters() {
+  const fromData = new Set((state.tendencias.weeklyData || []).map(r => r.centerName));
+  return (state.homeData?.centers ?? [])
+    .map(c => c.name)
+    .filter(n => fromData.has(n))
+    .sort();
+}
+
+function tendUniverseTechniques() {
+  const set = new Set(
+    (state.tendencias.weeklyData || [])
+      .map(r => r.treatmentTechnique)
+      .filter(t => t && t !== 'BQT' && t !== 'IORT')
+  );
+  return [...set].sort();
+}
+
+function tendActiveCenters() {
+  const universe = tendUniverseCenters();
+  const f = state.tendencias.centerFilter;
+  return f === null ? universe : universe.filter(c => f.has(c));
+}
+
+function tendActiveTechniques() {
+  const universe = tendUniverseTechniques();
+  const f = state.tendencias.techniqueFilter;
+  return f === null ? universe : universe.filter(t => f.has(t));
+}
+
+function tendToggleFilter(filterKey, value, universe) {
+  const t = state.tendencias;
+  let cur = t[filterKey];
+  if (cur === null) cur = new Set(universe);
+  else cur = new Set(cur);
+  if (cur.has(value)) cur.delete(value); else cur.add(value);
+  t[filterKey] = (cur.size === universe.length) ? null : cur;
+  renderTendencias();
+}
+
+function tendRenderCenterPills() {
+  const row = document.getElementById('tendCenterPills');
+  if (!row) return;
+  const universe = tendUniverseCenters();
+  const active = state.tendencias.centerFilter;
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', active === null, () => { state.tendencias.centerFilter = null; renderTendencias(); }));
+  row.appendChild(makePill('Ninguno', active !== null && active.size === 0, () => { state.tendencias.centerFilter = new Set(); renderTendencias(); }));
+  universe.forEach(c => {
+    const isActive = active === null || active.has(c);
+    row.appendChild(makePill(c, isActive, () => tendToggleFilter('centerFilter', c, universe)));
+  });
+}
+
+function tendRenderTechniquePills() {
+  const row = document.getElementById('tendTechniquePills');
+  if (!row) return;
+  const universe = tendUniverseTechniques();
+  const active = state.tendencias.techniqueFilter;
+  row.innerHTML = '';
+  row.appendChild(makePill('Todas', active === null, () => { state.tendencias.techniqueFilter = null; renderTendencias(); }));
+  row.appendChild(makePill('Ninguna', active !== null && active.size === 0, () => { state.tendencias.techniqueFilter = new Set(); renderTendencias(); }));
+  universe.forEach(t => {
+    const isActive = active === null || active.has(t);
+    row.appendChild(makePill(t, isActive, () => tendToggleFilter('techniqueFilter', t, universe)));
+  });
+}
+
+function tendRenderWindowPills() {
+  const row = document.getElementById('tendWindowPills');
+  if (!row) return;
+  row.innerHTML = '';
+  [['4', 'Últimas 4 semanas'], ['8', 'Últimas 8 semanas'], ['all', 'Todo el período']].forEach(([val, label]) => {
+    row.appendChild(makePill(label, state.tendencias.windowMode === val, () => {
+      state.tendencias.windowMode = val;
+      renderTendencias();
+    }));
+  });
+}
+
+// Ingreso F1: cuenta todas las tecnicas (incluye BQT/IORT) — son pacientes que
+// entraron al sistema, no una carga de equipos de irradiacion.
+function tendIngresoRows() {
+  const weeks = new Set(tendWeeksInWindow());
+  const centers = tendActiveCenters();
+  return (state.tendencias.weeklyData || []).filter(r =>
+    r.stageCode === 'F1' && weeks.has(r.weekStart) && centers.includes(r.centerName));
+}
+
+function tendIngresoSeries() {
+  const weeks = tendWeeksInWindow();
+  const centers = tendActiveCenters();
+  const rows = tendIngresoRows();
+  const map = new Map();
+  rows.forEach(r => {
+    const key = r.centerName + '|' + r.weekStart;
+    map.set(key, (map.get(key) || 0) + r.count);
+  });
+  return centers.map(center => ({
+    center,
+    raw: weeks.map(w => map.get(center + '|' + w) || 0)
+  }));
+}
+
+function tendRowAllowed(row) {
+  if (row.treatmentTechnique === 'BQT' || row.treatmentTechnique === 'IORT') return false;
+  return tendActiveTechniques().includes(row.treatmentTechnique);
+}
+
+function tendEtapaWeekCenterAgg(stageCode) {
+  const weeks = tendWeeksInWindow();
+  const centers = tendActiveCenters();
+  const rows = (state.tendencias.weeklyData || []).filter(r => r.stageCode === stageCode && tendRowAllowed(r));
+  const map = new Map();
+  rows.forEach(r => {
+    const key = r.centerName + '|' + r.weekStart;
+    if (!map.has(key)) map.set(key, { count: 0, sumDays: 0, sumDaysSquared: 0 });
+    const a = map.get(key);
+    a.count += r.count;
+    a.sumDays += r.sumDays;
+    a.sumDaysSquared += r.sumDaysSquared;
+  });
+  return { weeks, centers, map };
+}
+
+function tendEtapaBand(stageCode) {
+  const { weeks, centers, map } = tendEtapaWeekCenterAgg(stageCode);
+  return weeks.map(w => {
+    let count = 0, sumDays = 0, sumSq = 0;
+    centers.forEach(c => {
+      const a = map.get(c + '|' + w);
+      if (a) { count += a.count; sumDays += a.sumDays; sumSq += a.sumDaysSquared; }
+    });
+    if (count === 0) return { avg: null, sigma: 0 };
+    const avg = sumDays / count;
+    const variance = Math.max(0, sumSq / count - avg * avg);
+    return { avg, sigma: Math.sqrt(variance) };
+  });
+}
+
+function tendChartOptions(yLabel) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { filter: li => !li.text.startsWith('Banda') } },
+      tooltip: {
+        callbacks: {
+          label(ctx) {
+            const v = ctx.parsed.y;
+            if (v === null || v === undefined) return `${ctx.dataset.label}: sin datos`;
+            const prev = ctx.dataIndex > 0 ? ctx.dataset.data[ctx.dataIndex - 1] : null;
+            let variation = '';
+            if (typeof prev === 'number' && prev !== 0) {
+              const pct = Math.round((v - prev) / prev * 100);
+              variation = ` (${pct >= 0 ? '+' : ''}${pct}% vs sem. anterior)`;
+            }
+            return `${ctx.dataset.label}: ${v.toFixed(1)}${variation}`;
+          }
+        }
+      }
+    },
+    scales: { y: { beginAtZero: true, title: { display: true, text: yLabel } } }
+  };
+}
+
+function tendBuildChartIngreso() {
+  const canvas = document.getElementById('tendChartIngreso');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const weeks = tendWeeksInWindow();
+  const datasets = [];
+  tendIngresoSeries().forEach(({ center, raw }, i) => {
+    const color = TEND_COLORS[i % TEND_COLORS.length];
+    datasets.push({ label: center, data: raw, borderColor: color, backgroundColor: color, pointRadius: 3, borderWidth: 1.5, order: 1 });
+    datasets.push({ label: `${center} (tendencia)`, data: movingAvg3(raw), borderColor: color, borderDash: [4, 3], pointRadius: 0, borderWidth: 2, fill: false, order: 2 });
+  });
+  state.tendencias.chartIngreso?.destroy();
+  state.tendencias.chartIngreso = new Chart(canvas, {
+    type: 'line',
+    data: { labels: weeks.map(tendWeekLabel), datasets },
+    options: tendChartOptions('pacientes')
+  });
+}
+
+function tendBuildChartEtapa(stageCode) {
+  const canvas = document.getElementById('tendChartEtapa');
+  if (!canvas || typeof Chart === 'undefined' || !stageCode) return;
+  const { weeks, centers, map } = tendEtapaWeekCenterAgg(stageCode);
+  const band = tendEtapaBand(stageCode);
+  const stageDef = (state.homeData?.stages ?? []).find(s => s.code === stageCode);
+  const expected = stageDef?.expectedDays ?? null;
+
+  const datasets = [];
+  datasets.push({
+    label: 'Banda ±1σ (superior)', data: band.map(b => b.avg === null ? null : b.avg + b.sigma),
+    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(107,123,131,0.12)', fill: '+1', tension: 0.25, order: 10
+  });
+  datasets.push({
+    label: 'Banda ±1σ (inferior)', data: band.map(b => b.avg === null ? null : b.avg - b.sigma),
+    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(107,123,131,0.12)', fill: false, tension: 0.25, order: 10
+  });
+  if (expected !== null) {
+    datasets.push({
+      label: `Esperado (${expected}d)`, data: weeks.map(() => expected),
+      borderColor: '#6b7b83', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false, order: 5
+    });
   }
-  return weeks; // oldest → newest
+  centers.forEach((center, i) => {
+    const color = TEND_COLORS[i % TEND_COLORS.length];
+    const raw = weeks.map(w => {
+      const a = map.get(center + '|' + w);
+      return a && a.count > 0 ? a.sumDays / a.count : null;
+    });
+    datasets.push({ label: center, data: raw, borderColor: color, backgroundColor: color, pointRadius: 3, borderWidth: 1.5, spanGaps: true, order: 1 });
+    datasets.push({ label: `${center} (tendencia)`, data: movingAvg3(raw.map(v => v ?? 0)), borderColor: color, borderDash: [4, 3], pointRadius: 0, borderWidth: 2, fill: false, order: 2 });
+  });
+
+  state.tendencias.chartEtapa?.destroy();
+  state.tendencias.chartEtapa = new Chart(canvas, {
+    type: 'line',
+    data: { labels: weeks.map(tendWeekLabel), datasets },
+    options: tendChartOptions('días')
+  });
 }
 
-function renderResumen() {
-  renderResumenTendencias();
+function tendQualifyingStages() {
+  const stageDefs = (state.homeData?.stages ?? []).filter(s => s.enabled !== false).sort((a, b) => a.sortOrder - b.sortOrder);
+  const weeklyData = state.tendencias.weeklyData || [];
+  return stageDefs.filter(s => {
+    const weeksWithData = new Set(
+      weeklyData
+        .filter(r => r.stageCode === s.code && r.treatmentTechnique !== 'BQT' && r.treatmentTechnique !== 'IORT' && r.count > 0)
+        .map(r => r.weekStart)
+    );
+    return weeksWithData.size >= 4;
+  });
 }
 
-async function loadWeeklyStats() {
-  try {
-    const resp = await fetch('/api/stats/weekly');
-    state.resumen.weeklyData = resp.ok ? await resp.json() : [];
-  } catch {
-    state.resumen.weeklyData = [];
+function tendRenderStageSelect() {
+  const sel = document.getElementById('tendStageSelect');
+  if (!sel) return;
+  const stages = tendQualifyingStages();
+  if (!stages.length) {
+    sel.innerHTML = '<option>Sin etapas con datos suficientes</option>';
+    sel.disabled = true;
+    return;
   }
-  renderResumenTendencias();
+  sel.disabled = false;
+  if (!stages.some(s => s.code === state.tendencias.selectedStage)) {
+    state.tendencias.selectedStage = stages.some(s => s.code === 'F6B') ? 'F6B' : stages[0].code;
+  }
+  sel.innerHTML = stages.map(s =>
+    `<option value="${s.code}" ${s.code === state.tendencias.selectedStage ? 'selected' : ''}>${s.code} - ${s.displayName}</option>`
+  ).join('');
+  sel.onchange = () => {
+    state.tendencias.selectedStage = sel.value;
+    tendBuildChartEtapa(sel.value);
+  };
 }
 
-function renderResumenTendencias() {
-  const container = document.getElementById('resumenTendencias');
-  const data = state.resumen.weeklyData;
+function tendHeatmapPatients(stageCode, center) {
+  const techs = tendActiveTechniques();
+  return (state.homeData?.patients ?? []).filter(p =>
+    p.stageCode === stageCode && p.centerName === center && !p.isLongWait &&
+    p.treatmentTechnique && p.treatmentTechnique !== 'BQT' && p.treatmentTechnique !== 'IORT' &&
+    techs.includes(p.treatmentTechnique));
+}
 
-  if (!data || data.length === 0) {
-    container.innerHTML = '<p class="detail-placeholder">Sin datos aun. Se acumularan automaticamente con cada actualizacion del snapshot.</p>';
+function tendHeatmapDaysStat(stageCode, center) {
+  const weeks = tendWeeksInWindow();
+  const latest = weeks[weeks.length - 1];
+  if (!latest) return null;
+  const rows = (state.tendencias.weeklyData || []).filter(r =>
+    r.stageCode === stageCode && r.centerName === center && r.weekStart === latest && tendRowAllowed(r));
+  if (!rows.length) return null;
+  const count = rows.reduce((s, r) => s + r.count, 0);
+  if (count === 0) return null;
+  const sumDays = rows.reduce((s, r) => s + r.sumDays, 0);
+  const sumSq = rows.reduce((s, r) => s + r.sumDaysSquared, 0);
+  const avg = sumDays / count;
+  const variance = Math.max(0, sumSq / count - avg * avg);
+  return { avg, sigma: Math.sqrt(variance) };
+}
+
+function tendRenderHeatmap() {
+  const container = document.getElementById('tendHeatmap');
+  if (!container) return;
+  const stages = (state.homeData?.stages ?? []).filter(s => s.enabled !== false).sort((a, b) => a.sortOrder - b.sortOrder);
+  const centers = tendActiveCenters();
+
+  if (!stages.length || !centers.length) {
+    container.innerHTML = '<p class="detail-placeholder">Sin datos para mostrar con los filtros actuales.</p>';
     return;
   }
 
-  const weeks = last4Weeks();
-  const stageDefs = state.homeData?.stages ?? [];
-
-  // Aggregate by (weekStart, stageCode) across all centers and techniques
-  const agg = new Map();
-  data.forEach(row => {
-    const key = `${row.weekStart}|${row.stageCode}`;
-    if (!agg.has(key)) agg.set(key, { count: 0, sumDays: 0 });
-    const a = agg.get(key);
-    a.count += row.count;
-    a.sumDays += row.sumDays;
-  });
-
-  const wrap = document.createElement('div');
-  wrap.className = 'tendencias-wrap';
   const table = document.createElement('table');
-  table.className = 'tendencias-table';
-
+  table.className = 'tend-heatmap';
   const thead = document.createElement('thead');
-  const hrow = document.createElement('tr');
-  hrow.innerHTML = '<th>Etapa</th>' + weeks.map(w => {
-    const [, m, d] = w.split('-');
-    return `<th>${d}/${m}</th>`;
-  }).join('');
-  thead.appendChild(hrow);
+  thead.innerHTML = '<tr><th>Etapa</th>' + centers.map(c => `<th>${c}</th>`).join('') + '</tr>';
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  RESUMEN_CRITICAL_STAGES.forEach(code => {
-    const def = stageDefs.find(s => s.code === code);
-    const expected = def?.expectedDays ?? 0;
-
+  stages.forEach(stage => {
     const tr = document.createElement('tr');
-    let cells = `<td><strong>${def?.displayName ?? code}</strong></td>`;
-
-    weeks.forEach(week => {
-      const a = agg.get(`${week}|${code}`);
-      if (!a || a.count === 0) {
-        cells += `<td class="tend-empty">—</td>`;
-      } else {
-        const avg = a.sumDays / a.count;
-        let cls = '';
-        if (expected > 0) {
-          const r = avg / expected;
-          cls = r <= 1 ? 'tend-ok' : r <= 1.5 ? 'tend-warn' : 'tend-bad';
-        }
-        cells +=
-          `<td class="${cls}">${avg.toFixed(1)}d` +
-          (expected > 0 ? `<span style="color:var(--muted);font-weight:400;font-size:11px"> /${expected}d</span>` : '') +
-          `</td>`;
+    let rowHtml = `<td class="tend-stage-col">${stage.code}<br><span class="tend-stage-name">${stage.displayName}</span></td>`;
+    centers.forEach(center => {
+      const patients = tendHeatmapPatients(stage.code, center);
+      if (patients.length === 0) {
+        rowHtml += `<td class="tend-heat-empty">—</td>`;
+        return;
       }
+      const stat = tendHeatmapDaysStat(stage.code, center);
+      let cls = '';
+      if (stat && stage.expectedDays > 0) {
+        const r = stat.avg / stage.expectedDays;
+        cls = r <= 1 ? 'tend-heat-ok' : r <= 1.5 ? 'tend-heat-warn' : r <= 2 ? 'tend-heat-orange' : 'tend-heat-bad';
+      }
+      rowHtml += `<td class="tend-heat-cell ${cls}" data-stage="${stage.code}" data-center="${center}">` +
+        `<span class="tend-heat-count">${patients.length}</span>` +
+        (stat ? `<span class="tend-heat-days">${stat.avg.toFixed(1)}d ± ${stat.sigma.toFixed(1)}d</span>` : '') +
+        `</td>`;
     });
-
-    tr.innerHTML = cells;
+    tr.innerHTML = rowHtml;
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  wrap.appendChild(table);
   container.innerHTML = '';
-  container.appendChild(wrap);
+  container.appendChild(table);
+
+  container.querySelectorAll('.tend-heat-cell').forEach(cell => {
+    cell.addEventListener('click', e => tendShowHeatmapPopover(cell.dataset.stage, cell.dataset.center, e.currentTarget));
+  });
+}
+
+function tendShowHeatmapPopover(stageCode, center, anchorEl) {
+  document.querySelectorAll('.tend-popover').forEach(p => p.remove());
+  const patients = tendHeatmapPatients(stageCode, center);
+  const days = patients.map(p => p.daysInStage ?? 0);
+  const min = days.length ? Math.min(...days) : 0;
+  const max = days.length ? Math.max(...days) : 0;
+  const stageDef = (state.homeData?.stages ?? []).find(s => s.code === stageCode);
+
+  const pop = document.createElement('div');
+  pop.className = 'tend-popover';
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 260)}px`;
+  pop.style.left = `${Math.min(rect.left, window.innerWidth - 330)}px`;
+  pop.innerHTML = `
+    <button type="button" class="tend-popover-close">✕</button>
+    <h4>${stageDef?.displayName ?? stageCode} — ${center}</h4>
+    <div style="margin-bottom:6px;color:var(--muted)">Días en etapa: min ${min} / máx ${max}</div>
+    <ul>${patients.slice(0, 20).map(p => `<li>${p.patientName} (${fmtHc(p.patientId)}) — ${p.daysInStage}d</li>`).join('')}</ul>
+    <a href="#" id="tendPopoverSeguimientoLink">Ver en Seguimiento →</a>
+  `;
+  document.body.appendChild(pop);
+  pop.querySelector('.tend-popover-close').addEventListener('click', () => pop.remove());
+  pop.querySelector('#tendPopoverSeguimientoLink').addEventListener('click', ev => {
+    ev.preventDefault();
+    pop.remove();
+    activateGroup('pacientes');
+    activateTab('followup');
+  });
+}
+
+function tendSignalsIngreso() {
+  const weeksAll = tendWeeksInWindow();
+  if (weeksAll.length < 6) return [];
+  const rows = tendIngresoRows();
+  const signals = [];
+  tendActiveCenters().forEach(center => {
+    const byWeek = new Map();
+    rows.filter(r => r.centerName === center).forEach(r => byWeek.set(r.weekStart, (byWeek.get(r.weekStart) || 0) + r.count));
+    const recent = weeksAll.slice(-2).map(w => byWeek.get(w) || 0);
+    const prevWindow = weeksAll.slice(-6, -2).map(w => byWeek.get(w) || 0);
+    if (prevWindow.length < 4) return;
+    const avgRecent = recent.reduce((a, b) => a + b, 0) / recent.length;
+    const avgPrev = prevWindow.reduce((a, b) => a + b, 0) / prevWindow.length;
+    if (avgPrev < TEND_CONFIG.ingreso_base_minima) return;
+    const pct = (avgRecent - avgPrev) / avgPrev;
+    if (Math.abs(pct) > TEND_CONFIG.ingreso_umbral_pct) {
+      signals.push({
+        type: 'ingreso', severity: pct < 0 ? 'red' : 'green', magnitude: Math.abs(pct),
+        text: `F1 en ${center}: ${pct >= 0 ? '+' : ''}${Math.round(pct * 100)}% respecto al promedio anterior (${avgPrev.toFixed(0)} → ${avgRecent.toFixed(0)} pac/sem)`
+      });
+    }
+  });
+  return signals;
+}
+
+function tendSignalsTendenciaCreciente() {
+  const weeksAll = tendWeeksInWindow();
+  const n = TEND_CONFIG.tendencia_semanas;
+  if (weeksAll.length < n) return [];
+  const stages = (state.homeData?.stages ?? []).filter(s => s.enabled !== false);
+  const centers = tendActiveCenters();
+  const signals = [];
+  stages.forEach(stage => {
+    const { map } = tendEtapaWeekCenterAgg(stage.code);
+    centers.forEach(center => {
+      const series = w => { const a = map.get(center + '|' + w); return a && a.count > 0 ? a.sumDays / a.count : null; };
+      const lastN = weeksAll.slice(-n).map(series);
+      if (lastN.some(v => v === null)) return;
+      let increasing = true;
+      for (let i = 1; i < lastN.length; i++) if (!(lastN[i] > lastN[i - 1])) increasing = false;
+      if (!increasing) return;
+      const historic = weeksAll.slice(0, -n).map(series).filter(v => v !== null);
+      const avgHist = historic.length ? historic.reduce((a, b) => a + b, 0) / historic.length : null;
+      const severe = avgHist !== null && lastN[lastN.length - 1] > TEND_CONFIG.tendencia_factor_historico * avgHist;
+      signals.push({
+        type: 'tendencia', severity: severe ? 'red' : 'yellow', magnitude: lastN[lastN.length - 1] - lastN[0],
+        text: `Tiempo en ${stage.code} en ${center}: tendencia creciente ${n} semanas (${lastN.map(v => v.toFixed(1) + 'd').join(' → ')})`
+      });
+    });
+  });
+  return signals;
+}
+
+function tendSignalsAnomalia() {
+  const weeksAll = tendWeeksInWindow();
+  const minHist = TEND_CONFIG.anomalia_min_semanas_historico;
+  if (weeksAll.length < minHist + 1) return [];
+  const stages = (state.homeData?.stages ?? []).filter(s => s.enabled !== false);
+  const centers = tendActiveCenters();
+  const signals = [];
+  stages.forEach(stage => {
+    const { map } = tendEtapaWeekCenterAgg(stage.code);
+    centers.forEach(center => {
+      const series = weeksAll.map(w => {
+        const a = map.get(center + '|' + w);
+        return a && a.count > 0 ? a.sumDays / a.count : null;
+      });
+      const actual = series[series.length - 1];
+      const historic = series.slice(0, -1).filter(v => v !== null);
+      if (actual === null || historic.length < minHist) return;
+      const media = historic.reduce((a, b) => a + b, 0) / historic.length;
+      const variance = historic.reduce((a, b) => a + (b - media) ** 2, 0) / historic.length;
+      const sigma = Math.sqrt(variance);
+      if (sigma === 0) return;
+      if (Math.abs(actual - media) > TEND_CONFIG.anomalia_sigmas * sigma) {
+        signals.push({
+          type: 'anomalia', severity: 'red', magnitude: Math.abs(actual - media) / sigma,
+          text: `${stage.code} en ${center}: ${actual.toFixed(1)}d esta semana (promedio: ${media.toFixed(1)}d ± ${sigma.toFixed(1)}d)`
+        });
+      }
+    });
+  });
+  return signals;
+}
+
+function tendSignalsComparacionCentros() {
+  const weeksAll = tendWeeksInWindow();
+  if (!weeksAll.length) return [];
+  const latest = weeksAll[weeksAll.length - 1];
+  const stages = (state.homeData?.stages ?? []).filter(s => s.enabled !== false);
+  const centers = tendActiveCenters();
+  if (centers.length < 2) return [];
+  const signals = [];
+  stages.forEach(stage => {
+    const { map } = tendEtapaWeekCenterAgg(stage.code);
+    const values = centers
+      .map(c => { const a = map.get(c + '|' + latest); return { center: c, avg: a && a.count > 0 ? a.sumDays / a.count : null }; })
+      .filter(v => v.avg !== null);
+    if (values.length < 2) return;
+    values.forEach(v => {
+      const rest = values.filter(o => o.center !== v.center);
+      const restAvg = rest.reduce((a, b) => a + b.avg, 0) / rest.length;
+      if (restAvg <= 0) return;
+      if (v.avg > TEND_CONFIG.comparacion_centros_factor * restAvg) {
+        signals.push({
+          type: 'comparacion', severity: 'yellow', magnitude: v.avg / restAvg,
+          text: `${stage.code} en ${v.center} es ${(v.avg / restAvg).toFixed(1)}x el promedio del resto de centros (${v.avg.toFixed(1)}d vs ${restAvg.toFixed(1)}d)`
+        });
+      }
+    });
+  });
+  return signals;
+}
+
+const TEND_SIGNAL_ICONS = { ingreso: '📈', tendencia: '⚠️', anomalia: '🔴', comparacion: '⚖️' };
+
+function _tendSignalCard(s) {
+  const div = document.createElement('div');
+  div.className = `tend-signal tend-sig-${s.severity}`;
+  div.innerHTML = `<span class="tend-signal-icon">${TEND_SIGNAL_ICONS[s.type] ?? '•'}</span><span class="tend-signal-text">${s.text}</span>`;
+  return div;
+}
+
+function tendRenderSignals() {
+  const container = document.getElementById('tendSignals');
+  if (!container) return;
+  const all = [
+    ...tendSignalsIngreso(),
+    ...tendSignalsTendenciaCreciente(),
+    ...tendSignalsAnomalia(),
+    ...tendSignalsComparacionCentros()
+  ].sort((a, b) => b.magnitude - a.magnitude);
+
+  container.innerHTML = '';
+  if (!all.length) {
+    container.innerHTML = '<p class="tend-signal-none">Sin cambios significativos en el período.</p>';
+    return;
+  }
+
+  const visible = all.slice(0, TEND_CONFIG.max_signals_visible);
+  const rest = all.slice(TEND_CONFIG.max_signals_visible);
+  visible.forEach(s => container.appendChild(_tendSignalCard(s)));
+  if (rest.length) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tend-signal-more';
+    btn.textContent = `Ver todas (${all.length})`;
+    btn.addEventListener('click', () => {
+      container.innerHTML = '';
+      all.forEach(s => container.appendChild(_tendSignalCard(s)));
+    });
+    container.appendChild(btn);
+  }
+}
+
+function renderTendencias() {
+  tendRenderCenterPills();
+  tendRenderTechniquePills();
+  tendRenderWindowPills();
+
+  const data = state.tendencias.weeklyData;
+  if (!data || data.length === 0) {
+    const signalsEl = document.getElementById('tendSignals');
+    if (signalsEl) signalsEl.innerHTML = '<p class="detail-placeholder">Sin datos aún. Se acumularán automáticamente con cada actualización del snapshot.</p>';
+    const heatmapEl = document.getElementById('tendHeatmap');
+    if (heatmapEl) heatmapEl.innerHTML = '';
+    return;
+  }
+
+  tendRenderSignals();
+  tendBuildChartIngreso();
+  tendRenderStageSelect();
+  tendBuildChartEtapa(state.tendencias.selectedStage);
+  tendRenderHeatmap();
+}
+
+async function loadTendenciasData() {
+  try {
+    const resp = await fetch('/api/stats/weekly');
+    state.tendencias.weeklyData = resp.ok ? await resp.json() : [];
+  } catch {
+    state.tendencias.weeklyData = [];
+  }
+  renderTendencias();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3840,12 +4337,20 @@ function _pedidoEligiblePatients() {
 async function computeAutoPedidos() {
   if (!state.homeData) return;
 
-  // Limpiar pedidos automáticos ya creados para pacientes BQT/IORT (no inician en acelerador)
+  // Limpiar pedidos automáticos que ya no aplican: técnica BQT/IORT, fecha límite vencida,
+  // o el paciente ya avanzó de etapa (pasó Chequeo General) y el pedido quedó desactualizado
   const patientById = new Map((state.homeData.patients ?? []).map(p => [p.patientId, p]));
-  const staleAuto = state.pedidos.items.filter(p =>
-    p.origin === 'Auto' && p.type === 'Paciente' && !p.completed &&
-    isExcludedTechnique(patientById.get(p.patientId) ?? { treatmentTechnique: p.technique })
-  );
+  const staleAuto = state.pedidos.items.filter(p => {
+    if (p.origin !== 'Auto' || p.type !== 'Paciente' || p.completed) return false;
+    const patient = patientById.get(p.patientId);
+    if (isExcludedTechnique(patient ?? { treatmentTechnique: p.technique })) return true;
+    if (_pedidoIsPastDate(p.fechaLimite)) return true;
+    if (patient) {
+      const idx = _STAGE_ORDER.indexOf((patient.stageCode ?? '').toUpperCase());
+      if (idx > PEDIDO_AUTO_MAX_IDX) return true;
+    }
+    return false;
+  });
   for (const stale of staleAuto) {
     try { await fetch(`/api/pedidos/${stale.id}`, { method: 'DELETE' }); } catch {}
   }
@@ -3882,7 +4387,9 @@ async function computeAutoPedidos() {
   const existingAutoIds = new Set(
     state.pedidos.items.filter(p => p.origin === 'Auto' && p.type === 'Paciente').map(p => p.patientId)
   );
-  const toCreate = candidates.filter(p => !existingAutoIds.has(p.patientId));
+  const toCreate = candidates.filter(p =>
+    !existingAutoIds.has(p.patientId) && !_pedidoIsPastDate(_pedidoInicioFecha(p))
+  );
   if (toCreate.length === 0) {
     if ((staleAuto.length > 0 || toBackfill.length > 0) && state.activeTab === 'pedidos') renderPedidos();
     return;
@@ -3920,6 +4427,15 @@ function _pedidoInicioFecha(p) {
   dates.sort();
   const d = new Date(dates[0]);
   return isNaN(d) ? null : d.toISOString();
+}
+
+function _pedidoIsPastDate(iso) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (isNaN(d)) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
 }
 
 function _pedidoUrgencyClass(fechaLimite) {
@@ -4167,6 +4683,354 @@ function _openPedidoModal(type, existing) {
       if (idx >= 0) state.pedidos.items[idx] = saved; else state.pedidos.items.push(saved);
       cleanup();
       renderPedidos();
+    } catch {
+      errorDiv.textContent = 'Error de red al guardar.';
+      errorDiv.hidden = false;
+      submitBtn.disabled = false;
+    }
+  }
+
+  function onCancel() { cleanup(); }
+  function onKeydown(e) { if (e.key === 'Escape') onCancel(); }
+
+  function cleanup() {
+    overlay.hidden = true;
+    submitBtn.disabled = false;
+    searchIn.removeEventListener('input', onPatientSearchInput);
+    cancelBtn.removeEventListener('click', onCancel);
+    submitBtn.removeEventListener('click', onSubmit);
+    document.removeEventListener('keydown', onKeydown);
+  }
+
+  searchIn.addEventListener('input', onPatientSearchInput);
+  cancelBtn.addEventListener('click', onCancel);
+  submitBtn.addEventListener('click', onSubmit);
+  document.addEventListener('keydown', onKeydown);
+}
+
+// ── QA Paciente Específico (Física) tab ────────────────────────────────────
+
+const _QA_MIN_IDX = _STAGE_ORDER.indexOf('F6C'); // exclusivo: después de F6C
+const _QA_MAX_IDX = _STAGE_ORDER.indexOf('F7A'); // inclusivo: hasta F7A
+
+async function loadQaEspecificoData() {
+  try {
+    const resp = await fetch('/api/qa-especifico');
+    state.qaEspecifico.items = resp.ok ? await resp.json() : [];
+  } catch { state.qaEspecifico.items = []; }
+  state.qaEspecifico.loaded = true;
+}
+
+async function loadQaEspecificoTab() {
+  if (!state.qaEspecifico.loaded) await loadQaEspecificoData();
+  await computeQaEspecifico();
+  renderQaEspecifico();
+  _wireQaEspecificoActionBar();
+}
+
+function _qaEspecificoEligiblePlans() {
+  const result = [];
+  for (const p of (state.homeData?.patients ?? [])) {
+    const stageIdx = _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase());
+    const stagePastF6C = stageIdx > _QA_MIN_IDX; // exclusivo
+    const stagePastF7A = stageIdx > _QA_MAX_IDX; // paciente ya completó F7A
+    if (stagePastF7A) continue;
+    for (const plan of (p.plans ?? [])) {
+      if (plan.irradiationModality !== 'IMRT' && plan.irradiationModality !== 'VMAT') continue;
+      if (plan.status !== 'PlanApproval' && !stagePastF6C) continue;
+      result.push({ patient: p, plan });
+    }
+  }
+  return result;
+}
+
+async function computeQaEspecifico() {
+  if (!state.homeData) return;
+  const patientById = new Map(state.homeData.patients.map(p => [p.patientId, p]));
+
+  // Salida por paciente completo (F7A): todos sus planes Auto no fijados
+  const patientsPastF7A = new Set(
+    state.homeData.patients
+      .filter(p => _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase()) > _QA_MAX_IDX)
+      .map(p => p.patientId)
+  );
+
+  // Salida por plan individual (TreatApproval)
+  const stale = state.qaEspecifico.items.filter(i => {
+    if (i.origin !== 'Auto' || i.pinned || i.excluded) return false;
+    if (patientsPastF7A.has(i.patientId)) return true;
+    const patient = patientById.get(i.patientId);
+    const plan = (patient?.plans ?? []).find(pl => pl.planId === i.planId);
+    return !!plan && plan.status === 'TreatApproval';
+  });
+  for (const s of stale) {
+    try { await fetch(`/api/qa-especifico/${s.id}`, { method: 'DELETE' }); } catch {}
+  }
+  if (stale.length > 0) {
+    const staleIds = new Set(stale.map(i => i.id));
+    state.qaEspecifico.items = state.qaEspecifico.items.filter(i => !staleIds.has(i.id));
+  }
+
+  // Alta de nuevos planes elegibles (match por patientId+planId; incluye excluidos, para no re-generar tras "Eliminar")
+  const eligible = _qaEspecificoEligiblePlans();
+  const existingKeys = new Set(state.qaEspecifico.items.map(i => `${i.patientId}::${i.planId ?? ''}`));
+  const toCreate = eligible.filter(({ patient, plan }) => !existingKeys.has(`${patient.patientId}::${plan.planId}`));
+  for (const { patient, plan } of toCreate) {
+    const body = {
+      origin: 'Auto', pinned: false, excluded: false,
+      patientId: patient.patientId, patientName: patient.patientName, centerName: patient.centerName,
+      planId: plan.planId, plan: plan.planId ?? null, equipoName: plan.machineDisplayName ?? null,
+      observaciones: null
+    };
+    try {
+      const resp = await fetch('/api/qa-especifico', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (resp.ok) state.qaEspecifico.items.push(await resp.json());
+    } catch {}
+  }
+
+  if ((stale.length > 0 || toCreate.length > 0) && state.activeTab === 'qa-especifico') renderQaEspecifico();
+}
+
+function buildQaEspecificoFilters() {
+  const row = document.getElementById('qa-especifico-center-pills');
+  if (!row) return;
+  const all = state.qaEspecifico.items.filter(p => !p.excluded);
+  const active = state.qaEspecifico.centerFilters;
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', active.size === 0, () => {
+    active.clear(); renderQaEspecifico();
+  }));
+  const centers = [...new Set(all.map(p => p.centerName).filter(Boolean))].sort();
+  centers.forEach(c => row.appendChild(
+    makePill(c, active.has(c), () => {
+      if (active.has(c)) active.delete(c); else active.add(c);
+      renderQaEspecifico();
+    })
+  ));
+}
+
+function renderQaEspecifico() {
+  const wrap = document.getElementById('qa-especifico-table-wrap');
+  if (!wrap) return;
+
+  buildQaEspecificoFilters();
+
+  let items = state.qaEspecifico.items.filter(p => !p.excluded);
+  if (state.qaEspecifico.centerFilters.size > 0)
+    items = items.filter(p => state.qaEspecifico.centerFilters.has(p.centerName));
+
+  const { col, dir } = state.qaEspecifico.sort;
+  const mult = dir === 'asc' ? 1 : -1;
+  if (col === 'equipo') {
+    items = items.slice().sort((a, b) =>
+      mult * (a.equipoName ?? '').localeCompare(b.equipoName ?? '')
+      || (a.patientName ?? '').localeCompare(b.patientName ?? ''));
+  }
+
+  function thSort(label, key) {
+    const active = col === key;
+    const arrow = active ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+    return `<th class="spec-th-sort${active ? ' active' : ''}" data-col="${key}">${label}${arrow}</th>`;
+  }
+
+  const patientById = new Map((state.homeData?.patients ?? []).map(p => [p.patientId, p]));
+
+  const rows = items.map(p => {
+    const selClass = state.qaEspecifico.selectedId === p.id ? ' qa-selected' : '';
+    const pinIcon = p.pinned ? ' <span title="Fijado" class="qa-pin-icon">📌</span>' : '';
+    const patient = patientById.get(p.patientId);
+    const stageStr = patient ? esc(patient.stageDisplayName ?? patient.stageCode ?? '—') : '<span class="muted-italic">—</span>';
+    return `<tr class="${selClass.trim()}" data-id="${p.id}">
+      <td>${esc(fmtHc(p.patientId))}</td>
+      <td>${esc(p.patientName ?? '—')}${pinIcon}</td>
+      <td>${esc(p.plan ?? '—')}</td>
+      <td>${esc(p.equipoName ?? '—')}</td>
+      <td>${stageStr}</td>
+      <td>${esc(p.observaciones ?? '—')}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>
+      <th>HC</th><th>Apellido y Nombre</th><th>Plan</th>
+      ${thSort('Equipo', 'equipo')}
+      <th>Etapa de seguimiento</th>
+      <th>Observaciones</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes pendientes de QA</td></tr>'}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      state.qaEspecifico.selectedId = state.qaEspecifico.selectedId === tr.dataset.id ? null : tr.dataset.id;
+      renderQaEspecifico();
+    });
+  });
+  wrap.querySelectorAll('.spec-th-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.col;
+      if (state.qaEspecifico.sort.col === key) {
+        state.qaEspecifico.sort.dir = state.qaEspecifico.sort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.qaEspecifico.sort.col = key;
+        state.qaEspecifico.sort.dir = 'asc';
+      }
+      renderQaEspecifico();
+    });
+  });
+  _updateQaEspecificoActionButtons();
+}
+
+function _updateQaEspecificoActionButtons() {
+  const item = state.qaEspecifico.items.find(p => p.id === state.qaEspecifico.selectedId);
+  const has = !!item;
+  ['qaEditBtn', 'qaDeleteBtn', 'qaPinBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !has;
+  });
+  const pinBtn = document.getElementById('qaPinBtn');
+  if (pinBtn) pinBtn.textContent = item?.pinned ? 'Desfijar QA' : 'Fijar QA';
+}
+
+function _wireQaEspecificoActionBar() {
+  const bar = document.getElementById('qaEspecificoActionBar');
+  if (bar._wired) return;
+  bar._wired = true;
+
+  document.getElementById('qaAddManualBtn').addEventListener('click', () => _openQaEspecificoModal());
+
+  document.getElementById('qaEditBtn').addEventListener('click', () => {
+    const item = state.qaEspecifico.items.find(p => p.id === state.qaEspecifico.selectedId);
+    if (item) _openQaEspecificoModal(item);
+  });
+
+  document.getElementById('qaDeleteBtn').addEventListener('click', async () => {
+    const id = state.qaEspecifico.selectedId;
+    if (!id) return;
+    await fetch(`/api/qa-especifico/${id}`, { method: 'DELETE' });
+    const item = state.qaEspecifico.items.find(p => p.id === id);
+    if (item && item.origin === 'Auto') item.excluded = true;
+    else state.qaEspecifico.items = state.qaEspecifico.items.filter(p => p.id !== id);
+    state.qaEspecifico.selectedId = null;
+    renderQaEspecifico();
+  });
+
+  document.getElementById('qaPinBtn').addEventListener('click', async () => {
+    const id = state.qaEspecifico.selectedId;
+    if (!id) return;
+    const resp = await fetch(`/api/qa-especifico/${id}/pin`, { method: 'POST' });
+    if (resp.ok) {
+      const updated = await resp.json();
+      const idx = state.qaEspecifico.items.findIndex(p => p.id === id);
+      if (idx >= 0) state.qaEspecifico.items[idx] = updated;
+    }
+    renderQaEspecifico();
+  });
+}
+
+function _openQaEspecificoModal(existing) {
+  const overlay = document.getElementById('qa-modal-overlay');
+  if (!overlay) return;
+
+  const titleEl = document.getElementById('qa-modal-title');
+  const searchIn = document.getElementById('qa-paciente-search');
+  const searchResults = document.getElementById('qa-paciente-results');
+  const hcIn = document.getElementById('qa-hc');
+  const nombreIn = document.getElementById('qa-nombre');
+  const planIn = document.getElementById('qa-plan');
+  const equipoIn = document.getElementById('qa-equipo');
+  const obsIn = document.getElementById('qa-observaciones');
+  const errorDiv = document.getElementById('qa-error');
+  const cancelBtn = document.getElementById('qa-cancel-btn');
+  const submitBtn = document.getElementById('qa-submit-btn');
+  const searchBlock = document.getElementById('qa-paciente-search-block');
+
+  titleEl.textContent = existing ? 'Editar QA Paciente Específico' : 'Agregar QA Paciente Específico';
+  searchBlock.hidden = !!existing;
+  equipoIn.readOnly = !!existing;
+
+  let selectedPatient = existing
+    ? { patientId: existing.patientId, patientName: existing.patientName, centerName: existing.centerName }
+    : null;
+
+  searchIn.value = '';
+  searchResults.hidden = true;
+  searchResults.innerHTML = '';
+  hcIn.value = existing?.patientId ? fmtHc(existing.patientId) : '';
+  nombreIn.value = existing?.patientName ?? '';
+  planIn.value = existing?.plan ?? '';
+  equipoIn.value = existing?.equipoName ?? '';
+  obsIn.value = existing?.observaciones ?? '';
+  errorDiv.hidden = true;
+  overlay.hidden = false;
+
+  function onPatientSearchInput() {
+    const q = searchIn.value.trim().toLowerCase();
+    if (!q || !state.homeData) { searchResults.hidden = true; return; }
+    const matches = (state.homeData.patients ?? [])
+      .filter(p => p.patientName?.toLowerCase().includes(q) || p.patientId?.toLowerCase().includes(q))
+      .slice(0, 15);
+    if (matches.length === 0) { searchResults.hidden = true; return; }
+    searchResults.innerHTML = matches.map(p =>
+      `<div class="pedido-search-item" data-pid="${esc(p.patientId)}">${esc(fmtHc(p.patientId))} · ${esc(p.patientName)}</div>`
+    ).join('');
+    searchResults.hidden = false;
+    searchResults.querySelectorAll('.pedido-search-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const p = matches.find(m => m.patientId === el.dataset.pid);
+        selectedPatient = p;
+        hcIn.value = fmtHc(p.patientId);
+        nombreIn.value = p.patientName;
+        const firstPlan = (p.plans ?? []).find(pl => pl.irradiationModality === 'IMRT' || pl.irradiationModality === 'VMAT');
+        planIn.value = firstPlan?.planId ?? '';
+        equipoIn.value = firstPlan?.machineDisplayName ?? p.plannedMachineDisplayName ?? '';
+        searchIn.value = '';
+        searchResults.hidden = true;
+      });
+    });
+  }
+
+  async function onSubmit() {
+    if (!existing && !selectedPatient) {
+      errorDiv.textContent = 'Seleccione un paciente.';
+      errorDiv.hidden = false;
+      return;
+    }
+    submitBtn.disabled = true;
+    errorDiv.hidden = true;
+    const body = {
+      origin: existing?.origin ?? 'Manual',
+      pinned: existing?.pinned ?? false,
+      excluded: existing?.excluded ?? false,
+      patientId: selectedPatient.patientId,
+      patientName: selectedPatient.patientName,
+      centerName: selectedPatient.centerName ?? null,
+      planId: existing?.planId ?? null,
+      plan: planIn.value.trim() || null,
+      equipoName: equipoIn.value.trim() || null,
+      observaciones: obsIn.value.trim() || null
+    };
+    try {
+      const resp = existing
+        ? await fetch(`/api/qa-especifico/${existing.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+          })
+        : await fetch('/api/qa-especifico', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+          });
+      if (!resp.ok) {
+        errorDiv.textContent = `Error al guardar (${resp.status}).`;
+        errorDiv.hidden = false;
+        submitBtn.disabled = false;
+        return;
+      }
+      const saved = await resp.json();
+      const idx = state.qaEspecifico.items.findIndex(p => p.id === saved.id);
+      if (idx >= 0) state.qaEspecifico.items[idx] = saved; else state.qaEspecifico.items.push(saved);
+      cleanup();
+      renderQaEspecifico();
     } catch {
       errorDiv.textContent = 'Error de red al guardar.';
       errorDiv.hidden = false;
@@ -5068,7 +5932,7 @@ async function loadIniciosTab() {
   const dm1 = _subtractBusinessDays(today, 1);
   const dm2 = _subtractBusinessDays(today, 2);
 
-  state.inicios.futureDates = [d1, d2, d3];
+  state.inicios.futureDates = [today, d1, d2, d3];
   const availSet = new Set(state.agenda.availableDates);
 
   // Cargar días pasados (sin advertencia si no hay datos)
@@ -5159,7 +6023,7 @@ function _detectInicios(targetDate) {
       .filter(Boolean)
   );
 
-  const daySlots = state.inicios.agendaByDate[targetDate];
+  const daySlots = getSlotsForDay(targetDate);
   if (!Array.isArray(daySlots)) return [];
 
   return daySlots.filter(slot => {
@@ -5185,7 +6049,7 @@ function renderIniciosTab() {
   const today = todayStr();
   const futureDates = state.inicios.futureDates.length
     ? state.inicios.futureDates
-    : [_addBusinessDays(today, 1), _addBusinessDays(today, 2), _addBusinessDays(today, 3)];
+    : [today, _addBusinessDays(today, 1), _addBusinessDays(today, 2), _addBusinessDays(today, 3)];
 
   // Mapa GUID → paciente de seguimiento (para obtener etapa)
   const followupByGuid = {};
@@ -5206,10 +6070,10 @@ function renderIniciosTab() {
     totalCount += inicios.length;
   }
 
-  const [d1, d2, d3] = futureDates;
+  const [d0, d1, d2, d3] = futureDates;
   counter.textContent =
-    `${totalCount} inicio${totalCount !== 1 ? 's' : ''} en los próximos 3 días hábiles ` +
-    `(${counts[d1]} mañana, ${counts[d2]} en 2 días, ${counts[d3]} en 3 días)`;
+    `${totalCount} inicio${totalCount !== 1 ? 's' : ''} entre hoy y los próximos 3 días hábiles ` +
+    `(${counts[d0]} hoy, ${counts[d1]} mañana, ${counts[d2]} en 2 días, ${counts[d3]} en 3 días)`;
 
   content.innerHTML = '';
 
@@ -5690,7 +6554,7 @@ wireActions();
 loadAvailableDates();
 loadAvailableTomographDates();
 loadHome();
-loadWeeklyStats();
+loadTendenciasData();
 checkFeriadosAlert();
 setTimeout(_checkStatus, 10000);
 setInterval(_checkStatus, POLL_INTERVAL_MS);
