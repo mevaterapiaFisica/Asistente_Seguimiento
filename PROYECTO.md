@@ -2,7 +2,7 @@
 
 > Sistema de seguimiento de pacientes en radioterapia oncológica para **Meva Terapia** (mevaterapia.com.ar).
 > Tecnologías: .NET 9, ASP.NET Core Minimal APIs, Playwright, Entity Framework 6, Windows Service.
-> Última actualización: 2026-07-22
+> Última actualización: 2026-07-23
 
 ---
 
@@ -398,7 +398,16 @@ Estadísticas semanales de flujo de pacientes. Requiere 4 semanas de datos reale
 ### Tab Pedidos (Física)
 
 Lista manual/auto de pedidos (Paciente/Equipo/Recordatorio) con fecha límite, médico, motivo, etc.
-Auto-generación: pacientes con turno agendado o reserva activa, etapa ≤ F7C, técnica no BQT/IORT.
+
+**Alta automática:** pacientes con turno agendado o reserva activa, etapa ≤ F7C (Chequeo General),
+técnica no BQT/IORT, y solo si la fecha límite calculada (turno más próximo) no es anterior a hoy.
+
+**Limpieza automática (`computeAutoPedidos()`, corre en cada sync y al reservar turno):** borra
+pedidos automáticos no completados que ya no aplican — técnica BQT/IORT, fecha límite vencida, **o**
+el paciente ya avanzó de etapa más allá de F7C (evita que quede un pedido con Tarea/Fecha
+desactualizada de cuando se creó, aunque el paciente ya esté en Placa Verificadora u otra etapa
+posterior). También hace backfill de Tarea/Fecha Límite/Solicita en pedidos automáticos viejos que
+quedaron sin esos datos por versiones anteriores de la lógica.
 
 ### Tab QA Paciente Específico (Física, desde sesión 2026-07-22)
 
