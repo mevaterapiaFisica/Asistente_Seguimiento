@@ -33,9 +33,9 @@ public static class MetodosParaWebScrap
             .SelectMany(curso => curso.PlanSetups.Where(p => p.Status != "Rejected"))
             .ToList();
 
-        if (planSetups.Any(p => p.Status == "PlanApproval" && (p.CreationDate -DateTime.Today).Days<30))
+        if (planSetups.Any(p => p.Status == "PlanApproval" && (DateTime.Today - p.CreationDate).Days<30))
         {
-            return planSetups.Where(p => p.Status == "PlanApproval" && (p.CreationDate -DateTime.Today).Days<30 ).ToList();
+            return planSetups.Where(p => p.Status == "PlanApproval" && (DateTime.Today - p.CreationDate).Days<30 ).ToList();
         }
         return null;
     }
@@ -47,9 +47,9 @@ public static class MetodosParaWebScrap
             .SelectMany(curso => curso.PlanSetups.Where(p => p.Status != "Rejected"))
             .ToList();
 
-        if (planSetups.Any(p => p.Status == "TreatApproval" && (p.CreationDate -DateTime.Today).Days<30))
+        if (planSetups.Any(p => p.Status == "TreatApproval" && (DateTime.Today - p.CreationDate).Days<30))
         {
-            return planSetups.Where(p => p.Status == "TreatApproval" && (p.CreationDate -DateTime.Today).Days<30).ToList();
+            return planSetups.Where(p => p.Status == "TreatApproval" && (DateTime.Today - p.CreationDate).Days<30).ToList();
         }
         return null;
     }

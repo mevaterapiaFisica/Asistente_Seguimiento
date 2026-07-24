@@ -265,15 +265,22 @@ public sealed class BootstrapService
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var allPatientIds = followUpIds
+            var baseIds = followUpIds
                 .Concat(agendaByHc.Keys.Where(hc => !followUpIds.Contains(hc)))
+                .ToList();
+            // SitraMed sufija el HC por seguimiento/curso concurrente (ej. "1-114893-1"); ARIA
+            // guarda al paciente bajo un único PatientId (típicamente sufijo "-0"). Consultamos
+            // también la variante "-0" para no perder el match cuando difieren.
+            var allPatientIds = baseIds
+                .Concat(baseIds.Select(NormalizeAriaBaseId).Where(id => !baseIds.Contains(id)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             aria = (await _ariaPlanResolver.ResolveAsync(allPatientIds, cancellationToken)).ToList();
             ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
             foreach (var patient in followUp)
             {
-                if (!ariaByPatient.TryGetValue(patient.PatientId, out var plan)) continue;
+                if (!TryFindAriaPlan(ariaByPatient, patient.PatientId, out var plan)) continue;
                 if (!string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
                     patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
                 if (!string.IsNullOrWhiteSpace(plan.BeamType))
@@ -289,7 +296,7 @@ public sealed class BootstrapService
 
             foreach (var (hc, items) in agendaByHc)
             {
-                if (!ariaByPatient.TryGetValue(hc, out var plan)) continue;
+                if (!TryFindAriaPlan(ariaByPatient, hc, out var plan)) continue;
                 foreach (var item in items)
                 {
                     if (!string.IsNullOrWhiteSpace(plan.BeamType)) item.BeamType = plan.BeamType;
@@ -350,6 +357,17 @@ public sealed class BootstrapService
         var previousBootstrap = await _snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
         if (previousBootstrap is not null)
         {
+            // Guard: scrape de seguimiento puede volver vacío por falla silenciosa de red/timeout
+            // (ver PlaywrightSitraMedClient.DownloadFollowUpPagesAsync) sin tirar excepción.
+            // Si el snapshot previo tenía pacientes y este refresh trajo 0, descartar el resultado
+            // vacío en vez de pisar el dashboard — mejor data vieja que data vacía.
+            if (data.FollowUpPatients.Count == 0 && previousBootstrap.FollowUpPatients.Count > 0)
+            {
+                Console.Error.WriteLine("[BuildAsync] Seguimiento devolvió 0 pacientes con snapshot previo no vacío — se descarta el resultado y se mantiene el anterior.");
+                data.FollowUpPatients = previousBootstrap.FollowUpPatients;
+                data.StageSummary = previousBootstrap.StageSummary;
+            }
+
             // Preservar TomographyDate y ResponsibleDoctor del snapshot previo si el refresh no los encontró.
             var previousTomoDate = previousBootstrap.FollowUpPatients
                 .Where(p => p.TomographyDate.HasValue && !string.IsNullOrEmpty(p.PatientId))
@@ -469,6 +487,39 @@ public sealed class BootstrapService
 
         await _snapshotStore.SaveAsync("dashboard_bootstrap", data, cancellationToken);
         return data;
+    }
+
+    // SitraMed sufija el HC por seguimiento/curso concurrente (ej. "1-114893-1"); ARIA guarda
+    // al paciente bajo un único PatientId (típicamente sufijo "-0"). Normaliza a esa forma.
+    public static string NormalizeAriaBaseId(string hc)
+    {
+        var lastDash = hc.LastIndexOf('-');
+        if (lastDash < 0) return hc;
+        var suffix = hc[(lastDash + 1)..];
+        return int.TryParse(suffix, out _) ? hc[..(lastDash + 1)] + "0" : hc;
+    }
+
+    // AriaAdapter (camino vivo) siempre crea una entrada "vacía" por cada id consultado, exista o
+    // no en ARIA — un match exacto vacío no debe tapar datos reales bajo el HC normalizado "-0".
+    private static bool HasAriaData(AriaPlanSnapshot p) =>
+        p.Plans.Count > 0
+        || !string.IsNullOrWhiteSpace(p.PlanStatus)
+        || !string.IsNullOrWhiteSpace(p.PlannedMachineDisplayName)
+        || !string.IsNullOrWhiteSpace(p.IrradiationModality);
+
+    public static bool TryFindAriaPlan(
+        Dictionary<string, AriaPlanSnapshot> ariaByPatient, string patientId, out AriaPlanSnapshot plan)
+    {
+        var exactFound = ariaByPatient.TryGetValue(patientId, out plan!);
+        if (exactFound && HasAriaData(plan)) return true;
+
+        if (ariaByPatient.TryGetValue(NormalizeAriaBaseId(patientId), out var normalizedPlan) && HasAriaData(normalizedPlan))
+        {
+            plan = normalizedPlan;
+            return true;
+        }
+
+        return exactFound;
     }
 
     public static List<StageSummaryItem> ComputeStageSummary(

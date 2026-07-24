@@ -2,7 +2,7 @@
 
 > Sistema de seguimiento de pacientes en radioterapia oncológica para **Meva Terapia** (mevaterapia.com.ar).
 > Tecnologías: .NET 9, ASP.NET Core Minimal APIs, Playwright, Entity Framework 6, Windows Service.
-> Última actualización: 2026-07-23
+> Última actualización: 2026-07-24
 
 ---
 
@@ -157,7 +157,7 @@ Fuente de verdad: `AppConfiguration.cs`. Se puede sobrescribir vía `data/rt_con
 
 - **`AriaPlanResolver`** — dado HCs de pacientes, devuelve plan activo. En producción consulta BD; si no hay conexión, lee `aria_plans_mock.json`.
 - **Clasificación de tipo de haz:** `Electrones` (RadiationType=="E"), `SRS` (técnica contiene SRS/STEREO), `AltaE` (energía ≥ 10000 keV), `6X` (default).
-- **`IrradiationModality`:** `ARC`→`VMAT`, `STATIC`+>40CP→`IMRT`, `STATIC`+≤40CP→`3DC`. Viene del primer haz del plan.
+- **`IrradiationModality`:** `STATIC`+>40CP→`IMRT`, `STATIC`+≤40CP→`3DC`. `ARC` con `MLCPlanType` conteniendo "VMAT"→`VMAT`, cualquier otro `ARC` (arco conformado, TBI vía arco, sin MLC)→`3DC` (sesión 2026-07-24: técnica `ARC` no es sinónimo de VMAT — se agregó lookup de `MLCPlan.MLCPlanType` por `RadiationSer`, mismo patrón que el conteo de ControlPoints). Viene del primer haz del plan.
 - **`ExactBeamEnergy`:** máximo sobre **todos** los campos del plan (si un campo es 10X/15X/18X, se usa esa energía aunque otros sean 6X).
 
 ### Persistencia (Storage)
@@ -409,16 +409,31 @@ desactualizada de cuando se creó, aunque el paciente ya esté en Placa Verifica
 posterior). También hace backfill de Tarea/Fecha Límite/Solicita en pedidos automáticos viejos que
 quedaron sin esos datos por versiones anteriores de la lógica.
 
-### Tab QA Paciente Específico (Física, desde sesión 2026-07-22)
+### Tab QA Paciente Específico (Física, desde sesión 2026-07-22, revisada 2026-07-24)
 
 Lista **por plan de ARIA** (no por paciente — un paciente con 2 planes puede tener 2 filas).
 
-- **Entra:** plan con `IrradiationModality` ARIA = IMRT o VMAT, **y** (`Status` = `PlanApproval` **o** paciente completó etapa SitraMed F6C).
-- **Sale:** ese plan pasó a `Status` = `TreatApproval` (sale solo ese plan), **o** paciente completó F7A (salen todos sus planes).
-- **Fijar QA:** un item fijado nunca desaparece solo (ni por TreatApproval ni por F7A) — solo lo saca "Eliminar" manual.
+**Reglas de entrada/salida** (motor `computeQaEspecifico()`/`_qaEspecificoEligiblePlans()`, `app.js`):
+- **Entra:** plan con `IrradiationModality` ARIA = IMRT o VMAT, **y** (`Status` = `PlanApproval` **o** paciente completó etapa SitraMed F6C) — **y nunca** si ese plan ya está en `Status = TreatApproval` (plan ya tratado/cerrado, aunque el paciente esté más allá de F6C por otro curso).
+- **Sale (3 triggers independientes):**
+  1. Ese plan puntual pasa a `Status = TreatApproval` en ARIA (sale solo ese plan).
+  2. Paciente completa etapa F7A en SitraMed (salen todos sus planes).
+  3. Paciente completa etapa **F6F** (Control de Calidad) en SitraMed — dispara antes que el trigger de F7A ya que F6F es anterior en `_STAGE_ORDER`, por lo que en la práctica es el que corta primero (salen todos sus planes).
+- **Fijar QA:** un item fijado nunca desaparece solo por ninguno de los 3 triggers de salida — solo lo saca "Eliminar" manual.
 - **Eliminar** sobre item Auto → exclusión permanente para ese (paciente, plan) puntual (`Excluded=true`, no se regenera). Sobre item Manual → borrado total.
-- Tabla: HC, Apellido y Nombre, Plan (`PlanId` de ARIA, no el nombre), Equipo, Etapa de seguimiento (en vivo), Observaciones. Ordenable por Equipo (desempate por nombre). Pills de centro con selección múltiple.
-- Motor de elegibilidad corre en el frontend (`computeQaEspecifico()`, `app.js`) contra `state.homeData.patients[].plans[]` en cada carga de la pestaña.
+- `POST /api/qa-especifico` es idempotente por (`PatientId`,`PlanId`) para items `Origin=Auto` — evita duplicados si el motor corre 2 veces casi en simultáneo (ej. 2 pestañas abiertas).
+
+**UI:**
+- Tabla: HC, Apellido y Nombre, Plan (`PlanId` de ARIA — **no** `PlanName`, que suele venir `null`), Equipo, Etapa de seguimiento (en vivo, join contra `state.homeData.patients` por HC), Observaciones.
+- Orden por defecto: Equipo asc. Filtro de centro por defecto: MEVA-Central + RT MEDRANO. Pills de centro con selección múltiple (`centerFilters: Set`).
+- Ordenado por Equipo → agrupado visualmente: banda alterna (`--info-bg`) + regla superior gruesa (`--accent`) en el primer row de cada equipo nuevo, nombre del equipo en negrita solo ahí. Se desactiva si se ordena por otra columna.
+- Botones: Agregar Manual, Editar (Plan/Observaciones), Fijar QA (toggle, pin gana sobre toda salida automática), Eliminar.
+
+**Datos ARIA que alimentan el motor** (`AriaPlanSnapshot.Plans` → `ProcessPatientSnapshot.Plans` → `patients[].plans[]` en `/api/home`, cada uno `{PlanId, PlanName, Status, IrradiationModality, MachineDisplayName}`):
+- Camino real de producción: `AriaQuery.cs` (bulk, `ParseAriaOutput` en `Program.cs`) — candidatos = `ActivePlan` ∪ `AllPlans` con `Status` `PlanApproval`/`TreatApproval`.
+- Camino vivo (sin uso real en producción hoy): `AriaAdapter.cs` — candidatos = `PlanActivo` ∪ `PlanesPlanApproval` ∪ `PlanesTreatApproval` (`MetodosParaWebScrap.cs`).
+- **HC con sufijo por curso concurrente:** SitraMed sufija el HC por seguimiento (`1-114893-1` para un 2do curso), pero ARIA guarda al paciente bajo un único `PatientId` (típicamente sufijo `-0`). `BootstrapService.NormalizeAriaBaseId`/`TryFindAriaPlan` (`Contracts.cs`) prueban también la variante `-0` al consultar y mergear ARIA — sin esto, el paciente queda invisible para QA aunque tenga plan real aprobado. Detalle en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`.
+- **Técnica `ARC` ≠ VMAT:** arco conformado y algunos TBI usan la misma `TechniqueId="ARC"` que VMAT en ARIA — el discriminador real es `MLCPlan.MLCPlanType` (entidad no documentada, encontrada por reflexión sobre `AriaQ.dll`). Solo `MLCPlanType` conteniendo "VMAT" clasifica como `VMAT`; el resto cae a `3DC`. Ver sección ARIA arriba y `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md` (Bug 3, sin verificar contra ARIA real).
 
 ### Tab Técnicas Especiales (desde sesión 2026-06-10)
 
@@ -587,3 +602,4 @@ El sistema corre como **Windows Service** (`MevaRT`) en la PC servidora.
 - **Feriados:** `data/feriados.txt` con una fecha por línea en formato `YYYY-MM-DD`. La alerta de fin de año avisa cuando falta agregar el año siguiente.
 - **Flujo de archivos de datos (dev vs prod):** ver `CLAUDE.md` en la raíz del repo — quién setea `MEVA_DATA_DIR` en cada entorno y las 2 inconsistencias conocidas.
 - **QA Paciente Específico (sesión 2026-07-22):** el endpoint real que usa `refresh.bat` es `POST /api/home/apply-aria` (no `BootstrapService.BuildAsync`) — ahí es donde hay que propagar campos nuevos de ARIA (`Plans`), no solo en el camino "vivo" de `Contracts.cs`. Bug real encontrado: `apply-aria` copiaba `IrradiationModality`/`BeamType`/etc. pero no `Plans`, dejando la lista vacía en producción hasta corregirlo (`Program.cs`).
+- **QA Paciente Específico — bugs de datos ARIA (sesión 2026-07-24):** 3 bugs reales encontrados validando contra producción — HC con sufijo por curso concurrente no matcheaba ARIA, plan viejo ya tratado (`TreatApproval`) colaba en la alta, y técnica `ARC` se clasificaba como VMAT sin mirar `MLCPlanType`. Detalle completo, causas raíz y fixes en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`.

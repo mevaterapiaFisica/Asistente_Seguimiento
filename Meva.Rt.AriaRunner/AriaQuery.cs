@@ -116,6 +116,17 @@ public sealed class AriaQuery
                 .ToDictionary(x => x.RadiationSer, x => x.CpCount);
             _log.Info($"         {cpCounts.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
 
+            // ── 4c. Tipo de MLC por RadiationSer (discrimina VMAT real de arco conformado/TBI con técnica ARC) ──
+            _log.Info("  Cargando tipo de MLC...");
+            var mlcTypes = QueryInBatches(radiationSerList, chunk =>
+                ctx.ExternalFieldCommons
+                   .Where(ef => chunk.Contains(ef.RadiationSer))
+                   .SelectMany(ef => ef.MLCPlans.Select(m => new { ef.RadiationSer, m.MLCPlanType }))
+                   .ToList())
+                .GroupBy(x => x.RadiationSer)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)));
+            _log.Info($"         {mlcTypes.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
+
             // ── 6. Ensamblar resultados en el orden original ───────────────────────
             _log.Info("  [6/6] Ensamblando resultados...");
             var results = new List<PatientResult>(ids.Count);
@@ -160,7 +171,7 @@ public sealed class AriaQuery
                     foreach (var plan in plansByCourseSer[course.CourseSer])
                     {
                         var planRads = radiationsByPlanSer[plan.PlanSetupSer].ToList();
-                        allPlans.Add(BuildPlanResult(course, plan, planRads, cpCounts));
+                        allPlans.Add(BuildPlanResult(course, plan, planRads, cpCounts, mlcTypes));
                     }
                 }
 
@@ -276,8 +287,9 @@ public sealed class AriaQuery
 
     // radiations: para QueryAllPatients viene del lookup; para QueryPatient viene de plan.Radiations.
     // cpCounts: conteo de ControlPoints por RadiationSer (solo en bulk); null = usar navigation property.
+    // mlcTypes: MLCPlanType por RadiationSer (solo en bulk); null = usar navigation property.
     private static PlanResult BuildPlanResult(Course course, PlanSetup plan, ICollection<Radiation>? radiations,
-        Dictionary<long, int>? cpCounts = null)
+        Dictionary<long, int>? cpCounts = null, Dictionary<long, string?>? mlcTypes = null)
     {
         var statusDateStr = plan.StatusDate == default ? null : plan.StatusDate.ToString("yyyy-MM-dd");
         var creationDateStr = plan.CreationDate == default ? null : plan.CreationDate.ToString("yyyy-MM-dd");
@@ -315,7 +327,7 @@ public sealed class AriaQuery
             var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
             var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
             pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
-            pr.IrradiationModality = Modalidad(firstRadiation, cpCounts);
+            pr.IrradiationModality = Modalidad(firstRadiation, cpCounts, mlcTypes);
             pr.ExactBeamEnergy = DetermineExactBeamEnergy(radiations);
         }
 
@@ -344,7 +356,7 @@ public sealed class AriaQuery
         return null;
     }
 
-    private static string Modalidad(Radiation firstRadiation, Dictionary<long, int>? cpCounts = null)
+    private static string Modalidad(Radiation firstRadiation, Dictionary<long, int>? cpCounts = null, Dictionary<long, string?>? mlcTypes = null)
     {
         if (firstRadiation.ExternalFieldCommon?.Technique == null)
             return "Indefinido";
@@ -352,7 +364,17 @@ public sealed class AriaQuery
         var techId = firstRadiation.ExternalFieldCommon.Technique.TechniqueId;
 
         if (techId == "ARC")
-            return "VMAT";
+        {
+            // Técnica ARC no es sinónimo de VMAT: arco conformado (MLC static/dynamic arc) y algunos
+            // TBI también usan ARC pero con MLCPlanType distinto (o sin MLC). Solo VMAT real si el
+            // MLCPlanType lo indica explícitamente.
+            var mlcType = mlcTypes != null
+                ? (mlcTypes.TryGetValue(firstRadiation.RadiationSer, out var t) ? t : null)
+                : firstRadiation.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+            return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
+                ? "VMAT"
+                : "3DC";
+        }
 
         if (techId == "STATIC")
         {

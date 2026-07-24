@@ -161,8 +161,14 @@ app.MapPost("/api/home/refresh-no-aria", async Task<IResult> (
         .Select(a => guidHcMapNoAria[a.SitraMedGuid!])
         .Where(id => !string.IsNullOrWhiteSpace(id));
 
-    var ids = followUpExportIds
+    var baseExportIds = followUpExportIds
         .Concat(agendaExportIds)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    // SitraMed sufija el HC por seguimiento/curso concurrente (ej. "1-114893-1"); ARIA guarda al
+    // paciente bajo un único PatientId (típicamente sufijo "-0"). Exportamos también esa variante.
+    var ids = baseExportIds
+        .Concat(baseExportIds.Select(BootstrapService.NormalizeAriaBaseId).Where(id => !baseExportIds.Contains(id)))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(id => id)
         .ToList();
@@ -341,8 +347,12 @@ app.MapGet("/api/aria/export-patient-ids", async Task<IResult> (
         .Select(a => guidHcMapExport[a.SitraMedGuid!])
         .Where(id => !string.IsNullOrWhiteSpace(id));
 
-    var ids = followUpExport
+    var baseFollowUpIds = followUpExport
         .Concat(agendaExport)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    var ids = baseFollowUpIds
+        .Concat(baseFollowUpIds.Select(BootstrapService.NormalizeAriaBaseId).Where(id => !baseFollowUpIds.Contains(id)))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(id => id)
         .ToList();
@@ -443,14 +453,20 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
         .Where(id => !string.IsNullOrWhiteSpace(id) && !followUpIdSet.Contains(id))
         .Distinct(StringComparer.OrdinalIgnoreCase);
 
-    var patientIds = followUpIdSet.Concat(agendaOnlyIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    var baseIds = followUpIdSet.Concat(agendaOnlyIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    // SitraMed sufija el HC por seguimiento/curso concurrente (ej. "1-114893-1"); ARIA guarda al
+    // paciente bajo un único PatientId (típicamente sufijo "-0"). Consultamos también esa variante.
+    var patientIds = baseIds
+        .Concat(baseIds.Select(BootstrapService.NormalizeAriaBaseId).Where(id => !baseIds.Contains(id)))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     var aria = (await ariaPlanResolver.ResolveAsync(patientIds, cancellationToken)).ToList();
     var ariaByPatient = aria.ToDictionary(x => x.PatientId, StringComparer.OrdinalIgnoreCase);
 
     foreach (var patient in data.FollowUpPatients)
     {
-        if (!ariaByPatient.TryGetValue(patient.PatientId, out var plan)) continue;
+        if (!BootstrapService.TryFindAriaPlan(ariaByPatient, patient.PatientId, out var plan)) continue;
         if (!string.IsNullOrWhiteSpace(plan.PlannedMachineDisplayName))
             patient.PlannedMachineDisplayName = plan.PlannedMachineDisplayName;
         if (!string.IsNullOrWhiteSpace(plan.BeamType))
@@ -467,7 +483,7 @@ app.MapPost("/api/home/apply-aria", async Task<IResult> (
     {
         if (string.IsNullOrWhiteSpace(item.SitraMedGuid)) continue;
         if (!guidHcMapApply.TryGetValue(item.SitraMedGuid, out var hc)) continue;
-        if (!ariaByPatient.TryGetValue(hc, out var plan)) continue;
+        if (!BootstrapService.TryFindAriaPlan(ariaByPatient, hc, out var plan)) continue;
         if (!string.IsNullOrWhiteSpace(plan.BeamType)) item.BeamType = plan.BeamType;
         if (!string.IsNullOrWhiteSpace(plan.IrradiationModality)) item.IrradiationModality = plan.IrradiationModality;
     }
@@ -574,7 +590,13 @@ app.MapPost("/api/aria/run-query", async Task<IResult> (
             .Where(id => hcRegex.IsMatch(id) && !followUpHcIds.Contains(id) && !existingMockIds.Contains(id))
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
-        var hcIds = followUpHcIds.Concat(agendaNewIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var baseHcIds = followUpHcIds.Concat(agendaNewIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // SitraMed sufija el HC por seguimiento/curso concurrente; ARIA guarda al paciente bajo un
+        // único PatientId (típicamente sufijo "-0"). Consultamos también esa variante.
+        var hcIds = baseHcIds
+            .Concat(baseHcIds.Select(BootstrapService.NormalizeAriaBaseId).Where(id => !baseHcIds.Contains(id)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         if (hcIds.Count == 0)
             return TypedResults.BadRequest(new { error = "No hay pacientes con HC válida en el snapshot." });

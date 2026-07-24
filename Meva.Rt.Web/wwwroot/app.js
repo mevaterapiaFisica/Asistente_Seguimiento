@@ -100,8 +100,8 @@ const state = {
     items: [],
     selectedId: null,
     loaded: false,
-    centerFilters: new Set(),
-    sort: { col: null, dir: 'asc' }
+    centerFilters: new Set(['MEVA-Central', 'RT MEDRANO']),
+    sort: { col: 'equipo', dir: 'asc' }
   }
 };
 
@@ -2420,13 +2420,26 @@ function tendEtapaBand(stageCode) {
 }
 
 function tendChartOptions(yLabel) {
+  if (typeof Chart !== 'undefined') {
+    Chart.defaults.font.family = "'Segoe UI', sans-serif";
+    Chart.defaults.color = '#6b7b83';
+  }
   return {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
-      legend: { labels: { filter: li => !li.text.startsWith('Banda') } },
+      legend: {
+        labels: {
+          filter: li => !li.text.startsWith('Banda') && !li.text.includes('(tendencia)'),
+          usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7,
+          color: '#1b2f38', font: { size: 11 }, padding: 14
+        }
+      },
       tooltip: {
+        backgroundColor: '#fffaf2', titleColor: '#1b2f38', bodyColor: '#1b2f38',
+        borderColor: '#d8cec0', borderWidth: 1, cornerRadius: 8, padding: 10,
+        boxPadding: 4, usePointStyle: true,
         callbacks: {
           label(ctx) {
             const v = ctx.parsed.y;
@@ -2442,8 +2455,29 @@ function tendChartOptions(yLabel) {
         }
       }
     },
-    scales: { y: { beginAtZero: true, title: { display: true, text: yLabel } } }
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#6b7b83' } },
+      y: {
+        beginAtZero: true, title: { display: true, text: yLabel, color: '#6b7b83' },
+        grid: { color: 'rgba(216,206,192,0.5)' }, ticks: { color: '#6b7b83' }
+      }
+    }
   };
+}
+
+function tendLineDataset(label, data, color, extra) {
+  return Object.assign({
+    label, data, borderColor: color, backgroundColor: color,
+    pointRadius: 3, pointHoverRadius: 5, pointBorderWidth: 1.5, pointBorderColor: '#fffaf2',
+    borderWidth: 2, tension: 0.3, order: 1
+  }, extra);
+}
+
+function tendTrendDataset(label, data, color, extra) {
+  return Object.assign({
+    label, data, borderColor: color, borderDash: [4, 3], pointRadius: 0,
+    borderWidth: 1.75, tension: 0.3, fill: false, order: 2
+  }, extra);
 }
 
 function tendBuildChartIngreso() {
@@ -2453,8 +2487,8 @@ function tendBuildChartIngreso() {
   const datasets = [];
   tendIngresoSeries().forEach(({ center, raw }, i) => {
     const color = TEND_COLORS[i % TEND_COLORS.length];
-    datasets.push({ label: center, data: raw, borderColor: color, backgroundColor: color, pointRadius: 3, borderWidth: 1.5, order: 1 });
-    datasets.push({ label: `${center} (tendencia)`, data: movingAvg3(raw), borderColor: color, borderDash: [4, 3], pointRadius: 0, borderWidth: 2, fill: false, order: 2 });
+    datasets.push(tendLineDataset(center, raw, color));
+    datasets.push(tendTrendDataset(`${center} (tendencia)`, movingAvg3(raw), color));
   });
   state.tendencias.chartIngreso?.destroy();
   state.tendencias.chartIngreso = new Chart(canvas, {
@@ -2475,16 +2509,16 @@ function tendBuildChartEtapa(stageCode) {
   const datasets = [];
   datasets.push({
     label: 'Banda ±1σ (superior)', data: band.map(b => b.avg === null ? null : b.avg + b.sigma),
-    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(107,123,131,0.12)', fill: '+1', tension: 0.25, order: 10
+    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(15,108,116,0.08)', fill: '+1', tension: 0.3, order: 10
   });
   datasets.push({
     label: 'Banda ±1σ (inferior)', data: band.map(b => b.avg === null ? null : b.avg - b.sigma),
-    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(107,123,131,0.12)', fill: false, tension: 0.25, order: 10
+    borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(15,108,116,0.08)', fill: false, tension: 0.3, order: 10
   });
   if (expected !== null) {
     datasets.push({
       label: `Esperado (${expected}d)`, data: weeks.map(() => expected),
-      borderColor: '#6b7b83', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false, order: 5
+      borderColor: '#b74832', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false, order: 5
     });
   }
   centers.forEach((center, i) => {
@@ -2493,8 +2527,8 @@ function tendBuildChartEtapa(stageCode) {
       const a = map.get(center + '|' + w);
       return a && a.count > 0 ? a.sumDays / a.count : null;
     });
-    datasets.push({ label: center, data: raw, borderColor: color, backgroundColor: color, pointRadius: 3, borderWidth: 1.5, spanGaps: true, order: 1 });
-    datasets.push({ label: `${center} (tendencia)`, data: movingAvg3(raw.map(v => v ?? 0)), borderColor: color, borderDash: [4, 3], pointRadius: 0, borderWidth: 2, fill: false, order: 2 });
+    datasets.push(tendLineDataset(center, raw, color, { spanGaps: true }));
+    datasets.push(tendTrendDataset(`${center} (tendencia)`, movingAvg3(raw.map(v => v ?? 0)), color));
   });
 
   state.tendencias.chartEtapa?.destroy();
@@ -2592,15 +2626,16 @@ function tendRenderHeatmap() {
         return;
       }
       const stat = tendHeatmapDaysStat(stage.code, center);
-      let cls = '';
+      let cls = 'tend-heat-nocolor';
       if (stat && stage.expectedDays > 0) {
         const r = stat.avg / stage.expectedDays;
         cls = r <= 1 ? 'tend-heat-ok' : r <= 1.5 ? 'tend-heat-warn' : r <= 2 ? 'tend-heat-orange' : 'tend-heat-bad';
       }
       rowHtml += `<td class="tend-heat-cell ${cls}" data-stage="${stage.code}" data-center="${center}">` +
+        `<span class="tend-heat-chip">` +
         `<span class="tend-heat-count">${patients.length}</span>` +
         (stat ? `<span class="tend-heat-days">${stat.avg.toFixed(1)}d ± ${stat.sigma.toFixed(1)}d</span>` : '') +
-        `</td>`;
+        `</span></td>`;
     });
     tr.innerHTML = rowHtml;
     tbody.appendChild(tr);
@@ -2644,6 +2679,17 @@ function tendShowHeatmapPopover(stageCode, center, anchorEl) {
   });
 }
 
+function tendStageName(code) {
+  return (state.homeData?.stages ?? []).find(s => s.code === code)?.displayName ?? code;
+}
+
+// Por debajo de medio dia las diferencias no son significativas (ruido de
+// muestras chicas) — sin este piso, un centro con 0.0d vs 0.7d da un ratio
+// engañoso (31x) que en realidad es "casi nada" vs "casi nada".
+function tendFloorHalfDay(x) {
+  return Math.max(0.5, Math.round(x * 2) / 2);
+}
+
 function tendSignalsIngreso() {
   const weeksAll = tendWeeksInWindow();
   if (weeksAll.length < 6) return [];
@@ -2662,7 +2708,7 @@ function tendSignalsIngreso() {
     if (Math.abs(pct) > TEND_CONFIG.ingreso_umbral_pct) {
       signals.push({
         type: 'ingreso', severity: pct < 0 ? 'red' : 'green', magnitude: Math.abs(pct),
-        text: `F1 en ${center}: ${pct >= 0 ? '+' : ''}${Math.round(pct * 100)}% respecto al promedio anterior (${avgPrev.toFixed(0)} → ${avgRecent.toFixed(0)} pac/sem)`
+        text: `${tendStageName('F1')} en ${center}: ${pct >= 0 ? '+' : ''}${Math.round(pct * 100)}% respecto al promedio anterior (${avgPrev.toFixed(0)} → ${avgRecent.toFixed(0)} pac/sem)`
       });
     }
   });
@@ -2690,7 +2736,7 @@ function tendSignalsTendenciaCreciente() {
       const severe = avgHist !== null && lastN[lastN.length - 1] > TEND_CONFIG.tendencia_factor_historico * avgHist;
       signals.push({
         type: 'tendencia', severity: severe ? 'red' : 'yellow', magnitude: lastN[lastN.length - 1] - lastN[0],
-        text: `Tiempo en ${stage.code} en ${center}: tendencia creciente ${n} semanas (${lastN.map(v => v.toFixed(1) + 'd').join(' → ')})`
+        text: `Tiempo en ${stage.displayName} en ${center}: tendencia creciente ${n} semanas (${lastN.map(v => v.toFixed(1) + 'd').join(' → ')})`
       });
     });
   });
@@ -2721,7 +2767,7 @@ function tendSignalsAnomalia() {
       if (Math.abs(actual - media) > TEND_CONFIG.anomalia_sigmas * sigma) {
         signals.push({
           type: 'anomalia', severity: 'red', magnitude: Math.abs(actual - media) / sigma,
-          text: `${stage.code} en ${center}: ${actual.toFixed(1)}d esta semana (promedio: ${media.toFixed(1)}d ± ${sigma.toFixed(1)}d)`
+          text: `${stage.displayName} en ${center}: ${actual.toFixed(1)}d esta semana (promedio: ${media.toFixed(1)}d ± ${sigma.toFixed(1)}d)`
         });
       }
     });
@@ -2746,11 +2792,12 @@ function tendSignalsComparacionCentros() {
     values.forEach(v => {
       const rest = values.filter(o => o.center !== v.center);
       const restAvg = rest.reduce((a, b) => a + b.avg, 0) / rest.length;
-      if (restAvg <= 0) return;
-      if (v.avg > TEND_CONFIG.comparacion_centros_factor * restAvg) {
+      const vAvgAdj = tendFloorHalfDay(v.avg);
+      const restAvgAdj = tendFloorHalfDay(restAvg);
+      if (vAvgAdj > TEND_CONFIG.comparacion_centros_factor * restAvgAdj) {
         signals.push({
-          type: 'comparacion', severity: 'yellow', magnitude: v.avg / restAvg,
-          text: `${stage.code} en ${v.center} es ${(v.avg / restAvg).toFixed(1)}x el promedio del resto de centros (${v.avg.toFixed(1)}d vs ${restAvg.toFixed(1)}d)`
+          type: 'comparacion', severity: 'yellow', magnitude: vAvgAdj / restAvgAdj,
+          text: `${stage.displayName} en ${v.center} es ${(vAvgAdj / restAvgAdj).toFixed(1)}x el promedio del resto de centros (${v.avg.toFixed(1)}d vs ${restAvg.toFixed(1)}d)`
         });
       }
     });
@@ -3638,10 +3685,12 @@ function _lastNBusinessDays(n) {
   return days;
 }
 
+const ALERTAS_AUTO_OPEN_MAX = 20;
+
 function _alertasSectionHtml(id, title, alerts, renderRows) {
   const count = alerts.length;
   const badge = `<span class="alertas-badge ${count > 0 ? 'alertas-badge-red' : 'alertas-badge-green'}">${count}</span>`;
-  const open = count > 0 ? ' open' : '';
+  const open = count > 0 && count <= ALERTAS_AUTO_OPEN_MAX ? ' open' : '';
   return `<details class="alertas-details"${open}>
     <summary class="alertas-summary">${title} ${badge}</summary>
     <div class="alertas-content">
@@ -3865,7 +3914,8 @@ function _renderAlertasEquipos(agendaItems, machineCapacities, techniqueDuration
         }).join('')
       }</div>`;
 
-  const b3Html = `<details class="alertas-details"${b3PairCount > 0 ? ' open' : ''}>
+  const b3Open = b3PairCount > 0 && b3PairCount <= ALERTAS_AUTO_OPEN_MAX ? ' open' : '';
+  const b3Html = `<details class="alertas-details"${b3Open}>
     <summary class="alertas-summary">Turnos superpuestos <span class="alertas-badge ${b3BadgeCls}">${b3PairCount}</span></summary>
     <div class="alertas-content">${b3CardContent}</div>
   </details>`;
@@ -4711,7 +4761,7 @@ function _openPedidoModal(type, existing) {
 // ── QA Paciente Específico (Física) tab ────────────────────────────────────
 
 const _QA_MIN_IDX = _STAGE_ORDER.indexOf('F6C'); // exclusivo: después de F6C
-const _QA_MAX_IDX = _STAGE_ORDER.indexOf('F7A'); // inclusivo: hasta F7A
+const _QA_F6F_IDX = _STAGE_ORDER.indexOf('F6F'); // salida: paciente completó F6F (pasa a F7A)
 
 async function loadQaEspecificoData() {
   try {
@@ -4733,10 +4783,11 @@ function _qaEspecificoEligiblePlans() {
   for (const p of (state.homeData?.patients ?? [])) {
     const stageIdx = _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase());
     const stagePastF6C = stageIdx > _QA_MIN_IDX; // exclusivo
-    const stagePastF7A = stageIdx > _QA_MAX_IDX; // paciente ya completó F7A
-    if (stagePastF7A) continue;
+    const stagePastF6F = stageIdx > _QA_F6F_IDX; // paciente ya completó F6F (control de calidad) → pasa a F7A
+    if (stagePastF6F) continue;
     for (const plan of (p.plans ?? [])) {
       if (plan.irradiationModality !== 'IMRT' && plan.irradiationModality !== 'VMAT') continue;
+      if (plan.status === 'TreatApproval') continue; // ya tratado (plan histórico) — no es alta, solo dispara salida si ya estaba en la lista
       if (plan.status !== 'PlanApproval' && !stagePastF6C) continue;
       result.push({ patient: p, plan });
     }
@@ -4748,17 +4799,17 @@ async function computeQaEspecifico() {
   if (!state.homeData) return;
   const patientById = new Map(state.homeData.patients.map(p => [p.patientId, p]));
 
-  // Salida por paciente completo (F7A): todos sus planes Auto no fijados
-  const patientsPastF7A = new Set(
+  // Salida por paciente completo (F7A completada, o F6F completada → pasa a F7A): todos sus planes Auto no fijados
+  const patientsFullyExited = new Set(
     state.homeData.patients
-      .filter(p => _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase()) > _QA_MAX_IDX)
+      .filter(p => _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase()) > _QA_F6F_IDX)
       .map(p => p.patientId)
   );
 
   // Salida por plan individual (TreatApproval)
   const stale = state.qaEspecifico.items.filter(i => {
     if (i.origin !== 'Auto' || i.pinned || i.excluded) return false;
-    if (patientsPastF7A.has(i.patientId)) return true;
+    if (patientsFullyExited.has(i.patientId)) return true;
     const patient = patientById.get(i.patientId);
     const plan = (patient?.plans ?? []).find(pl => pl.planId === i.planId);
     return !!plan && plan.status === 'TreatApproval';
@@ -4837,16 +4888,25 @@ function renderQaEspecifico() {
 
   const patientById = new Map((state.homeData?.patients ?? []).map(p => [p.patientId, p]));
 
-  const rows = items.map(p => {
+  let groupIndex = -1;
+  const rows = items.map((p, i) => {
     const selClass = state.qaEspecifico.selectedId === p.id ? ' qa-selected' : '';
     const pinIcon = p.pinned ? ' <span title="Fijado" class="qa-pin-icon">📌</span>' : '';
     const patient = patientById.get(p.patientId);
     const stageStr = patient ? esc(patient.stageDisplayName ?? patient.stageCode ?? '—') : '<span class="muted-italic">—</span>';
-    return `<tr class="${selClass.trim()}" data-id="${p.id}">
+
+    const isGroupStart = col === 'equipo' && (i === 0 || items[i - 1].equipoName !== p.equipoName);
+    if (isGroupStart) groupIndex++;
+    const groupClass = col === 'equipo' ? ` qa-group-${groupIndex % 2 === 0 ? 'a' : 'b'}${isGroupStart ? ' qa-group-start' : ''}` : '';
+    const equipoCell = col === 'equipo' && isGroupStart
+      ? `<strong>${esc(p.equipoName ?? '—')}</strong>`
+      : esc(p.equipoName ?? '—');
+
+    return `<tr class="${selClass.trim()}${groupClass}" data-id="${p.id}">
       <td>${esc(fmtHc(p.patientId))}</td>
       <td>${esc(p.patientName ?? '—')}${pinIcon}</td>
       <td>${esc(p.plan ?? '—')}</td>
-      <td>${esc(p.equipoName ?? '—')}</td>
+      <td>${equipoCell}</td>
       <td>${stageStr}</td>
       <td>${esc(p.observaciones ?? '—')}</td>
     </tr>`;
@@ -5247,6 +5307,11 @@ function _renderPacientesResults() {
   if (!panel) return;
   const q = state.pacientes.query;
   if (!q) { panel.innerHTML = ''; state.pacientes.selected = null; return; }
+  if (q.trim().length < 2) {
+    panel.innerHTML = '<p class="detail-placeholder">Escriba al menos 2 caracteres.</p>';
+    state.pacientes.selected = null;
+    return;
+  }
   if (!state.homeData) {
     panel.innerHTML = '<p class="detail-placeholder">Sin datos. Actualice primero.</p>';
     return;

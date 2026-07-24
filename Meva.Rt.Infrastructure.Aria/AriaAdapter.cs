@@ -216,7 +216,15 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
             var firstRad = plan.Radiations?.FirstOrDefault();
             if (firstRad?.ExternalFieldCommon?.Technique == null) return "Indefinido";
             var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
-            if (techId == "ARC") return "VMAT";
+            if (techId == "ARC")
+            {
+                // ARC no es sinónimo de VMAT: arco conformado/TBI también usan ARC pero con
+                // MLCPlanType distinto (o sin MLC). Solo VMAT real si el MLCPlanType lo indica.
+                var mlcType = firstRad.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
+                    ? "VMAT"
+                    : "3DC";
+            }
             if (techId == "STATIC")
                 return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";
             return "Indefinido";
