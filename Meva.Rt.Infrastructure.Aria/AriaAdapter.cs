@@ -73,14 +73,14 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                             Status = p.Status,
                             IrradiationModality = ResolveIrradiationModality(p),
                             MachineDisplayName = ResolveMachineDisplay(
-                                p.Radiations.FirstOrDefault()?.RadiationDevice.Machine.MachineId is { } machId
+                                p.Radiations.OrderBy(r => r.RadiationSer).FirstOrDefault()?.RadiationDevice.Machine.MachineId is { } machId
                                     ? MetodosParaWebScrap.EquipoAriaASitra(machId, mapPath)
                                     : null)
                         })
                         .ToList();
                 }
 
-                var rad = plan?.Radiations.FirstOrDefault();
+                var rad = plan?.Radiations.OrderBy(r => r.RadiationSer).FirstOrDefault();
                 if (rad?.RadiationDevice.Machine.MachineId is { } ariaMachineId)
                 {
                     row.PlannedMachineAriaId ??= ariaMachineId;
@@ -213,7 +213,7 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
     {
         try
         {
-            var firstRad = plan.Radiations?.FirstOrDefault();
+            var firstRad = plan.Radiations?.OrderBy(r => r.RadiationSer).FirstOrDefault();
             if (firstRad?.ExternalFieldCommon?.Technique == null) return "Indefinido";
             var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
             if (techId == "ARC")
@@ -223,9 +223,9 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                 var mlcType = firstRad.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
                 return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
                     ? "VMAT"
-                    : "3DC";
+                    : "ArcoConformado";
             }
-            if (techId == "STATIC")
+            if (techId != null && techId.StartsWith("STATIC", StringComparison.OrdinalIgnoreCase))
                 return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";
             return "Indefinido";
         }

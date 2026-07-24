@@ -105,3 +105,101 @@ usa `MLCPlanType` para VMAT (¿"VMAT"? ¿"VMAT Arc"?) se infirió por nombre de 
 case-insensitive (tolera variantes). **Verificar en el próximo refresh real** que `1-118543-0` deja de
 aparecer y `1-119096-0` sigue apareciendo. Si `1-118543-0` persiste, pedir el valor real de
 `MLCPlanType` para ese plan (Patient Explorer o consulta directa) para ajustar el match.
+
+## Bug 4: el mismo plan viejo (`Plan3`) también rompía el Equipo asignado fuera de QA
+
+Reportado por el usuario: `1-114893-1` aparecía asignado al **Equipo 3** de MEVA-Central (por `Plan3`,
+viejo, ya tratado) en vez de **Equipo 2** (plan real vigente, `5toCostIzq_sk`). No es exclusivo de QA
+Paciente Específico — afecta a `PlannedMachineDisplayName`/`IrradiationModality`/etc. en toda la app,
+porque `SelectActivePlan()` (`AriaQuery.cs`) prioriza `Status` (`TreatApproval` > `PlanApproval` >
+`Unapproved`) **sin mirar antigüedad ni si el curso ya terminó** — un curso viejo cerrado en
+`TreatApproval` le gana siempre a un `PlanApproval` real y vigente de un curso nuevo.
+
+**Dos barreras agregadas** (pedidas explícitamente por el usuario):
+
+1. **Cursos no-`Completed` solamente.** Nuevo helper `EsCursoActivo(Course)` en `AriaQuery.cs` y
+   `MetodosParaWebScrap.cs`: excluye cursos con `CompletedDateTime` seteado o `ClinicalStatus ==
+   "Completed"`. Aplicado en `patCourses`/`courses` (bulk y single-query) y en
+   `PlanesDeCursosActivos()` (nuevo helper compartido en `MetodosParaWebScrap.cs`, usado por
+   `PlanActivo`/`PlanesPlanApproval`/`PlanesTreatApproval`). **`CompletedDateTime` es la señal
+   confiable** — no depende de acertarle al string exacto de `ClinicalStatus`, que tampoco se pudo
+   verificar contra ARIA real (`Course.ClinicalStatus` es `string` libre, valor exacto no confirmado).
+
+2. **Solo planes creados hace menos de 30 días** (mismo criterio que `PlanesPlanApproval`/
+   `PlanesTreatApproval`, "como en QA Paciente Específico"). Trasladado a `SelectActivePlan()`
+   (`AriaQuery.cs`) y `PlanActivo()` (`MetodosParaWebScrap.cs`, antes sin ningún filtro de
+   antigüedad). Si **ningún** candidato es reciente (único plan real es viejo), se usa el pool
+   completo sin filtrar — para no devolver "sin plan" cuando en verdad hay un plan viejo pero es el
+   único que existe.
+
+**Sin verificar contra ARIA real** (mismo motivo que el Bug 3: sin acceso a la base). Verificar en el
+próximo refresh real que `1-114893-1` muestra Equipo 2, no Equipo 3.
+
+## Bug 5: Equipo se corrigió, pero el plan (STATIC-I, MLC "Dose Dynamic") se clasificó como VMAT
+
+Tras el fix del Bug 4, `1-114893-1` mostró correctamente Equipo 2 — pero la técnica se mostró como
+VMAT en vez de IMRT estático. El usuario confirmó en ARIA: `Technique` = `STATIC` o `STATIC-I` (nunca
+`ARC`), MLC = "Dose Dynamic". La rama `ARC` de `Modalidad()` (Bug 3) no debería ni ejecutarse para este
+plan — la técnica nunca es `ARC`.
+
+**Causas identificadas (2, compuestas):**
+
+1. **`techId == "STATIC"` era comparación exacta** — no matcheaba `"STATIC-I"` (variante real
+   observada en ARIA para IMRT step-and-shoot/multi-segmento). Al no matchear ni `ARC` ni `STATIC`,
+   caía a `"Indefinido"`.
+2. **Orden no-determinístico de `Radiations`.** La consulta bulk (`ctx.Radiations...ToList()`, sin
+   `ORDER BY`) y las colecciones de navegación del camino vivo no garantizan orden estable — un plan
+   con más de un haz puede devolver "el primero" distinto entre corridas, hacia un haz equivocado
+   (posiblemente uno de verificación/setup, o de otra técnica). Esto explica por qué la clasificación
+   cambió entre corridas sin cambiar el código de `STATIC`.
+
+**Fix:**
+- `techId.StartsWith("STATIC", OrdinalIgnoreCase)` en vez de igualdad exacta (`AriaQuery.cs`,
+  `AriaAdapter.cs`) — cubre `STATIC` y `STATIC-I`.
+- `OrderBy(r => r.RadiationSer)` explícito antes de `FirstOrDefault()`/`First()` en todos los puntos
+  donde se toma "el primer haz" (`AriaQuery.cs`: query bulk; `AriaAdapter.cs` y
+  `MetodosParaWebScrap.Equipo`: colecciones de navegación) — determinismo estable entre corridas.
+
+**Sin verificar contra ARIA real.** Verificar en el próximo refresh real que `5toCostIzq_sk` muestra
+IMRT (no VMAT, no Indefinido).
+
+**Corrección del usuario tras el fix:** la causa #2 (orden no-determinístico) no aplica a este caso —
+el usuario confirmó que todos los haces de este plan son `STATIC`/`STATIC-I` (nada de `ARC` mezclado).
+Se mantiene el `OrderBy` igual como buena práctica general (no hace daño, da determinismo), pero **no
+era la causa real** de este caso puntual. Ver Bug 6 para la causa real.
+
+## Bug 6: técnica de SitraMed "VMAT" no es una técnica válida — falso positivo por `Classify()`
+
+Tras el fix del Bug 5 (`STATIC-I`), una de las dos filas duplicadas de `1-114893-1` seguía mostrando
+`TreatmentLabel` = "VMAT" mientras la otra mostraba "IMRT - estático" — mismo paciente, mismo plan
+ARIA (`5toCostIzq_sk`, ahora ya corregido a IMRT). El usuario aclaró el modelo real: **SitraMed solo
+tiene 7 técnicas válidas: `3DC`, `IMRT`, `TBI`, `BQT`, `TSET`, `RC`, `SBRT`** — "VMAT" nunca es una
+técnica de SitraMed en sí misma; es ARIA quien la revela como refinamiento de `IMRT`/`RC`/`SBRT`.
+
+**Causa raíz doble:**
+
+1. **`TreatmentClassifier.BuildLabel()` agrupaba `IMRT` y `3DC` en la misma rama de refinamiento**
+   (`tech is "IMRT" or "3DC"` → si ARIA decía VMAT, promovía a `"VMAT"` sin distinguir). Según el
+   usuario, `3DC` **nunca** se promueve a VMAT/IMRT — ARIA solo le refina la energía (6X/10X/15X/18X/
+   electrones). Solo `IMRT` se refina a `"IMRT - estático"` o `"VMAT"`.
+2. **`TreatmentClassifier.Classify()` disparaba `"VMAT"` con el simple keyword `"arco"`** (sin
+   contexto) — el paciente es "5to **Arco** Costal Izquierdo" (anatomía, costilla), no "técnica de
+   arco". Cualquier texto SitraMed que mencione esa zona anatómica clasificaba falsamente como VMAT,
+   una técnica que ni siquiera existe en el vocabulario real de SitraMed.
+
+**Fix:**
+- `BuildLabel()`: separadas las ramas `IMRT` y `3DC`. `3DC` solo refina energía (sin cambios de
+  comportamiento ahí). `IMRT` refina a estático/VMAT como antes.
+- Agregado soporte "arcos" para `RC`/`SBRT` (`"RC - arcos"`/`"SBRT - arcos"`) usando el mismo criterio
+  ARC+MLC-no-VMAT que ya distingue `Modalidad()` para IMRT — requirió exponer un nuevo valor de
+  modalidad `"ArcoConformado"` (antes colapsaba a `"3DC"` genérico, indistinguible) en `Modalidad()`
+  (`AriaQuery.cs`) y `ResolveIrradiationModality()` (`AriaAdapter.cs`).
+- `Classify()`: quitado el trigger genérico `"arco"` de la detección de VMAT — queda solo el
+  match literal de la palabra `"VMAT"` en el texto.
+
+Verificado con un proyecto descartable: `BuildLabel`/`Classify` con los casos IMRT+IMRT,
+IMRT+VMAT, 3DC+VMAT (no promociona), 3DC+energía, RC/SBRT+ArcoConformado/VMAT, TBI, y
+`Classify("...arco costal...")` ya no da VMAT.
+
+**Sin verificar contra ARIA real** (mismo motivo de siempre). Verificar en el próximo refresh real que
+ambas filas duplicadas de `1-114893-1` muestran "IMRT - estático" de forma consistente.

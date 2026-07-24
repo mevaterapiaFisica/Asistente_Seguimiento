@@ -19,8 +19,7 @@ public static class TreatmentClassifier
             || t.Contains("RxCx", StringComparison.OrdinalIgnoreCase)
             || t.Equals("RC", StringComparison.OrdinalIgnoreCase)) return "RC";
         if (t.Contains("IGRT", StringComparison.OrdinalIgnoreCase)) return "IGRT";
-        if (t.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
-            || t.Contains("arco", StringComparison.OrdinalIgnoreCase)) return "VMAT";
+        if (t.Contains("VMAT", StringComparison.OrdinalIgnoreCase)) return "VMAT";
         if (t.Contains("IMRT", StringComparison.OrdinalIgnoreCase)
             || t.Contains("Intensidad Modulada", StringComparison.OrdinalIgnoreCase)) return "IMRT";
         if (t.Contains("BQT", StringComparison.OrdinalIgnoreCase)
@@ -57,6 +56,7 @@ public static class TreatmentClassifier
         {
             if (energy == "SRS")    return "SBRT - haz SRS";
             if (modality == "VMAT") return "SBRT - VMAT";
+            if (modality == "ArcoConformado") return "SBRT - arcos";
             return "SBRT";
         }
 
@@ -64,6 +64,7 @@ public static class TreatmentClassifier
         {
             if (energy == "SRS")    return "RC - haz SRS";
             if (modality == "VMAT") return "RC - VMAT";
+            if (modality == "ArcoConformado") return "RC - arcos";
             return "RC";
         }
 
@@ -74,24 +75,21 @@ public static class TreatmentClassifier
             return "IGRT";
         }
 
-        // ── ARIA refina IMRT / 3DC de SitraMed ────────────────────────────────
-        if (tech is "IMRT" or "3DC")
+        // ── ARIA refina IMRT de SitraMed: estático o VMAT ──────────────────────
+        if (tech == "IMRT")
         {
             if (modality == "VMAT") return "VMAT";
             if (modality == "IMRT") return "IMRT - estático";
+            return tech;
         }
 
-        // ── Electrones ────────────────────────────────────────────────────────
-        if (energy == "Electrones" && (tech == "3DC" || modality == "3DC"))
-            return "3DC e-";
-
-        // ── Alta energía con 3DC ──────────────────────────────────────────────
-        if (energy is "10X" or "15X" or "18X" && (tech == "3DC" || modality == "3DC"))
-            return $"3DC {energy}";
-
-        // ── 3DC estándar (haz 6X, sin dato ARIA o ARIA confirma 3DC) ─────────
+        // ── 3DC de SitraMed: ARIA solo refina energía, nunca promueve a VMAT/IMRT ──
         if (tech == "3DC")
+        {
+            if (energy == "Electrones") return "3DC e-";
+            if (energy is "10X" or "15X" or "18X") return $"3DC {energy}";
             return "3DC - 6X";
+        }
 
         // ── Fallback: SitraMed como label (VMAT, IMRT sin ARIA, BQT, IORT…) ──
         return tech;

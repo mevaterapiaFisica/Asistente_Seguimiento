@@ -57,8 +57,13 @@ La app corre como **Windows Service** en el puerto 5000.
 ## TreatmentClassifier (Meva.Rt.Core)
 
 Dos métodos estáticos:
-- **`Classify(treatmentText)`**: clasifica el texto de SitraMed → `TSET` > `TBI` > `SBRT` > `RC` > `VMAT` > `IMRT` > `BQT` > `IORT` > `IGRT` > `3DC` (default).
-- **`BuildLabel(tech, modality, energy, beamFallback)`**: combina datos de SitraMed + ARIA en un string legible. Ejemplos: `"VMAT"`, `"IMRT - estático"`, `"SBRT - VMAT"`, `"3DC - 6X"`, `"3DC 10X"`, `"IGRT - VMAT"`, `"TBI"`, `"TSET"`.
+- **`Classify(treatmentText)`**: clasifica el texto de SitraMed → `TSET` > `TBI` > `SBRT` > `RC` > `VMAT` > `IMRT` > `BQT` > `IORT` > `IGRT` > `3DC` (default). **Técnicas válidas reales de SitraMed: solo `3DC`, `IMRT`, `TBI`, `BQT`, `TSET`, `RC`, `SBRT`** — `VMAT` no es una técnica que SitraMed asigne por sí sola, es siempre un refinamiento de ARIA (ver `BuildLabel`); el trigger de `VMAT` en `Classify()` quedó reservado al match literal de la palabra "VMAT" en el texto (sesión 2026-07-24: se sacó el keyword genérico `"arco"`, que daba falso positivo con anatomía tipo "arco costal").
+- **`BuildLabel(tech, modality, energy, beamFallback)`**: combina técnica de SitraMed + modalidad ARIA (`Modalidad()`/`ResolveIrradiationModality()`: `IMRT`, `VMAT`, `3DC`, `ArcoConformado`, `Indefinido`) en un string legible. Mapeo por técnica (sesión 2026-07-24, confirmado con el usuario):
+  - `IMRT` → ARIA refina a `"IMRT - estático"` o `"VMAT"`.
+  - `3DC` → ARIA **solo** refina energía (`"3DC e-"`, `"3DC 10X/15X/18X"`, `"3DC - 6X"` default) — **nunca** se promueve a IMRT/VMAT aunque ARIA diga VMAT.
+  - `RC`/`SBRT` → `"RC/SBRT - VMAT"` o `"RC/SBRT - arcos"` (modalidad `ArcoConformado`: técnica ARC de ARIA pero MLC no-VMAT) o `"RC/SBRT - haz SRS"` (energía SRS, prioridad más alta) o plano.
+  - `IGRT` → `"IGRT - estático"` / `"IGRT - VMAT"` (sin cambios).
+  - `TBI`/`TSET`/`BQT` → sin refinamiento ARIA, se devuelve la técnica tal cual.
 
 La clasificación BQT/IORT se ignora si el paciente tiene otra técnica en SitraMed (`ResolveTreatmentZone` en extractores).
 
@@ -156,8 +161,9 @@ Fuente de verdad: `AppConfiguration.cs`. Se puede sobrescribir vía `data/rt_con
 `Meva.Rt.Infrastructure.Aria` integra via **AriaQ.dll** (Entity Framework 6).
 
 - **`AriaPlanResolver`** — dado HCs de pacientes, devuelve plan activo. En producción consulta BD; si no hay conexión, lee `aria_plans_mock.json`.
+- **Selección de plan activo (`SelectActivePlan`/`PlanActivo`, sesión 2026-07-24):** dos barreras antes de priorizar por `Status` (`TreatApproval` > `PlanApproval` > `Unapproved`): (1) excluye cursos ya `Completed` (`Course.CompletedDateTime` seteado o `ClinicalStatus=="Completed"` — `CompletedDateTime` es la señal confiable, `ClinicalStatus` no se pudo verificar contra ARIA real); (2) prefiere planes creados hace <30 días, con fallback al pool completo si ninguno es reciente. Sin esto, un curso viejo ya tratado (`TreatApproval`) le ganaba a un `PlanApproval` real y vigente de un curso nuevo — rompía `PlannedMachineDisplayName`/Equipo asignado en toda la app, no solo QA. Detalle en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md` (Bug 4).
 - **Clasificación de tipo de haz:** `Electrones` (RadiationType=="E"), `SRS` (técnica contiene SRS/STEREO), `AltaE` (energía ≥ 10000 keV), `6X` (default).
-- **`IrradiationModality`:** `STATIC`+>40CP→`IMRT`, `STATIC`+≤40CP→`3DC`. `ARC` con `MLCPlanType` conteniendo "VMAT"→`VMAT`, cualquier otro `ARC` (arco conformado, TBI vía arco, sin MLC)→`3DC` (sesión 2026-07-24: técnica `ARC` no es sinónimo de VMAT — se agregó lookup de `MLCPlan.MLCPlanType` por `RadiationSer`, mismo patrón que el conteo de ControlPoints). Viene del primer haz del plan.
+- **`IrradiationModality`:** técnica `STATIC`/`STATIC-I` (prefijo, sesión 2026-07-24 — antes exacto `"STATIC"` no matcheaba la variante `"STATIC-I"`) +>40CP→`IMRT`, ≤40CP→`3DC`. `ARC` con `MLCPlanType` conteniendo "VMAT"→`VMAT`, cualquier otro `ARC` (arco conformado, TBI vía arco, sin MLC)→**`ArcoConformado`** (sesión 2026-07-24: técnica `ARC` no es sinónimo de VMAT — lookup de `MLCPlan.MLCPlanType` por `RadiationSer`, mismo patrón que el conteo de ControlPoints; valor distinguible de `3DC` para que `BuildLabel` pueda etiquetar "RC/SBRT - arcos"). Viene del **primer haz por `RadiationSer` ascendente** (antes sin orden explícito — no-determinístico entre corridas para planes multi-haz).
 - **`ExactBeamEnergy`:** máximo sobre **todos** los campos del plan (si un campo es 10X/15X/18X, se usa esa energía aunque otros sean 6X).
 
 ### Persistencia (Storage)
@@ -602,4 +608,4 @@ El sistema corre como **Windows Service** (`MevaRT`) en la PC servidora.
 - **Feriados:** `data/feriados.txt` con una fecha por línea en formato `YYYY-MM-DD`. La alerta de fin de año avisa cuando falta agregar el año siguiente.
 - **Flujo de archivos de datos (dev vs prod):** ver `CLAUDE.md` en la raíz del repo — quién setea `MEVA_DATA_DIR` en cada entorno y las 2 inconsistencias conocidas.
 - **QA Paciente Específico (sesión 2026-07-22):** el endpoint real que usa `refresh.bat` es `POST /api/home/apply-aria` (no `BootstrapService.BuildAsync`) — ahí es donde hay que propagar campos nuevos de ARIA (`Plans`), no solo en el camino "vivo" de `Contracts.cs`. Bug real encontrado: `apply-aria` copiaba `IrradiationModality`/`BeamType`/etc. pero no `Plans`, dejando la lista vacía en producción hasta corregirlo (`Program.cs`).
-- **QA Paciente Específico — bugs de datos ARIA (sesión 2026-07-24):** 3 bugs reales encontrados validando contra producción — HC con sufijo por curso concurrente no matcheaba ARIA, plan viejo ya tratado (`TreatApproval`) colaba en la alta, y técnica `ARC` se clasificaba como VMAT sin mirar `MLCPlanType`. Detalle completo, causas raíz y fixes en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`.
+- **QA Paciente Específico / clasificación ARIA — 6 bugs reales (sesión 2026-07-24):** validando contra producción con el paciente real `1-114893-1` (2 seguimientos concurrentes, costal IMRT + húmero) aparecieron en cadena: HC con sufijo por curso no matcheaba ARIA; plan viejo ya tratado (`TreatApproval`) colaba en la alta de QA; técnica `ARC` clasificada como VMAT sin mirar `MLCPlanType`; cursos `Completed` y planes viejos ganándole al plan vigente en Equipo asignado; `"STATIC-I"` no matcheaba el check exacto de `"STATIC"`; y `TreatmentClassifier` promoviendo `3DC`→VMAT indebidamente + `Classify()` con falso positivo de VMAT por la palabra "arco" (anatomía, no técnica). Detalle completo, causas raíz y fixes en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`.

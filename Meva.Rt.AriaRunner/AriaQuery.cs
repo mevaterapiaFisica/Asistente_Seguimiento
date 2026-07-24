@@ -94,12 +94,15 @@ public sealed class AriaQuery
 
             // ── 4a. Radiaciones sin ControlPoints (el Include de CPs genera JOIN cartesiano enorme) ──
             _log.Info("  [4/6] Cargando radiaciones...");
+            // Orden explícito por RadiationSer: sin ORDER BY, SQL Server no garantiza el orden de
+            // retorno, y "primer haz" (FirstOrDefault más abajo) sería no-determinístico entre corridas.
             var radiations = QueryInBatches(planSerList, chunk =>
                 ctx.Radiations
                    .Include("RadiationDevice.Machine")
                    .Include("ExternalFieldCommon.EnergyMode")
                    .Include("ExternalFieldCommon.Technique")
                    .Where(r => chunk.Contains(r.PlanSetupSer))
+                   .OrderBy(r => r.RadiationSer)
                    .ToList());
             _log.Info($"         {radiations.Count} radiaciones encontradas ({sw.Elapsed.TotalSeconds:F1}s)");
 
@@ -162,7 +165,8 @@ public sealed class AriaQuery
                     .Where(c => c.CourseId != null
                         && !c.CourseId.Contains("qa", StringComparison.OrdinalIgnoreCase)
                         && !c.CourseId.Contains("fisica", StringComparison.OrdinalIgnoreCase)
-                        && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase))
+                        && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase)
+                        && EsCursoActivo(c))
                     .ToList();
 
                 var allPlans = new List<PlanResult>();
@@ -238,7 +242,8 @@ public sealed class AriaQuery
                 .Where(c => c.CourseId != null
                     && !c.CourseId.Contains("qa", StringComparison.OrdinalIgnoreCase)
                     && !c.CourseId.Contains("fisica", StringComparison.OrdinalIgnoreCase)
-                    && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase))
+                    && !c.CourseId.Contains("física", StringComparison.OrdinalIgnoreCase)
+                    && EsCursoActivo(c))
                 .ToList() ?? [];
 
             var allPlans = new List<PlanResult>();
@@ -373,10 +378,10 @@ public sealed class AriaQuery
                 : firstRadiation.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
             return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
                 ? "VMAT"
-                : "3DC";
+                : "ArcoConformado";
         }
 
-        if (techId == "STATIC")
+        if (techId != null && techId.StartsWith("STATIC", StringComparison.OrdinalIgnoreCase))
         {
             // cpCounts viene del bulk query (GROUP BY); ControlPoints viene del single query.
             var count = cpCounts != null
@@ -412,13 +417,30 @@ public sealed class AriaQuery
         return "Indefinido";
     }
 
+    // Curso "COMPLETED" (ClinicalStatus o CompletedDateTime seteado) no aporta plan activo/vigente —
+    // solo cursos en curso. CompletedDateTime es la señal confiable (no depende del string exacto
+    // de ClinicalStatus, que no se pudo verificar contra la base real).
+    private static bool EsCursoActivo(Course curso) =>
+        curso.CompletedDateTime == null
+        && !string.Equals(curso.ClinicalStatus?.Trim(), "Completed", StringComparison.OrdinalIgnoreCase);
+
+    // Un plan "vigente" fue creado hace menos de 1 mes. Si ninguno de los candidatos es reciente
+    // (caso límite: único plan real es viejo), se usa el pool completo para no devolver null.
+    private const int RecentPlanDays = 30;
+
+    private static bool EsPlanReciente(PlanResult p) =>
+        !DateTime.TryParse(p.CreationDate, out var creado) || (DateTime.Today - creado).Days < RecentPlanDays;
+
     private static PlanResult? SelectActivePlan(List<PlanResult> plans)
     {
         if (plans.Count == 0) return null;
 
-        return plans.FirstOrDefault(p => p.Status == "TreatApproval")
-            ?? plans.FirstOrDefault(p => p.Status == "PlanApproval")
-            ?? plans.Where(p => p.Status == "Unapproved")
+        var recientes = plans.Where(EsPlanReciente).ToList();
+        var pool = recientes.Count > 0 ? recientes : plans;
+
+        return pool.FirstOrDefault(p => p.Status == "TreatApproval")
+            ?? pool.FirstOrDefault(p => p.Status == "PlanApproval")
+            ?? pool.Where(p => p.Status == "Unapproved")
                     .OrderByDescending(p => p.CreationDate)
                     .FirstOrDefault();
     }
