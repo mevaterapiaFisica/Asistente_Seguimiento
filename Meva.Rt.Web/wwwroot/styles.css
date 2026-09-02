@@ -354,6 +354,17 @@ a.hc-tag:hover { text-decoration: underline; }
 .machine-card-scrape-error { font-size: 11px; color: #e65100; font-weight: 600; margin-top: 2px; }
 .est-badge { font-size: 11px; color: var(--muted); background: var(--neutral-bg); border-radius: 5px; padding: 1px 5px; }
 
+/* ── Disponibilidad en Equipos ────────────────────────────────────────────── */
+
+#dispoMachineCards .agenda-machines-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+#dispoMachineCards .machine-card { cursor: default; }
+#dispoMachineCards .machine-card:hover { box-shadow: none; }
+
+.dispo-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; }
+.dispo-label { color: var(--muted); }
+.dispo-gap { color: var(--accent); font-weight: 600; }
+.dispo-gap-none, .dispo-empty { color: var(--muted); font-size: 12px; font-style: italic; }
+
 /* ── Agenda detail (right) ────────────────────────────────────────────────── */
 
 .slot-row {

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>MevaDash</title>
-  <link rel="stylesheet" href="styles.css?v=20260707">
+  <link rel="stylesheet" href="styles.css?v=20260902">
 </head>
 <body>
   <div id="feriados-alert-banner" class="alert-banner alert-banner--warn" style="display:none"></div>
@@ -190,6 +190,16 @@
             <p class="detail-placeholder">Seleccione un equipo para ver su agenda.</p>
           </div>
         </div>
+      </section>
+
+      <!-- ── Disponibilidad en Equipos ────────────────────────────────── -->
+      <section id="tab-dispo" class="tab-panel">
+        <div class="filter-bar">
+          <label class="filter-label">Fecha:</label>
+          <select id="dispoDateSelect" class="filter-select"></select>
+          <div id="dispoCenterFilterPills" class="pill-row"></div>
+        </div>
+        <div id="dispoMachineCards"></div>
       </section>
 
       <!-- ── Fisica ─────────────────────────────────────────────────────── -->
@@ -579,6 +589,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=20260724c"></script>
+  <script src="app.js?v=20260902c"></script>
 </body>
 </html>

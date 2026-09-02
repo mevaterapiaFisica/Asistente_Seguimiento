@@ -23,6 +23,14 @@ const state = {
     loading: false
   },
 
+  dispo: {
+    availableDates: [],
+    selectedDate: null,
+    centerFilter: null,
+    slots: [],
+    loading: false
+  },
+
   tomographAgenda: {
     availableDates: [],
     selectedDate: null,
@@ -401,6 +409,7 @@ const NAV_GROUPS = {
   ]},
   agendas: { tabs: [
     { id: 'agenda',        label: 'Equipos' },
+    { id: 'dispo',         label: 'Disponibilidad en Equipos' },
     { id: 'tomograph',     label: 'Tomógrafos' },
     { id: 'inicios',       label: 'Inicios' },
     { id: 'reservations',  label: 'Turnos Reservados' },
@@ -466,6 +475,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'resumen') renderTendencias();
   if (targetTab === 'alertas') loadAlertasTab();
   if (targetTab === 'agenda') refreshAgendaView();
+  if (targetTab === 'dispo') refreshDispoView();
   if (targetTab === 'tomograph') refreshTomographAgendaView();
   if (targetTab === 'config') loadConfigData();
   if (targetTab === 'fisica') renderFisicaView();
@@ -525,6 +535,10 @@ function wireActions() {
     state.tomographAgenda.selectedDate = e.target.value || null;
     state.tomographAgenda.activeTomograph = null;
     loadTomographAgendaForSelectedDate();
+  });
+  document.getElementById('dispoDateSelect').addEventListener('change', e => {
+    state.dispo.selectedDate = e.target.value || null;
+    loadDispoForSelectedDate();
   });
   document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
   document.getElementById('refreshAlertasBtn').addEventListener('click', () => {
@@ -1322,6 +1336,174 @@ function renderAgendaDetail() {
   });
 }
 
+// ── Disponibilidad en Equipos ────────────────────────────────────────────────
+
+async function loadDispoAvailableDates() {
+  try {
+    const resp = await fetch('/api/agenda/available-dates');
+    state.dispo.availableDates = resp.ok ? await resp.json() : [];
+  } catch { state.dispo.availableDates = []; }
+}
+
+// A diferencia de _populateDateSelect (agenda/tomógrafos: solo hoy → último día futuro
+// CONSECUTIVO scrapeado, con huecos deshabilitados), acá se listan todas las fechas
+// scrapeadas desde hoy en adelante, sin exigir continuidad ni deshabilitar huecos.
+function populateDispoDateSelect() {
+  const today = todayStr();
+  const dates = [...new Set([...state.dispo.availableDates.filter(d => d >= today), today])].sort();
+
+  const sel = document.getElementById('dispoDateSelect');
+  const target = state.dispo.selectedDate || sel.value;
+  sel.innerHTML = '<option value="">-- elegir fecha --</option>';
+  dates.forEach(date => {
+    const opt = document.createElement('option');
+    opt.value = date;
+    opt.textContent = date === today ? `${formatDisplayDate(date)} (hoy)` : formatDisplayDate(date);
+    if (date === target) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadDispoForSelectedDate() {
+  const date = state.dispo.selectedDate;
+  if (!date) { state.dispo.slots = []; renderDispo(); return; }
+
+  state.dispo.loading = true;
+  try {
+    const resp = await fetch(`/api/agenda?date=${date}`);
+    state.dispo.slots = resp.ok ? (await resp.json()).slots ?? [] : [];
+  } catch {
+    state.dispo.slots = [];
+  } finally {
+    state.dispo.loading = false;
+    renderDispo();
+  }
+}
+
+async function refreshDispoView() {
+  if (!state.homeData) return;
+  buildDispoCenterFilter();
+  if (!state.dispo.selectedDate) state.dispo.selectedDate = todayStr();
+  await loadDispoAvailableDates();
+  populateDispoDateSelect();
+  if (state.dispo.selectedDate) loadDispoForSelectedDate();
+  else renderDispo();
+}
+
+function buildDispoCenterFilter() {
+  const centers = [...new Set(
+    (state.homeData?.configuration?.machineCapacities ?? []).map(c => c.centerName)
+  )].sort();
+  const row = document.getElementById('dispoCenterFilterPills');
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', state.dispo.centerFilter === null, () => {
+    state.dispo.centerFilter = null; renderDispo();
+  }));
+  centers.forEach(c => row.appendChild(
+    makePill(c, state.dispo.centerFilter === c, () => {
+      state.dispo.centerFilter = c; renderDispo();
+    })
+  ));
+}
+
+function _timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function _fmtMinutesAsTime(min) {
+  return `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+}
+
+// Huecos de >=30min entre turnos reales (excluye estimados/BQT/IORT). Usa un
+// "cursor" (max endTime visto) en vez de comparar solo contra el turno previo,
+// para no generar huecos negativos si dos turnos se solapan.
+function computeAvailabilityGaps(slots) {
+  const usable = slots
+    .filter(s => !s.isEstimated && !isExcludedSlot(s) && s.startTime)
+    .map(s => ({ start: _timeToMinutes(s.startTime), end: _timeToMinutes(s.endTime) ?? _timeToMinutes(s.startTime) }))
+    .sort((a, b) => a.start - b.start);
+
+  if (usable.length === 0) return { startTime: null, endTime: null, gaps: [] };
+
+  const gaps = [];
+  let cursor = usable[0].end;
+  for (let i = 1; i < usable.length; i++) {
+    const gapMin = usable[i].start - cursor;
+    if (gapMin >= 30) gaps.push({ fromMin: cursor, toMin: usable[i].start, minutes: gapMin });
+    if (usable[i].end > cursor) cursor = usable[i].end;
+  }
+  return {
+    startTime: usable[0].start,
+    endTime: Math.max(...usable.map(s => s.end)),
+    gaps,
+  };
+}
+
+// ponytail: sanity check en vez de suite de tests (no hay test runner en el frontend)
+console.assert(
+  JSON.stringify(computeAvailabilityGaps([
+    { startTime: '08:00', endTime: '08:30' },
+    { startTime: '09:15', endTime: '09:45' },
+    { startTime: '09:50', endTime: '10:05' },
+  ]).gaps.map(g => g.minutes)) === JSON.stringify([45]),
+  'computeAvailabilityGaps: huecos mal calculados'
+);
+
+function renderDispo() {
+  const container = document.getElementById('dispoMachineCards');
+  container.innerHTML = '';
+
+  document.querySelectorAll('#dispoCenterFilterPills .pill-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      btn.textContent === 'Todos'
+        ? state.dispo.centerFilter === null
+        : btn.textContent === state.dispo.centerFilter);
+  });
+
+  if (!state.homeData) return;
+
+  const caps = (state.homeData.configuration?.machineCapacities ?? [])
+    .filter(c => !state.dispo.centerFilter || c.centerName === state.dispo.centerFilter);
+
+  const centerGroups = new Map();
+  caps.forEach(c => {
+    if (!centerGroups.has(c.centerName)) centerGroups.set(c.centerName, []);
+    centerGroups.get(c.centerName).push(c);
+  });
+
+  centerGroups.forEach((machines, centerName) => {
+    const section = document.createElement('div');
+    section.className = 'agenda-center-section';
+    section.innerHTML = `<div class="agenda-center-label">${centerName}</div>`;
+
+    const grid = document.createElement('div');
+    grid.className = 'agenda-machines-grid';
+
+    machines.forEach(cap => {
+      const slots = state.dispo.slots.filter(s => s.machineName === cap.machineName);
+      const { startTime, endTime, gaps } = computeAvailabilityGaps(slots);
+      const shortName = cap.machineName.replace(/^[^-]+ - /, '');
+
+      const card = document.createElement('div');
+      card.className = 'machine-card';
+      card.innerHTML =
+        `<div class="machine-card-name">${shortName}</div>` +
+        (startTime === null
+          ? `<div class="dispo-empty">Sin turnos</div>`
+          : `<div class="dispo-row"><span class="dispo-label">Inicio</span><span>${_fmtMinutesAsTime(startTime)}</span></div>` +
+            (gaps.length === 0
+              ? `<div class="dispo-row dispo-gap-none">Sin huecos ≥30min</div>`
+              : gaps.map(g => `<div class="dispo-row dispo-gap"><span class="dispo-label">Hueco</span><span>${_fmtMinutesAsTime(g.fromMin)}–${_fmtMinutesAsTime(g.toMin)} (${formatMinutes(g.minutes)})</span></div>`).join('')) +
+            `<div class="dispo-row"><span class="dispo-label">Fin</span><span>${_fmtMinutesAsTime(endTime)}</span></div>`);
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    container.appendChild(section);
+  });
+}
 
 function populateAgendaTestControls(data) {
   const sel = document.getElementById('agendaTestMachine');
