@@ -266,6 +266,7 @@ public sealed class PedidoItem
     public string Type { get; set; } = string.Empty; // Paciente | Equipo | Recordatorio
     public string Origin { get; set; } = "Manual"; // Manual | Auto
     public bool Completed { get; set; }
+    public bool Pinned { get; set; } // no se quita por avance de etapa mientras esté fijado
     public DateTime CreatedAtUtc { get; set; }
     // Paciente
     public string? PatientId { get; set; }

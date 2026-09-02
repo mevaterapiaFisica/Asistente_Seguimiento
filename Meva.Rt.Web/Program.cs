@@ -1132,6 +1132,16 @@ app.MapPost("/api/pedidos/{id}/complete", async (string id, PedidoStore pedidoSt
     return TypedResults.Ok(item);
 });
 
+app.MapPost("/api/pedidos/{id}/pin", async (string id, PedidoStore pedidoStore, CancellationToken ct) =>
+{
+    var all = await pedidoStore.LoadAllAsync(ct);
+    var item = all.FirstOrDefault(p => p.Id == id);
+    if (item is null) return Results.NotFound();
+    item.Pinned = !item.Pinned;
+    await pedidoStore.SaveOrUpdateAsync(item, ct);
+    return TypedResults.Ok(item);
+});
+
 app.MapDelete("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, CancellationToken ct) =>
 {
     await pedidoStore.DeleteByIdAsync(id, ct);

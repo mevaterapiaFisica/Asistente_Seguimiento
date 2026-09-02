@@ -22,6 +22,7 @@ obj/
 # ── Logs en raiz del repo (corridas de prueba antiguas) ──────────────────────
 aria_runner_*.log
 aria_results_*.json
+/pedidos.json
 
 # ── Capturas de ejemplo con datos reales de pacientes (PII) ──────────────────
 Ejemplo_*.html

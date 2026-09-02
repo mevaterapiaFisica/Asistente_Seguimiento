@@ -163,7 +163,7 @@ Fuente de verdad: `AppConfiguration.cs`. Se puede sobrescribir vía `data/rt_con
 - **`AriaPlanResolver`** — dado HCs de pacientes, devuelve plan activo. En producción consulta BD; si no hay conexión, lee `aria_plans_mock.json`.
 - **Selección de plan activo (`SelectActivePlan`/`PlanActivo`, sesión 2026-07-24):** dos barreras antes de priorizar por `Status` (`TreatApproval` > `PlanApproval` > `Unapproved`): (1) excluye cursos ya `Completed` (`Course.CompletedDateTime` seteado o `ClinicalStatus=="Completed"` — `CompletedDateTime` es la señal confiable, `ClinicalStatus` no se pudo verificar contra ARIA real); (2) prefiere planes creados hace <30 días, con fallback al pool completo si ninguno es reciente. Sin esto, un curso viejo ya tratado (`TreatApproval`) le ganaba a un `PlanApproval` real y vigente de un curso nuevo — rompía `PlannedMachineDisplayName`/Equipo asignado en toda la app, no solo QA. Detalle en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md` (Bug 4).
 - **Clasificación de tipo de haz:** `Electrones` (RadiationType=="E"), `SRS` (técnica contiene SRS/STEREO), `AltaE` (energía ≥ 10000 keV), `6X` (default).
-- **`IrradiationModality`:** técnica `STATIC`/`STATIC-I` (prefijo, sesión 2026-07-24 — antes exacto `"STATIC"` no matcheaba la variante `"STATIC-I"`) +>40CP→`IMRT`, ≤40CP→`3DC`. `ARC` con `MLCPlanType` conteniendo "VMAT"→`VMAT`, cualquier otro `ARC` (arco conformado, TBI vía arco, sin MLC)→**`ArcoConformado`** (sesión 2026-07-24: técnica `ARC` no es sinónimo de VMAT — lookup de `MLCPlan.MLCPlanType` por `RadiationSer`, mismo patrón que el conteo de ControlPoints; valor distinguible de `3DC` para que `BuildLabel` pueda etiquetar "RC/SBRT - arcos"). Viene del **primer haz por `RadiationSer` ascendente** (antes sin orden explícito — no-determinístico entre corridas para planes multi-haz).
+- **`IrradiationModality`:** técnica `STATIC`/`STATIC-I` (prefijo, sesión 2026-07-24 — antes exacto `"STATIC"` no matcheaba la variante `"STATIC-I"`) +>40CP→`IMRT`, ≤40CP→`3DC`. `ARC` con `DoseRate==1000`→**`ArcoConformado`**, cualquier otro `DoseRate` (ej. 600)→`VMAT` (sesión 2026-07-24: técnica `ARC` no es sinónimo de VMAT; discriminador **corregido en sesión 2026-08-03** — ver detalle y estado "temporal/pendiente" en la sección QA Paciente Específico más abajo). Viene del **primer haz de tratamiento por `RadiationSer` ascendente, excluyendo campos de setup** (`SetupFieldFlag=1`, ej. kV/CBCT — fix sesión 2026-08-03: antes tomaba el primer haz sin filtrar, colando campos de imagen y rompiendo la clasificación de técnica/CPs).
 - **`ExactBeamEnergy`:** máximo sobre **todos** los campos del plan (si un campo es 10X/15X/18X, se usa esa energía aunque otros sean 6X).
 
 ### Persistencia (Storage)
@@ -415,6 +415,21 @@ desactualizada de cuando se creó, aunque el paciente ya esté en Placa Verifica
 posterior). También hace backfill de Tarea/Fecha Límite/Solicita en pedidos automáticos viejos que
 quedaron sin esos datos por versiones anteriores de la lógica.
 
+**Campo Tarea = "Etapa actual" (sesión 2026-09-01):** en pedidos automáticos, `Tarea` muestra
+`"Etapa actual: <etapa de seguimiento>"` y se resincroniza en cada `computeAutoPedidos()` si el
+paciente cambió de etapa (`_etapaActualLabel()`).
+
+**Anti-duplicado por paciente (sesión 2026-09-01):** antes de crear un pedido automático,
+`_findExistingPedidoForPatient()` busca un pedido no completado del mismo paciente (coincidente por
+Apellido y Nombre + HC/`patientId`). Si ya existe, no se duplica — en cambio se agrega a su Nota
+(`observaciones`) el texto de fecha y equipo de inicio (`_pedidoInicioNota()`), sin repetir la línea
+si ya estaba agregada.
+
+**Fijar pedido (sesión 2026-09-02):** `PedidoItem.Pinned` (`POST /api/pedidos/{id}/pin`, botón
+"Fijar/Desfijar" en la action bar) — igual patrón que "Fijar QA". Un pedido automático fijado no se
+borra por la regla de limpieza de etapa > F7C (Chequeo General) en `computeAutoPedidos()`; las otras
+causas de limpieza (técnica BQT/IORT, fecha límite vencida) siguen aplicando aunque esté fijado.
+
 ### Tab QA Paciente Específico (Física, desde sesión 2026-07-22, revisada 2026-07-24)
 
 Lista **por plan de ARIA** (no por paciente — un paciente con 2 planes puede tener 2 filas).
@@ -439,7 +454,7 @@ Lista **por plan de ARIA** (no por paciente — un paciente con 2 planes puede t
 - Camino real de producción: `AriaQuery.cs` (bulk, `ParseAriaOutput` en `Program.cs`) — candidatos = `ActivePlan` ∪ `AllPlans` con `Status` `PlanApproval`/`TreatApproval`.
 - Camino vivo (sin uso real en producción hoy): `AriaAdapter.cs` — candidatos = `PlanActivo` ∪ `PlanesPlanApproval` ∪ `PlanesTreatApproval` (`MetodosParaWebScrap.cs`).
 - **HC con sufijo por curso concurrente:** SitraMed sufija el HC por seguimiento (`1-114893-1` para un 2do curso), pero ARIA guarda al paciente bajo un único `PatientId` (típicamente sufijo `-0`). `BootstrapService.NormalizeAriaBaseId`/`TryFindAriaPlan` (`Contracts.cs`) prueban también la variante `-0` al consultar y mergear ARIA — sin esto, el paciente queda invisible para QA aunque tenga plan real aprobado. Detalle en `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`.
-- **Técnica `ARC` ≠ VMAT:** arco conformado y algunos TBI usan la misma `TechniqueId="ARC"` que VMAT en ARIA — el discriminador real es `MLCPlan.MLCPlanType` (entidad no documentada, encontrada por reflexión sobre `AriaQ.dll`). Solo `MLCPlanType` conteniendo "VMAT" clasifica como `VMAT`; el resto cae a `3DC`. Ver sección ARIA arriba y `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md` (Bug 3, sin verificar contra ARIA real).
+- **Técnica `ARC` ≠ VMAT (sesión 2026-08-03, corrige Bug 3 de `BUG_PACIENTE_1-114893_ARIA_NO_MATCH.md`):** arco conformado (típico SRS/SBRT) usa la misma `TechniqueId="ARC"` que VMAT en ARIA. `MLCPlan.MLCPlanType` **no sirve** de discriminador — da `"DynMLCPlan"` en ambos casos (verificado con dump crudo contra ARIA real, pacientes `1-119097-0` VMAT vs `1-119477-0` arco conformado). **Solución temporal actual:** `ExternalField.DoseRate` — `1000` (haz SRS de alta tasa) → `ArcoConformado`, cualquier otro valor (ej. `600` normal) → `VMAT` (heurística del físico, cubre la mayoría de los casos pero no es 100% preciso). **Mejor solución pendiente:** comparar `DoseRate` entre control points del mismo haz (dosis variable = VMAT real, dosis constante = arco conformado estático) — descartado por ahora por costo de query por paciente. Implementado en `Modalidad()` (`AriaQuery.cs`) y `ResolveIrradiationModality()` (`AriaAdapter.cs`).
 
 ### Tab Técnicas Especiales (desde sesión 2026-06-10)
 

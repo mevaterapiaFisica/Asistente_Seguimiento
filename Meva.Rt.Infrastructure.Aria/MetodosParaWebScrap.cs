@@ -94,7 +94,9 @@ public static class MetodosParaWebScrap
             return null;
         }
 
-        var idAria = plan.Radiations.OrderBy(r => r.RadiationSer).First().RadiationDevice.Machine.MachineId;
+        var ordered = plan.Radiations.OrderBy(r => r.RadiationSer).ToList();
+        var idAria = (ordered.FirstOrDefault(r => r.ExternalFieldCommon?.SetupFieldFlag != 1) ?? ordered.First())
+            .RadiationDevice.Machine.MachineId;
         return EquipoAriaASitra(idAria, mapFilePath);
     }
 

@@ -4395,7 +4395,7 @@ async function computeAutoPedidos() {
     const patient = patientById.get(p.patientId);
     if (isExcludedTechnique(patient ?? { treatmentTechnique: p.technique })) return true;
     if (_pedidoIsPastDate(p.fechaLimite)) return true;
-    if (patient) {
+    if (patient && !p.pinned) {
       const idx = _STAGE_ORDER.indexOf((patient.stageCode ?? '').toUpperCase());
       if (idx > PEDIDO_AUTO_MAX_IDX) return true;
     }
@@ -4409,16 +4409,22 @@ async function computeAutoPedidos() {
     state.pedidos.items = state.pedidos.items.filter(p => !staleIds.has(p.id));
   }
 
-  // Completar Tarea/Fecha Límite/Solicita en pedidos automáticos viejos que quedaron sin esos datos
-  const toBackfill = state.pedidos.items.filter(p =>
-    p.origin === 'Auto' && p.type === 'Paciente' && !p.completed && !p.tarea && patientById.has(p.patientId)
-  );
-  for (const item of toBackfill) {
+  // Sincronizar "Etapa actual" en pedidos automáticos: backfill de los que quedaron sin Tarea/Fecha/Solicita,
+  // y actualización del label si el paciente cambió de etapa
+  const toSync = state.pedidos.items.filter(p => {
+    if (p.origin !== 'Auto' || p.type !== 'Paciente' || p.completed) return false;
+    const patient = patientById.get(p.patientId);
+    if (!patient) return false;
+    return !p.tarea || p.tarea !== _etapaActualLabel(patient);
+  });
+  for (const item of toSync) {
     const p = patientById.get(item.patientId);
+    const info = _pedidoInicioInfo(p);
     const body = {
       ...item,
-      tarea: p.stageDisplayName ?? p.stageCode ?? null,
-      fechaLimite: _pedidoInicioFecha(p),
+      tarea: _etapaActualLabel(p),
+      fechaLimite: item.fechaLimite ?? info?.iso ?? null,
+      observaciones: item.observaciones ?? _pedidoInicioNota(info),
       solicita: item.solicita ?? 'Automático'
     };
     try {
@@ -4434,23 +4440,45 @@ async function computeAutoPedidos() {
   }
 
   const candidates = _pedidoEligiblePatients();
-  const existingAutoIds = new Set(
-    state.pedidos.items.filter(p => p.origin === 'Auto' && p.type === 'Paciente').map(p => p.patientId)
-  );
-  const toCreate = candidates.filter(p =>
-    !existingAutoIds.has(p.patientId) && !_pedidoIsPastDate(_pedidoInicioFecha(p))
-  );
+  const toCreate = [];
+  let notedExisting = false;
+  for (const p of candidates) {
+    if (_pedidoIsPastDate(_pedidoInicioFecha(p))) continue;
+    const existing = _findExistingPedidoForPatient(p);
+    if (existing) {
+      const info = _pedidoInicioInfo(p);
+      const notaInicio = _pedidoInicioNota(info);
+      if (notaInicio && !(existing.observaciones ?? '').includes(notaInicio)) {
+        const observaciones = existing.observaciones ? `${existing.observaciones}\n${notaInicio}` : notaInicio;
+        try {
+          const resp = await fetch(`/api/pedidos/${existing.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...existing, observaciones })
+          });
+          if (resp.ok) {
+            const updated = await resp.json();
+            const idx = state.pedidos.items.findIndex(x => x.id === updated.id);
+            if (idx >= 0) state.pedidos.items[idx] = updated;
+            notedExisting = true;
+          }
+        } catch {}
+      }
+      continue;
+    }
+    toCreate.push(p);
+  }
   if (toCreate.length === 0) {
-    if ((staleAuto.length > 0 || toBackfill.length > 0) && state.activeTab === 'pedidos') renderPedidos();
+    if ((staleAuto.length > 0 || toSync.length > 0 || notedExisting) && state.activeTab === 'pedidos') renderPedidos();
     return;
   }
 
   for (const p of toCreate) {
+    const info = _pedidoInicioInfo(p);
     const body = {
       type: 'Paciente', origin: 'Auto', completed: false,
       patientId: p.patientId, patientName: p.patientName, technique: p.treatmentTechnique ?? null,
-      tarea: p.stageDisplayName ?? p.stageCode ?? null,
-      fechaLimite: _pedidoInicioFecha(p),
+      tarea: _etapaActualLabel(p),
+      fechaLimite: info?.iso ?? null,
+      observaciones: _pedidoInicioNota(info),
       solicita: 'Automático'
     };
     try {
@@ -4463,20 +4491,49 @@ async function computeAutoPedidos() {
   if (state.activeTab === 'pedidos') renderPedidos();
 }
 
-function _pedidoInicioFecha(p) {
-  const dates = [];
+function _etapaActualLabel(p) {
+  return `Etapa actual: ${p.stageDisplayName ?? p.stageCode ?? '—'}`;
+}
+
+function _normPedidoName(name) {
+  return (name ?? '').trim().toLowerCase();
+}
+
+function _findExistingPedidoForPatient(p) {
+  const name = _normPedidoName(p.patientName);
+  return state.pedidos.items.find(item =>
+    item.type === 'Paciente' && !item.completed &&
+    item.patientId === p.patientId && _normPedidoName(item.patientName) === name
+  );
+}
+
+function _pedidoInicioInfo(p) {
+  const items = [];
   const reservation = window.activeReservations.get(p.patientId);
-  if (reservation) dates.push(`${reservation.reservedDate}T${reservation.reservedTime || '00:00'}`);
+  if (reservation) items.push({ dt: `${reservation.reservedDate}T${reservation.reservedTime || '00:00'}`, equipo: reservation.machineDisplayName });
   const nameKey = p.patientName?.toLowerCase();
   for (const slot of (state.homeData.agenda ?? [])) {
     if (isExcludedSlot(slot)) continue;
     const matches = p.sitraMedGuid ? slot.sitraMedGuid === p.sitraMedGuid : slot.patientName?.toLowerCase() === nameKey;
-    if (matches) dates.push(`${slot.agendaDate}T${slot.startTime || '00:00'}`);
+    if (matches) items.push({ dt: `${slot.agendaDate}T${slot.startTime || '00:00'}`, equipo: slot.machineName });
   }
-  if (dates.length === 0) return null;
-  dates.sort();
-  const d = new Date(dates[0]);
-  return isNaN(d) ? null : d.toISOString();
+  if (items.length === 0) return null;
+  items.sort((a, b) => a.dt.localeCompare(b.dt));
+  const first = items[0];
+  const d = new Date(first.dt);
+  if (isNaN(d)) return null;
+  const [fecha, hora] = first.dt.split('T');
+  return { iso: d.toISOString(), fecha, hora, equipo: first.equipo ?? null };
+}
+
+function _pedidoInicioFecha(p) {
+  return _pedidoInicioInfo(p)?.iso ?? null;
+}
+
+function _pedidoInicioNota(info) {
+  if (!info) return null;
+  const [y, m, d] = info.fecha.split('-');
+  return `Inicia ${d}/${m}/${y} - ${info.hora} - ${info.equipo ?? '—'}`;
 }
 
 function _pedidoIsPastDate(iso) {
@@ -4490,7 +4547,11 @@ function _pedidoIsPastDate(iso) {
 
 function _pedidoUrgencyClass(fechaLimite) {
   if (!fechaLimite) return '';
-  const diffDays = Math.ceil((new Date(fechaLimite) - new Date()) / 86400000);
+  const d = new Date(fechaLimite);
+  const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = new Date();
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.round((dateOnly - todayOnly) / 86400000);
   if (diffDays <= 1) return 'pedido-urgent';
   if (diffDays <= 4) return 'pedido-warn';
   return '';
@@ -4500,17 +4561,30 @@ function renderPedidos() {
   const wrap = document.getElementById('pedidos-table-wrap');
   if (!wrap) return;
 
-  const items = state.pedidos.items.filter(p => !p.completed);
+  const items = state.pedidos.items.filter(p => !p.completed).sort((a, b) => {
+    if (!a.fechaLimite && !b.fechaLimite) return 0;
+    if (!a.fechaLimite) return 1;
+    if (!b.fechaLimite) return -1;
+    return new Date(a.fechaLimite) - new Date(b.fechaLimite);
+  });
+
+  const patientById = new Map((state.homeData?.patients ?? []).map(p => [p.patientId, p]));
 
   const rows = items.map(p => {
     const urgClass = _pedidoUrgencyClass(p.fechaLimite);
     const selClass = state.pedidos.selectedId === p.id ? ' pedido-selected' : '';
-    const label = p.type === 'Paciente'
-      ? `${esc(fmtHc(p.patientId))} · ${esc(p.patientName ?? '')}`
-      : p.type === 'Equipo' ? esc(p.equipoName ?? '') : '<span class="muted-italic">Recordatorio</span>';
-    const fechaStr = p.fechaLimite
+    const guid = p.type === 'Paciente' ? patientById.get(p.patientId)?.sitraMedGuid : null;
+    const nameHtml = guid
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${guid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente">${esc(p.patientName ?? '')}</a>`
+      : esc(p.patientName ?? '');
+    const pinIcon = p.pinned ? ' <span title="Fijado" class="qa-pin-icon">📌</span>' : '';
+    const label = (p.type === 'Paciente'
+      ? `${esc(fmtHc(p.patientId))} · ${nameHtml}`
+      : p.type === 'Equipo' ? esc(p.equipoName ?? '') : '<span class="muted-italic">Recordatorio</span>') + pinIcon;
+    const fechaRaw = p.fechaLimite
       ? new Date(p.fechaLimite).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '<span class="muted-italic">—</span>';
+    const fechaStr = urgClass ? `<strong class="${urgClass}-text">${fechaRaw}</strong>` : fechaRaw;
     return `<tr class="${urgClass}${selClass}" data-id="${p.id}">
       <td>${label}</td>
       <td>${esc(p.technique ?? '—')}</td>
@@ -4544,11 +4618,14 @@ function renderPedidos() {
 }
 
 function _updatePedidoActionButtons() {
-  const has = !!state.pedidos.selectedId;
-  ['pedidoEditBtn', 'pedidoDeleteBtn', 'pedidoCompleteBtn'].forEach(id => {
+  const item = state.pedidos.items.find(p => p.id === state.pedidos.selectedId);
+  const has = !!item;
+  ['pedidoEditBtn', 'pedidoDeleteBtn', 'pedidoCompleteBtn', 'pedidoPinBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !has;
   });
+  const pinBtn = document.getElementById('pedidoPinBtn');
+  if (pinBtn) pinBtn.textContent = item?.pinned ? 'Desfijar' : 'Fijar';
 }
 
 function _wirePedidosActionBar() {
@@ -4568,6 +4645,7 @@ function _wirePedidosActionBar() {
   document.getElementById('pedidoDeleteBtn').addEventListener('click', async () => {
     const id = state.pedidos.selectedId;
     if (!id) return;
+    if (!confirm('¿Eliminar este pedido?')) return;
     await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
     state.pedidos.items = state.pedidos.items.filter(p => p.id !== id);
     state.pedidos.selectedId = null;
@@ -4584,6 +4662,18 @@ function _wirePedidosActionBar() {
       if (idx >= 0) state.pedidos.items[idx] = updated;
     }
     state.pedidos.selectedId = null;
+    renderPedidos();
+  });
+
+  document.getElementById('pedidoPinBtn').addEventListener('click', async () => {
+    const id = state.pedidos.selectedId;
+    if (!id) return;
+    const resp = await fetch(`/api/pedidos/${id}/pin`, { method: 'POST' });
+    if (resp.ok) {
+      const updated = await resp.json();
+      const idx = state.pedidos.items.findIndex(p => p.id === id);
+      if (idx >= 0) state.pedidos.items[idx] = updated;
+    }
     renderPedidos();
   });
 }
@@ -4707,7 +4797,7 @@ function _openPedidoModal(type, existing) {
       technique: type === 'Paciente' ? (tecnicaIn.value.trim() || null) : null,
       equipoName: type === 'Equipo' ? (equipoSel.value || null) : null,
       tarea: tareaIn.value.trim() || null,
-      fechaLimite: fechaIn.value ? new Date(fechaIn.value).toISOString() : null,
+      fechaLimite: fechaIn.value ? new Date(`${fechaIn.value}T12:00:00`).toISOString() : null,
       medico: type === 'Paciente' ? (medicoIn.value.trim() || null) : null,
       solicita: solicitaIn.value.trim() || null,
       responsable: responsableIn.value.trim() || null,
@@ -4894,6 +4984,9 @@ function renderQaEspecifico() {
     const pinIcon = p.pinned ? ' <span title="Fijado" class="qa-pin-icon">📌</span>' : '';
     const patient = patientById.get(p.patientId);
     const stageStr = patient ? esc(patient.stageDisplayName ?? patient.stageCode ?? '—') : '<span class="muted-italic">—</span>';
+    const nameHtml = patient?.sitraMedGuid
+      ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${patient.sitraMedGuid}/overview" target="_blank" rel="noopener noreferrer" title="Ir a resumen paciente">${esc(p.patientName ?? '—')}</a>`
+      : esc(p.patientName ?? '—');
 
     const isGroupStart = col === 'equipo' && (i === 0 || items[i - 1].equipoName !== p.equipoName);
     if (isGroupStart) groupIndex++;
@@ -4904,7 +4997,7 @@ function renderQaEspecifico() {
 
     return `<tr class="${selClass.trim()}${groupClass}" data-id="${p.id}">
       <td>${esc(fmtHc(p.patientId))}</td>
-      <td>${esc(p.patientName ?? '—')}${pinIcon}</td>
+      <td>${nameHtml}${pinIcon}</td>
       <td>${esc(p.plan ?? '—')}</td>
       <td>${equipoCell}</td>
       <td>${stageStr}</td>

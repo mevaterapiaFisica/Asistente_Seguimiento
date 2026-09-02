@@ -83,6 +83,7 @@
               <h2>Señales del período</h2>
             </div>
             <div id="tendSignals" class="tend-signals"></div>
+            <p class="tend-filter-note">⚠ Bug de scraping corregido el 23/07/2026 (pacientes sin prioridad asignada no entraban al snapshot): el histórico previo a esa fecha puede faltar transiciones de los casos más atascados. Las señales de <em>tendencia creciente</em> y <em>semana anómala</em> pueden subdetectar hasta acumular semanas de datos posteriores al fix. Detalle en BUG_PACIENTES_SIN_PRIORIDAD.md.</p>
           </section>
 
           <section class="panel">
@@ -219,6 +220,7 @@
           <button id="pedidoEditBtn" class="ghost-button" type="button" disabled>Editar</button>
           <button id="pedidoDeleteBtn" class="ghost-button" type="button" disabled>Eliminar</button>
           <button id="pedidoCompleteBtn" class="ghost-button" type="button" disabled>Completar</button>
+          <button id="pedidoPinBtn" class="ghost-button" type="button" disabled>Fijar</button>
         </div>
         <div id="pedidos-table-wrap" class="table-wrap"></div>
       </section>
@@ -577,6 +579,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=20260722"></script>
+  <script src="app.js?v=20260724c"></script>
 </body>
 </html>

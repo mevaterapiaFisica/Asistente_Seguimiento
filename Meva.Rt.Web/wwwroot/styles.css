@@ -1230,8 +1230,12 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .spec-table tr.has-reservation td { background: var(--color-reservation-bg); }
 
 /* ── Pedidos (Física) ────────────────────────────────────────────────────── */
-.spec-table tr.pedido-urgent td { background: var(--danger-bg); }
-.spec-table tr.pedido-warn td { background: var(--warn-bg-soft); }
+.spec-table tr.pedido-urgent td { background: var(--danger-bg-strong); border-top: 1px solid var(--danger-border); border-bottom: 1px solid var(--danger-border); }
+.spec-table tr.pedido-urgent td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.spec-table tr.pedido-warn td { background: var(--warn-bg); border-top: 1px solid var(--warn-border); border-bottom: 1px solid var(--warn-border); }
+.spec-table tr.pedido-warn td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
+.pedido-urgent-text { color: var(--red); }
+.pedido-warn-text { color: var(--orange); }
 .spec-table tr.pedido-selected td { background: var(--color-reservation-bg); }
 .pedido-modal { width: 480px; }
 .pedido-search-results {

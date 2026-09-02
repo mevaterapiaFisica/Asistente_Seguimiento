@@ -1657,7 +1657,7 @@ public sealed class PlaywrightSitraMedClient
             if (cellCount < 3) continue;
 
             var priority = (await cells.Nth(0).InnerTextAsync()).Trim();
-            if (!int.TryParse(priority, out _)) continue;
+            var hasPriority = int.TryParse(priority, out var priorityValue);
 
             string? rowHtml = null;
             try { rowHtml = await row.EvaluateAsync<string>("tr => tr.outerHTML").ConfigureAwait(false); } catch { }
@@ -1809,7 +1809,7 @@ public sealed class PlaywrightSitraMedClient
                 TomographyDate = tomographyDate,
                 ResponsibleDoctor = responsibleDoctor,
                 PostponedUntil = postponedUntil,
-                Priority = int.TryParse(priority, out var pInt) ? pInt : (int?)null,
+                Priority = hasPriority ? priorityValue : (int?)null,
                 ExpectantStartDate = expectantStartDate,
                 ExpectantObservations = expectantObservations,
                 ExpectantUser = expectantUser,

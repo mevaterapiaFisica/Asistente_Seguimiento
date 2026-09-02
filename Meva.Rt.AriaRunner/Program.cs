@@ -88,6 +88,7 @@ class Program
         return RunQueries(input, resultsPath, log);
     }
 
+
     static int RunQueries(RunnerInput input, string resultsPath, RunnerLogger log)
     {
         // ─── Test de conexión ─────────────────────────────────────────────────────

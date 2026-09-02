@@ -73,14 +73,14 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
                             Status = p.Status,
                             IrradiationModality = ResolveIrradiationModality(p),
                             MachineDisplayName = ResolveMachineDisplay(
-                                p.Radiations.OrderBy(r => r.RadiationSer).FirstOrDefault()?.RadiationDevice.Machine.MachineId is { } machId
+                                FirstTreatmentRadiation(p.Radiations)?.RadiationDevice.Machine.MachineId is { } machId
                                     ? MetodosParaWebScrap.EquipoAriaASitra(machId, mapPath)
                                     : null)
                         })
                         .ToList();
                 }
 
-                var rad = plan?.Radiations.OrderBy(r => r.RadiationSer).FirstOrDefault();
+                var rad = plan != null ? FirstTreatmentRadiation(plan.Radiations) : null;
                 if (rad?.RadiationDevice.Machine.MachineId is { } ariaMachineId)
                 {
                     row.PlannedMachineAriaId ??= ariaMachineId;
@@ -209,21 +209,30 @@ public sealed class AriaPlanResolver : IAriaPlanResolver
         return null;
     }
 
+    // Excluye campos de setup (kV/CBCT, SetupFieldFlag=1): tienen menor RadiationSer que los haces de
+    // tratamiento reales y, si caen primero, contaminan técnica/CPs → modalidad mal clasificada (ej.
+    // VMAT real leído como 3DC porque el "primer haz" era en realidad un campo de imagen).
+    private static Radiation? FirstTreatmentRadiation(IEnumerable<Radiation>? radiations)
+    {
+        var ordered = radiations?.OrderBy(r => r.RadiationSer).ToList();
+        return ordered?.FirstOrDefault(r => r.ExternalFieldCommon?.SetupFieldFlag != 1) ?? ordered?.FirstOrDefault();
+    }
+
     private static string? ResolveIrradiationModality(AriaQ.PlanSetup plan)
     {
         try
         {
-            var firstRad = plan.Radiations?.OrderBy(r => r.RadiationSer).FirstOrDefault();
+            var firstRad = FirstTreatmentRadiation(plan.Radiations);
             if (firstRad?.ExternalFieldCommon?.Technique == null) return "Indefinido";
             var techId = firstRad.ExternalFieldCommon.Technique.TechniqueId;
             if (techId == "ARC")
             {
-                // ARC no es sinónimo de VMAT: arco conformado/TBI también usan ARC pero con
-                // MLCPlanType distinto (o sin MLC). Solo VMAT real si el MLCPlanType lo indica.
-                var mlcType = firstRad.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
-                return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
-                    ? "VMAT"
-                    : "ArcoConformado";
+                // ARC no es sinónimo de VMAT: arco conformado (típico SRS/SBRT) también usa ARC.
+                // MLCPlanType NO discrimina (da "DynMLCPlan" en ambos casos, verificado contra ARIA
+                // real). DoseRate=1000 (haz SRS de alta tasa) = arco conformado; el resto (600) = VMAT
+                // real (heurística del físico, sesión 2026-08-03, pacientes 1-119097-0 vs 1-119477-0).
+                var doseRate = firstRad.ExternalFieldCommon.ExternalField?.DoseRate;
+                return doseRate == 1000 ? "ArcoConformado" : "VMAT";
             }
             if (techId != null && techId.StartsWith("STATIC", StringComparison.OrdinalIgnoreCase))
                 return (firstRad.ExternalFieldCommon.ControlPoints?.Count ?? 0) > 40 ? "IMRT" : "3DC";

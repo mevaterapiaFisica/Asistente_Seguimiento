@@ -119,16 +119,17 @@ public sealed class AriaQuery
                 .ToDictionary(x => x.RadiationSer, x => x.CpCount);
             _log.Info($"         {cpCounts.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
 
-            // ── 4c. Tipo de MLC por RadiationSer (discrimina VMAT real de arco conformado/TBI con técnica ARC) ──
-            _log.Info("  Cargando tipo de MLC...");
-            var mlcTypes = QueryInBatches(radiationSerList, chunk =>
+            // ── 4c. DoseRate por RadiationSer (discrimina VMAT real de arco conformado con técnica ARC:
+            // MLCPlanType es "DynMLCPlan" en ambos casos, no sirve — DoseRate=1000 (haz SRS) es arco
+            // conformado, DoseRate normal (600) es VMAT real; confirmado contra ARIA real, sesión 2026-08-03) ──
+            _log.Info("  Cargando dose rate...");
+            var doseRates = QueryInBatches(radiationSerList, chunk =>
                 ctx.ExternalFieldCommons
                    .Where(ef => chunk.Contains(ef.RadiationSer))
-                   .SelectMany(ef => ef.MLCPlans.Select(m => new { ef.RadiationSer, m.MLCPlanType }))
+                   .Select(ef => new { ef.RadiationSer, ef.ExternalField.DoseRate })
                    .ToList())
-                .GroupBy(x => x.RadiationSer)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)));
-            _log.Info($"         {mlcTypes.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
+                .ToDictionary(x => x.RadiationSer, x => x.DoseRate);
+            _log.Info($"         {doseRates.Count} entradas ({sw.Elapsed.TotalSeconds:F1}s)");
 
             // ── 6. Ensamblar resultados en el orden original ───────────────────────
             _log.Info("  [6/6] Ensamblando resultados...");
@@ -175,7 +176,7 @@ public sealed class AriaQuery
                     foreach (var plan in plansByCourseSer[course.CourseSer])
                     {
                         var planRads = radiationsByPlanSer[plan.PlanSetupSer].ToList();
-                        allPlans.Add(BuildPlanResult(course, plan, planRads, cpCounts, mlcTypes));
+                        allPlans.Add(BuildPlanResult(course, plan, planRads, cpCounts, doseRates));
                     }
                 }
 
@@ -292,9 +293,9 @@ public sealed class AriaQuery
 
     // radiations: para QueryAllPatients viene del lookup; para QueryPatient viene de plan.Radiations.
     // cpCounts: conteo de ControlPoints por RadiationSer (solo en bulk); null = usar navigation property.
-    // mlcTypes: MLCPlanType por RadiationSer (solo en bulk); null = usar navigation property.
+    // doseRates: DoseRate por RadiationSer (solo en bulk); null = usar navigation property.
     private static PlanResult BuildPlanResult(Course course, PlanSetup plan, ICollection<Radiation>? radiations,
-        Dictionary<long, int>? cpCounts = null, Dictionary<long, string?>? mlcTypes = null)
+        Dictionary<long, int>? cpCounts = null, Dictionary<long, int?>? doseRates = null)
     {
         var statusDateStr = plan.StatusDate == default ? null : plan.StatusDate.ToString("yyyy-MM-dd");
         var creationDateStr = plan.CreationDate == default ? null : plan.CreationDate.ToString("yyyy-MM-dd");
@@ -320,7 +321,12 @@ public sealed class AriaQuery
         if (pr.NumberOfFractions == null)
             pr.NumberOfFractions = plan.RTPlans?.OrderByDescending(r => r.CreationDate).FirstOrDefault()?.NoFractions;
 
-        var firstRadiation = radiations?.FirstOrDefault();
+        // Excluye campos de setup (kV/CBCT, SetupFieldFlag=1): tienen menor RadiationSer que los haces
+        // de tratamiento reales y, si caen primero, contaminan técnica/CPs → modalidad mal clasificada
+        // (ej. VMAT real leído como 3DC porque el "primer haz" era en realidad un campo de imagen).
+        var ordered = radiations?.OrderBy(r => r.RadiationSer).ToList();
+        var firstRadiation = ordered?.FirstOrDefault(r => r.ExternalFieldCommon?.SetupFieldFlag != 1)
+            ?? ordered?.FirstOrDefault();
         if (firstRadiation?.RadiationDevice?.Machine != null)
         {
             pr.MachineAriaId = firstRadiation.RadiationDevice.Machine.MachineId?.Trim();
@@ -332,7 +338,7 @@ public sealed class AriaQuery
             var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
             var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
             pr.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
-            pr.IrradiationModality = Modalidad(firstRadiation, cpCounts, mlcTypes);
+            pr.IrradiationModality = Modalidad(firstRadiation, cpCounts, doseRates);
             pr.ExactBeamEnergy = DetermineExactBeamEnergy(radiations);
         }
 
@@ -361,7 +367,7 @@ public sealed class AriaQuery
         return null;
     }
 
-    private static string Modalidad(Radiation firstRadiation, Dictionary<long, int>? cpCounts = null, Dictionary<long, string?>? mlcTypes = null)
+    private static string Modalidad(Radiation firstRadiation, Dictionary<long, int>? cpCounts = null, Dictionary<long, int?>? doseRates = null)
     {
         if (firstRadiation.ExternalFieldCommon?.Technique == null)
             return "Indefinido";
@@ -370,15 +376,15 @@ public sealed class AriaQuery
 
         if (techId == "ARC")
         {
-            // Técnica ARC no es sinónimo de VMAT: arco conformado (MLC static/dynamic arc) y algunos
-            // TBI también usan ARC pero con MLCPlanType distinto (o sin MLC). Solo VMAT real si el
-            // MLCPlanType lo indica explícitamente.
-            var mlcType = mlcTypes != null
-                ? (mlcTypes.TryGetValue(firstRadiation.RadiationSer, out var t) ? t : null)
-                : firstRadiation.ExternalFieldCommon.MLCPlans?.Select(m => m.MLCPlanType).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
-            return !string.IsNullOrWhiteSpace(mlcType) && mlcType.Contains("VMAT", StringComparison.OrdinalIgnoreCase)
-                ? "VMAT"
-                : "ArcoConformado";
+            // Técnica ARC no es sinónimo de VMAT: arco conformado (MLC estático dentro del arco, típico
+            // de SRS/SBRT) también usa ARC. MLCPlanType NO discrimina (da "DynMLCPlan" en ambos casos,
+            // verificado contra ARIA real). El discriminador confiable es DoseRate: 1000 (haz SRS de alta
+            // tasa) = arco conformado; el resto (600, dosis normal) = VMAT real (heurística del físico,
+            // sesión 2026-08-03, pacientes 1-119097-0 vs 1-119477-0).
+            var doseRate = doseRates != null
+                ? (doseRates.TryGetValue(firstRadiation.RadiationSer, out var dr) ? dr : null)
+                : firstRadiation.ExternalFieldCommon.ExternalField?.DoseRate;
+            return doseRate == 1000 ? "ArcoConformado" : "VMAT";
         }
 
         if (techId != null && techId.StartsWith("STATIC", StringComparison.OrdinalIgnoreCase))
