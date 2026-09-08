@@ -265,6 +265,20 @@
         <div id="especiales-table-wrap" class="table-wrap"></div>
       </section>
 
+      <!-- ── TBI ───────────────────────────────────────────────────────── -->
+      <section id="tab-tbi" class="tab-panel">
+        <div class="filter-bar filter-bar-stacked" id="tbi-filters">
+          <div class="filter-row">
+            <span class="filter-label">Etapa:</span>
+            <div id="tbi-stage-pills" class="pill-row"></div>
+          </div>
+        </div>
+        <div class="filter-bar" id="tbiActionBar">
+          <button id="tbiReviewBtn" class="ghost-button" type="button" disabled>Revisar datos de mail</button>
+        </div>
+        <div id="tbi-table-wrap" class="table-wrap"></div>
+      </section>
+
       <!-- ── Conductas Expectantes ────────────────────────────────────── -->
       <section id="tab-expectantes" class="tab-panel">
         <div class="filter-bar filter-bar-stacked" id="expectantes-filters">
@@ -572,6 +586,42 @@
     </div>
   </div>
 
+  <!-- ── TBI Review Modal ──────────────────────────────────────────────── -->
+  <div id="tbi-modal-overlay" class="auth-overlay" hidden>
+    <div class="reservation-modal pedido-modal">
+      <h3 class="auth-modal-title">Revisar datos de mail TBI</h3>
+      <div class="res-modal-row">
+        <div class="auth-field res-field-half">
+          <label class="auth-label">HC</label>
+          <input id="tbi-modal-hc" type="text" class="auth-input" readonly>
+        </div>
+        <div class="auth-field res-field-half">
+          <label class="auth-label">Nombre</label>
+          <input id="tbi-modal-nombre" type="text" class="auth-input" readonly>
+        </div>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Fecha Tomo</label>
+        <input id="tbi-modal-tomo" type="date" class="auth-input">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Fecha Inicio TBI</label>
+        <input id="tbi-modal-inicio" type="date" class="auth-input">
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">Equipo</label>
+        <input id="tbi-modal-equipo" type="text" class="auth-input">
+      </div>
+
+      <div id="tbi-modal-error" class="auth-error" hidden></div>
+
+      <div class="auth-buttons">
+        <button id="tbi-modal-cancel-btn" type="button" class="ghost-button">Cancelar</button>
+        <button id="tbi-modal-submit-btn" type="button" class="tab-button active">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Auth Modal ────────────────────────────────────────────────────── -->
   <div id="auth-modal-overlay" class="auth-overlay" hidden>
     <div class="auth-modal">
@@ -589,6 +639,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=20260902c"></script>
+  <script src="app.js?v=20260902d"></script>
 </body>
 </html>

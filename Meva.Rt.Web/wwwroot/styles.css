@@ -1190,6 +1190,14 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
   border-radius: 999px; padding: 1px 8px; white-space: nowrap;
 }
 
+.tbi-mail-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600;
+  color: var(--red); background: var(--info-bg);
+  border: 1px solid var(--red);
+  border-radius: 999px; padding: 0 6px; margin-left: 5px; white-space: nowrap;
+}
+
 .pacientes-action-panel {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 16px;

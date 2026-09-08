@@ -259,6 +259,18 @@ public sealed class PatientTurnReservation
     public string? PlannedMachineAtReservation { get; set; }
 }
 
+public sealed class TbiMailInfo
+{
+    public string PatientId { get; set; } = string.Empty;
+    public string PatientName { get; set; } = string.Empty;
+    public DateOnly? TomographyDate { get; set; }
+    public DateOnly? TreatmentStartDate { get; set; }
+    public string? MachineDisplayName { get; set; }
+    public DateTime ReceivedAtUtc { get; set; }
+    public bool Confirmed { get; set; }
+    public string? MessageId { get; set; }
+}
+
 public sealed class PedidoItem
 {
     // Formato: "PED_{guid}"

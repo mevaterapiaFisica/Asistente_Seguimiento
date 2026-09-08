@@ -71,6 +71,13 @@ const state = {
     sort: { col: null, dir: 'asc' }
   },
 
+  tbi: {
+    stageFilter: null,
+    sort: { col: 'stage', dir: 'desc' },
+    mailByPatientId: new Map(),
+    selectedId: null
+  },
+
   expectantes: {
     sort: { col: 'date', dir: 'asc' },
     centerFilter: null,
@@ -164,6 +171,15 @@ async function _refreshReservations() {
     if (!resp.ok) return;
     const list = await resp.json();
     window.activeReservations = new Map(list.map(r => [r.patientId, r]));
+  } catch {}
+}
+
+async function _refreshTbiMail() {
+  try {
+    const resp = await fetch('/api/tbi-mail');
+    if (!resp.ok) return;
+    const list = await resp.json();
+    state.tbi.mailByPatientId = new Map(list.map(m => [m.patientId, m]));
   } catch {}
 }
 
@@ -404,6 +420,7 @@ const NAV_GROUPS = {
   pacientes: { tabs: [
     { id: 'followup',   label: 'Seguimiento' },
     { id: 'especiales', label: 'Técnicas Especiales' },
+    { id: 'tbi', label: 'TBI' },
     { id: 'expectantes', label: 'Conductas Expectantes' },
     { id: 'pacientes',  label: 'Buscar' },
   ]},
@@ -480,6 +497,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'config') loadConfigData();
   if (targetTab === 'fisica') renderFisicaView();
   if (targetTab === 'especiales') renderEspeciales();
+  if (targetTab === 'tbi') _refreshTbiMail().then(renderTbi);
   if (targetTab === 'expectantes') renderExpectantes();
   if (targetTab === 'derivacion') openDerivacion();
   if (targetTab === 'reservations') loadReservationsTab();
@@ -664,6 +682,8 @@ function renderHome(data) {
   renderFisicaView();
   buildEspecialesFilters(data);
   renderEspeciales();
+  buildTbiFilters(data);
+  _refreshTbiMail().then(renderTbi);
   populateAgendaTestControls(data);
   loadAlertasTab();
   _refreshReservations().then(() => loadPedidosData().then(computeAutoPedidos));
@@ -4516,6 +4536,213 @@ function renderEspeciales() {
       renderEspeciales();
     });
   });
+}
+
+// ── TBI tab ────────────────────────────────────────────────────────────────
+
+function _tbiPatients() {
+  return (state.homeData?.patients ?? []).filter(p => p.treatmentTechnique === 'TBI');
+}
+
+function buildTbiFilters(data) {
+  const stageRow = document.getElementById('tbi-stage-pills');
+  if (!stageRow) return;
+  stageRow.innerHTML = '';
+  stageRow.appendChild(makePill('Todas', state.tbi.stageFilter === null, () => {
+    state.tbi.stageFilter = null; renderTbi();
+  }));
+  const stageDefs = (data.stages ?? []).slice().sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  stageDefs.forEach(s => stageRow.appendChild(
+    makePill(s.displayName, state.tbi.stageFilter === s.code, () => {
+      state.tbi.stageFilter = s.code; renderTbi();
+    })
+  ));
+}
+
+function renderTbi() {
+  const wrap = document.getElementById('tbi-table-wrap');
+  if (!wrap) return;
+
+  if (state.homeData) buildTbiFilters(state.homeData);
+
+  let patients = _tbiPatients();
+  if (state.tbi.stageFilter)
+    patients = patients.filter(p => p.stageCode === state.tbi.stageFilter);
+
+  // Sort
+  const { col, dir } = state.tbi.sort;
+  const mult = dir === 'asc' ? 1 : -1;
+  patients = patients.slice().sort((a, b) => {
+    if (col === 'hc') return mult * (a.patientId ?? '').localeCompare(b.patientId ?? '');
+    if (col === 'name') return mult * (a.patientName ?? '').localeCompare(b.patientName ?? '');
+    if (col === 'tomo') {
+      const ta = a.tomographyDate ?? '', tb = b.tomographyDate ?? '';
+      return mult * (ta < tb ? -1 : ta > tb ? 1 : 0);
+    }
+    if (col === 'stage') {
+      const stageDefs = state.homeData?.stages ?? [];
+      const sa = stageDefs.find(s => s.code === a.stageCode)?.sortOrder ?? 999;
+      const sb = stageDefs.find(s => s.code === b.stageCode)?.sortOrder ?? 999;
+      return mult * (sa - sb);
+    }
+    if (col === 'physicist') return mult * (a.assignedPhysicist ?? '').localeCompare(b.assignedPhysicist ?? '');
+    if (col === 'reservation') {
+      const ra = window.activeReservations.get(a.patientId);
+      const rb = window.activeReservations.get(b.patientId);
+      const ka = ra ? `${ra.reservedDate} ${ra.reservedTime}` : '';
+      const kb = rb ? `${rb.reservedDate} ${rb.reservedTime}` : '';
+      if (!ka && !kb) return 0;
+      if (!ka) return 1;
+      if (!kb) return -1;
+      return mult * ka.localeCompare(kb);
+    }
+    // Default: stageCode sortOrder → daysInStage DESC
+    const stageDefs = state.homeData?.stages ?? [];
+    const sa = stageDefs.find(s => s.code === a.stageCode)?.sortOrder ?? 999;
+    const sb = stageDefs.find(s => s.code === b.stageCode)?.sortOrder ?? 999;
+    if (sa !== sb) return sa - sb;
+    return b.daysInStage - a.daysInStage;
+  });
+
+  function thSort(label, key) {
+    const active = col === key;
+    const arrow = active ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+    return `<th class="spec-th-sort${active ? ' active' : ''}" data-col="${key}">${label}${arrow}</th>`;
+  }
+
+  const fmtIso = iso => iso ? iso.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1') : null;
+
+  const rows = patients.map(p => {
+    const mail = state.tbi.mailByPatientId.get(p.patientId);
+    const pending = mail && !mail.confirmed;
+    const pendingBadge = pending ? '<span class="tbi-mail-badge">✉ sin revisar</span>' : '';
+
+    const tomoDisplay = fmtIso(mail?.tomographyDate) ?? fmtIso(p.tomographyDate);
+    const tomoStr = tomoDisplay ? `${tomoDisplay}${pendingBadge}` : '<span class="muted-italic">—</span>';
+
+    const inicioDisplay = fmtIso(mail?.treatmentStartDate);
+    const inicioStr = inicioDisplay ? `${inicioDisplay}${pendingBadge}` : '<span class="muted-italic">—</span>';
+
+    const physicistStr = esc(p.assignedPhysicist ?? '—');
+    const nameHtml = priorityBadge(p.priority) +
+      (p.sitraMedGuid
+        ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer" title="Ir a resumen paciente">${esc(p.patientName)}</a>`
+        : esc(p.patientName));
+    const resv = window.activeReservations.get(p.patientId);
+    let resvCell = '<span class="muted-italic">—</span>';
+    if (resv) {
+      const [, rm, rd] = resv.reservedDate.split('-');
+      resvCell = `<span class="reservation-badge">${rd}/${rm} ${resv.reservedTime}</span>`;
+    }
+    const equipoDisplay = mail?.machineDisplayName ?? resv?.machineDisplayName ?? p.plannedMachineDisplayName;
+    const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${pendingBadge}` : '—';
+    const selected = state.tbi.selectedId === p.patientId;
+    const trClass = [resv ? 'has-reservation' : '', selected ? 'qa-selected' : ''].filter(Boolean).join(' ');
+    return `<tr${trClass ? ` class="${trClass}"` : ''} data-id="${esc(p.patientId)}">
+      <td>${esc(fmtHc(p.patientId))}</td>
+      <td>${nameHtml}</td>
+      <td>${tomoStr}</td>
+      <td>${esc(p.stageDisplayName ?? p.stageCode)}</td>
+      <td>${physicistStr}</td>
+      <td>${resvCell}</td>
+      <td>${equipoStr}</td>
+      <td>${inicioStr}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<table class="spec-table">
+    <thead><tr>
+      ${thSort('HC', 'hc')}
+      ${thSort('Nombre', 'name')}
+      ${thSort('Fecha Tomo', 'tomo')}
+      ${thSort('Etapa actual', 'stage')}
+      ${thSort('Físico asignado', 'physicist')}
+      ${thSort('Turno reservado', 'reservation')}
+      <th>Equipo</th>
+      <th>Fecha Inicio TBI</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+  </table>`;
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('.spec-th-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.col;
+      if (state.tbi.sort.col === key) {
+        state.tbi.sort.dir = state.tbi.sort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.tbi.sort.col = key;
+        state.tbi.sort.dir = 'asc';
+      }
+      renderTbi();
+    });
+  });
+
+  wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      state.tbi.selectedId = state.tbi.selectedId === tr.dataset.id ? null : tr.dataset.id;
+      renderTbi();
+    });
+  });
+
+  const reviewBtn = document.getElementById('tbiReviewBtn');
+  if (reviewBtn) reviewBtn.disabled = !state.tbi.selectedId;
+  _wireTbiActionBar();
+}
+
+function _wireTbiActionBar() {
+  const bar = document.getElementById('tbiActionBar');
+  if (!bar || bar._wired) return;
+  bar._wired = true;
+
+  document.getElementById('tbiReviewBtn').addEventListener('click', () => {
+    const patient = _tbiPatients().find(p => p.patientId === state.tbi.selectedId);
+    if (patient) _openTbiReviewModal(patient);
+  });
+
+  document.getElementById('tbi-modal-cancel-btn').addEventListener('click', () => {
+    document.getElementById('tbi-modal-overlay').hidden = true;
+  });
+}
+
+function _openTbiReviewModal(patient) {
+  const overlay = document.getElementById('tbi-modal-overlay');
+  if (!overlay) return;
+  const mail = state.tbi.mailByPatientId.get(patient.patientId);
+
+  document.getElementById('tbi-modal-hc').value = fmtHc(patient.patientId);
+  document.getElementById('tbi-modal-nombre').value = patient.patientName ?? '';
+  document.getElementById('tbi-modal-tomo').value = mail?.tomographyDate ?? patient.tomographyDate ?? '';
+  document.getElementById('tbi-modal-inicio').value = mail?.treatmentStartDate ?? '';
+  document.getElementById('tbi-modal-equipo').value = mail?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
+
+  const errorDiv = document.getElementById('tbi-modal-error');
+  errorDiv.hidden = true;
+  overlay.hidden = false;
+
+  const submitBtn = document.getElementById('tbi-modal-submit-btn');
+  submitBtn.onclick = async () => {
+    const body = {
+      patientName: patient.patientName ?? '',
+      tomographyDate: document.getElementById('tbi-modal-tomo').value || null,
+      treatmentStartDate: document.getElementById('tbi-modal-inicio').value || null,
+      machineDisplayName: document.getElementById('tbi-modal-equipo').value || null
+    };
+    const resp = await fetch(`/api/tbi-mail/${encodeURIComponent(patient.patientId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      errorDiv.textContent = 'No se pudo guardar.';
+      errorDiv.hidden = false;
+      return;
+    }
+    const updated = await resp.json();
+    state.tbi.mailByPatientId.set(patient.patientId, updated);
+    overlay.hidden = true;
+    renderTbi();
+  };
 }
 
 // ── Pedidos (Física) tab ──────────────────────────────────────────────────

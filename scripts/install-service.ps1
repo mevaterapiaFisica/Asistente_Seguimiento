@@ -13,6 +13,8 @@
 param(
     [Parameter(Mandatory)][string]$SitraMedUser,
     [Parameter(Mandatory)][string]$SitraMedPassword,
+    [string]$TbiMailUser       = "",
+    [string]$TbiMailAppPassword = "",
     [string]$PublishPath      = "C:\MevaRT",
     [string]$BrowsersPath     = "C:\PlaywrightBrowsers",
     [string]$ServicePort      = "5062"
@@ -80,6 +82,10 @@ $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
     "MEVA_ARIA_RUNNER_EXE=$ariaRunnerPath\AriaRunner.exe",
     "PLAYWRIGHT_BROWSERS_PATH=$BrowsersPath"
 )
+if ($TbiMailUser -and $TbiMailAppPassword) {
+    $envVars += "MEVA_TBI_MAIL_USER=$TbiMailUser"
+    $envVars += "MEVA_TBI_MAIL_APP_PASSWORD=$TbiMailAppPassword"
+}
 Set-ItemProperty -Path $regPath -Name Environment -Value $envVars
 
 Write-Host "   Iniciando servicio..."

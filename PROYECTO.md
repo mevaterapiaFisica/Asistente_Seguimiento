@@ -464,6 +464,41 @@ Pacientes con técnica SBRT o RC, desde etapa F4B en adelante.
 - Colores de días: verde ≤esperado, amarillo ≤2×esperado, rojo >2×esperado.
 - Orden: prioridad ASC → sortOrder etapa → días DESC.
 
+### Tab TBI (desde sesión 2026-09-02)
+
+Pacientes con `treatmentTechnique === 'TBI'` (siguen flujo paralelo, no cuentan para
+estadísticas de demora). Sub-tab de Pacientes, pills solo por Etapa (técnica es única).
+Tabla: HC | Nombre | Fecha Tomo | Etapa actual | Físico asignado | Turno reservado | Equipo |
+Fecha Inicio TBI. Orden default: etapa (sortOrder) DESC.
+
+Segunda fuente de datos (desde sesión 2026-09-02): ingesta de mails con asunto
+`TBI {HC} {Nombre}` (ej. `TBI 1-119554-0 LEGUIZAMON, Margarita Antonia`) y cuerpo con fecha de
+tomografía/inicio de tratamiento/equipo en texto libre. Flujo:
+
+- `Meva.Rt.Infrastructure.Mail` (MailKit, IMAP): `TbiMailClient` busca en la casilla Gmail
+  configurada los mails con asunto que contenga "TBI" recibidos en los últimos 3 días (no usa
+  `\Seen`, dedupe real es por `Message-ID`). `TbiMailParser` extrae HC/nombre del asunto y
+  fecha tomo / primer día de tratamiento / hora / equipo del cuerpo (regex, best-effort — campos
+  que no matchean quedan `null` y se completan a mano). Año de fechas sin año se resuelve con la
+  fecha de recepción del mail (rollover ±1 si el mes difiere >6 meses, para diciembre/enero).
+  Equipo mencionado (`Equipo N`) siempre se resuelve como `MEVA-Central - Equipo N`.
+- `TbiMailStore` (`Meva.Rt.Infrastructure.Storage`): `tbi_mail_info.json` bajo `MEVA_DATA_DIR`,
+  por HC. Mail nuevo (Message-ID distinto al ya guardado) pisa los datos y marca
+  `Confirmed=false` ("✉ sin revisar"); mismo Message-ID ya procesado no toca nada (no resetea
+  una revisión ya confirmada).
+- Endpoints: `GET /api/tbi-mail`, `POST /api/tbi-mail/refresh` (501 si no hay credenciales
+  configuradas), `PUT /api/tbi-mail/{patientId}` (edición manual, upsert, marca `Confirmed=true`).
+- Disparo: **no** es automático al abrir el dashboard — solo corre cuando se llama
+  `POST /api/tbi-mail/refresh`, invocado desde `scripts/refresh.bat` (Task Scheduler, paso 7/7)
+  o manualmente.
+- UI: fila con mail sin confirmar muestra badge "✉ sin revisar" en Fecha Tomo/Equipo/Fecha
+  Inicio. Click en la fila la selecciona → botón "Revisar datos de mail" habilita → modal con
+  los 3 campos editables → "Confirmar" hace `PUT` y saca el badge.
+- **Gmail Workspace no deja generar app passwords por política de admin** (visto en producción,
+  2026-09) — workaround usado: reenvío automático (filtro por asunto "TBI") desde la casilla del
+  Workspace a una Gmail personal fuera de la organización, y las credenciales IMAP apuntan a esa
+  personal.
+
 ### Auto-refresh (desde sesión 2026-06-16)
 
 Polling cada 3 minutos a `GET /api/status`. Si `appVersion` cambió: banner azul + `location.reload(true)` en 2.5s. Si solo `generatedAtUtc` cambió: banner + reload en 1.5s. El primer check es a los 10s (establece baseline sin recargar).
@@ -496,6 +531,9 @@ Polling cada 3 minutos a `GET /api/status`. Si `appVersion` cambió: banner azul
 | `MEVA_ARIA_MAP_PATH` | `config/mapEquiposAriaSitra.txt` | Mapa máquinas ARIA↔Sitra |
 | `MEVA_ARIA_MOCK_JSON` | `data/aria_plans_mock.json` | Planes mock ARIA |
 | `MEVA_ARIA_RUNNER_EXE` | — | Path a AriaRunner.exe (opcional para run-query automático) |
+| `MEVA_TBI_MAIL_USER` | — | Usuario Gmail (IMAP) para ingesta de mails TBI |
+| `MEVA_TBI_MAIL_APP_PASSWORD` | — | App password Gmail |
+| `MEVA_TBI_MAIL_FOLDER` | `INBOX` | Carpeta IMAP a buscar |
 
 ---
 

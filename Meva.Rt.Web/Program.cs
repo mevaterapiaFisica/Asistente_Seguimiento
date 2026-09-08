@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using Meva.Rt.Application;
 using Meva.Rt.Core;
 using Meva.Rt.Infrastructure.Aria;
+using Meva.Rt.Infrastructure.Mail;
 using Meva.Rt.Infrastructure.SitraMed;
 using Meva.Rt.Infrastructure.Storage;
 using Meva.Rt.Web;
@@ -43,6 +44,13 @@ var homeSnapshotOptions = new HomeSnapshotOptions
     RefreshMode = Environment.GetEnvironmentVariable("MEVA_HOME_REFRESH_MODE") ?? "snapshot_first"
 };
 
+var tbiMailOptions = new TbiMailOptions
+{
+    User = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_USER") ?? string.Empty,
+    AppPassword = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_APP_PASSWORD") ?? string.Empty,
+    Folder = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_FOLDER") ?? "INBOX"
+};
+
 // Business day calculator — looks for feriados.txt next to the data directory
 var feriadosPath = Environment.GetEnvironmentVariable("MEVA_FERIADOS_PATH")
     ?? Path.Combine(builder.Environment.ContentRootPath, "data", "feriados.txt");
@@ -74,6 +82,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new TbiMailStore(snapshotsDirectory));
+builder.Services.AddSingleton(tbiMailOptions);
+builder.Services.AddSingleton<TbiMailClient>();
 
 var app = builder.Build();
 
@@ -1204,6 +1215,26 @@ app.MapDelete("/api/qa-especifico/{id}", async (string id, QaEspecificoStore qaS
     return TypedResults.NoContent();
 });
 
+// ─── TBI — mails ─────────────────────────────────────────────────────────────
+
+app.MapGet("/api/tbi-mail", async (TbiMailStore tbiMailStore, CancellationToken ct) =>
+    TypedResults.Ok(await tbiMailStore.LoadAllAsync(ct)));
+
+app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMailStore tbiMailStore, TbiMailOptions tbiMailOptions, CancellationToken ct) =>
+{
+    if (!tbiMailOptions.IsConfigured) return Results.StatusCode(StatusCodes.Status501NotImplemented);
+    var found = await tbiMailClient.FetchNewAsync(ct);
+    foreach (var info in found)
+        await tbiMailStore.UpsertFromMailAsync(info, ct);
+    return TypedResults.Ok(new { imported = found.Count });
+});
+
+app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TbiMailEditRequest req, CancellationToken ct) =>
+{
+    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, req.TreatmentStartDate, req.MachineDisplayName, ct);
+    return TypedResults.Ok(updated);
+});
+
 app.MapGet("/api/machine-capacity", async (string date, string machine,
     ISnapshotStore snapshotStore, IRtSystemConfigurationProvider configProvider, CancellationToken ct) =>
 {
@@ -1363,3 +1394,4 @@ record CreateReservationRequest(
     string MachineDisplayName, string ReservedDate, string ReservedTime,
     string? Observations, string Username, string Password);
 record DeleteReservationRequest(string Username, string Password);
+record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName);
