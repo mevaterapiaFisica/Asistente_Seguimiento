@@ -4685,8 +4685,8 @@ function renderTbi() {
     });
   });
 
-  const reviewBtn = document.getElementById('tbiReviewBtn');
-  if (reviewBtn) reviewBtn.disabled = !state.tbi.selectedId;
+  const editBtn = document.getElementById('tbiEditBtn');
+  if (editBtn) editBtn.disabled = !state.tbi.selectedId;
   _wireTbiActionBar();
 }
 
@@ -4695,9 +4695,9 @@ function _wireTbiActionBar() {
   if (!bar || bar._wired) return;
   bar._wired = true;
 
-  document.getElementById('tbiReviewBtn').addEventListener('click', () => {
+  document.getElementById('tbiEditBtn').addEventListener('click', () => {
     const patient = _tbiPatients().find(p => p.patientId === state.tbi.selectedId);
-    if (patient) _openTbiReviewModal(patient);
+    if (patient) _openTbiEditModal(patient);
   });
 
   document.getElementById('tbi-modal-cancel-btn').addEventListener('click', () => {
@@ -4705,7 +4705,7 @@ function _wireTbiActionBar() {
   });
 }
 
-function _openTbiReviewModal(patient) {
+function _openTbiEditModal(patient) {
   const overlay = document.getElementById('tbi-modal-overlay');
   if (!overlay) return;
   const mail = state.tbi.mailByPatientId.get(patient.patientId);
@@ -4714,7 +4714,18 @@ function _openTbiReviewModal(patient) {
   document.getElementById('tbi-modal-nombre').value = patient.patientName ?? '';
   document.getElementById('tbi-modal-tomo').value = mail?.tomographyDate ?? patient.tomographyDate ?? '';
   document.getElementById('tbi-modal-inicio').value = mail?.treatmentStartDate ?? '';
-  document.getElementById('tbi-modal-equipo').value = mail?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
+
+  const equipoIn = document.getElementById('tbi-modal-equipo');
+  const currentEquipo = mail?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
+  const allMachines = state.homeData?.configuration?.machines ?? [];
+  let machines = allMachines.filter(m => m.centerName === 'MEVA-Central');
+  if (machines.length === 0) machines = allMachines;
+  equipoIn.innerHTML = '<option value="">— Seleccionar equipo —</option>' +
+    machines.map(m => `<option value="${esc(m.displayName)}">${esc(m.displayName)}</option>`).join('');
+  if (currentEquipo && !machines.some(m => m.displayName === currentEquipo)) {
+    equipoIn.insertAdjacentHTML('beforeend', `<option value="${esc(currentEquipo)}">${esc(currentEquipo)}</option>`);
+  }
+  equipoIn.value = currentEquipo;
 
   const errorDiv = document.getElementById('tbi-modal-error');
   errorDiv.hidden = true;

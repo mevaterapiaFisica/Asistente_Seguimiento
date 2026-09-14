@@ -274,7 +274,7 @@
           </div>
         </div>
         <div class="filter-bar" id="tbiActionBar">
-          <button id="tbiReviewBtn" class="ghost-button" type="button" disabled>Revisar datos de mail</button>
+          <button id="tbiEditBtn" class="ghost-button" type="button" disabled>Editar</button>
         </div>
         <div id="tbi-table-wrap" class="table-wrap"></div>
       </section>
@@ -586,10 +586,10 @@
     </div>
   </div>
 
-  <!-- ── TBI Review Modal ──────────────────────────────────────────────── -->
+  <!-- ── TBI Edit Modal ────────────────────────────────────────────────── -->
   <div id="tbi-modal-overlay" class="auth-overlay" hidden>
     <div class="reservation-modal pedido-modal">
-      <h3 class="auth-modal-title">Revisar datos de mail TBI</h3>
+      <h3 class="auth-modal-title">Editar datos TBI</h3>
       <div class="res-modal-row">
         <div class="auth-field res-field-half">
           <label class="auth-label">HC</label>
@@ -610,7 +610,7 @@
       </div>
       <div class="auth-field">
         <label class="auth-label">Equipo</label>
-        <input id="tbi-modal-equipo" type="text" class="auth-input">
+        <select id="tbi-modal-equipo" class="auth-input"></select>
       </div>
 
       <div id="tbi-modal-error" class="auth-error" hidden></div>
@@ -639,6 +639,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=20260902d"></script>
+  <script src="app.js?v=20260914"></script>
 </body>
 </html>
