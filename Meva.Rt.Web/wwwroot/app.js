@@ -4559,6 +4559,18 @@ function buildTbiFilters(data) {
   ));
 }
 
+const _TBI_DORMANT_MAX_IDX = _STAGE_ORDER.indexOf('F6A');
+
+// Etapa Asignación Planificación (F6A) o previa, sin físico/equipo/fecha inicio cargados aún —
+// paciente sin actividad real todavía, se atenúa y se manda al fondo (como long-wait en otras tablas).
+function _tbiIsDormant(p, mail) {
+  const stageIdx = _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase());
+  if (stageIdx === -1 || stageIdx > _TBI_DORMANT_MAX_IDX) return false;
+  const resv = window.activeReservations.get(p.patientId);
+  const hasEquipo = !!(mail?.machineDisplayName ?? resv?.machineDisplayName ?? p.plannedMachineDisplayName);
+  return !p.assignedPhysicist && !hasEquipo && !mail?.treatmentStartDate;
+}
+
 function renderTbi() {
   const wrap = document.getElementById('tbi-table-wrap');
   if (!wrap) return;
@@ -4573,6 +4585,9 @@ function renderTbi() {
   const { col, dir } = state.tbi.sort;
   const mult = dir === 'asc' ? 1 : -1;
   patients = patients.slice().sort((a, b) => {
+    const doA = _tbiIsDormant(a, state.tbi.mailByPatientId.get(a.patientId)) ? 1 : 0;
+    const doB = _tbiIsDormant(b, state.tbi.mailByPatientId.get(b.patientId)) ? 1 : 0;
+    if (doA !== doB) return doA - doB;
     if (col === 'hc') return mult * (a.patientId ?? '').localeCompare(b.patientId ?? '');
     if (col === 'name') return mult * (a.patientName ?? '').localeCompare(b.patientName ?? '');
     if (col === 'tomo') {
@@ -4637,7 +4652,8 @@ function renderTbi() {
     const equipoDisplay = mail?.machineDisplayName ?? resv?.machineDisplayName ?? p.plannedMachineDisplayName;
     const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${pendingBadge}` : '—';
     const selected = state.tbi.selectedId === p.patientId;
-    const trClass = [resv ? 'has-reservation' : '', selected ? 'qa-selected' : ''].filter(Boolean).join(' ');
+    const dormant = _tbiIsDormant(p, mail);
+    const trClass = [resv ? 'has-reservation' : '', selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
     return `<tr${trClass ? ` class="${trClass}"` : ''} data-id="${esc(p.patientId)}">
       <td>${esc(fmtHc(p.patientId))}</td>
       <td>${nameHtml}</td>

@@ -1275,6 +1275,7 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .spec-table tr.qa-group-start td { border-top: 2px solid var(--accent); }
 .spec-table tr.qa-group-start:first-child td { border-top: none; }
 .spec-table tr.qa-selected td { background: var(--color-reservation-bg); }
+.spec-table tr.tbi-dormant td { background: var(--neutral-bg); opacity: 0.7; }
 .qa-pin-icon { font-size: 12px; }
 
 /* Inicios — subcard con reserva */
