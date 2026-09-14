@@ -24,14 +24,15 @@ public sealed class TbiMailStore
         catch { return []; }
     }
 
-    public async Task UpsertFromMailAsync(TbiMailInfo info, CancellationToken ct)
+    // Devuelve false si es el mismo mail ya procesado (mismo Message-ID) — así el caller sabe
+    // si debe (re)tocar también el turno reservado asociado, o dejarlo como el admin lo dejó.
+    public async Task<bool> UpsertFromMailAsync(TbiMailInfo info, CancellationToken ct)
     {
         var all = (await LoadAllAsync(ct)).ToList();
         var idx = all.FindIndex(i => i.PatientId == info.PatientId);
         if (idx >= 0)
         {
-            // Mismo mail ya procesado (mismo Message-ID): no pisar una revisión ya confirmada.
-            if (!string.IsNullOrEmpty(info.MessageId) && all[idx].MessageId == info.MessageId) return;
+            if (!string.IsNullOrEmpty(info.MessageId) && all[idx].MessageId == info.MessageId) return false;
             info.Confirmed = false;
             all[idx] = info;
         }
@@ -41,9 +42,10 @@ public sealed class TbiMailStore
             all.Add(info);
         }
         await SaveAsync(all, ct);
+        return true;
     }
 
-    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, DateOnly? treatmentStartDate, string? machineDisplayName, CancellationToken ct)
+    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, CancellationToken ct)
     {
         var all = (await LoadAllAsync(ct)).ToList();
         var item = all.FirstOrDefault(i => i.PatientId == patientId);
@@ -53,8 +55,6 @@ public sealed class TbiMailStore
             all.Add(item);
         }
         item.TomographyDate = tomographyDate;
-        item.TreatmentStartDate = treatmentStartDate;
-        item.MachineDisplayName = machineDisplayName;
         item.Confirmed = true;
         await SaveAsync(all, ct);
         return item;

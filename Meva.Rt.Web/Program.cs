@@ -1220,19 +1220,73 @@ app.MapDelete("/api/qa-especifico/{id}", async (string id, QaEspecificoStore qaS
 app.MapGet("/api/tbi-mail", async (TbiMailStore tbiMailStore, CancellationToken ct) =>
     TypedResults.Ok(await tbiMailStore.LoadAllAsync(ct)));
 
-app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMailStore tbiMailStore, TbiMailOptions tbiMailOptions, CancellationToken ct) =>
+app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMailStore tbiMailStore, TurnReservationStore reservationStore, TbiMailOptions tbiMailOptions, CancellationToken ct) =>
 {
     if (!tbiMailOptions.IsConfigured) return Results.StatusCode(StatusCodes.Status501NotImplemented);
     var found = await tbiMailClient.FetchNewAsync(ct);
-    foreach (var info in found)
-        await tbiMailStore.UpsertFromMailAsync(info, ct);
+    foreach (var r in found)
+    {
+        var info = new TbiMailInfo
+        {
+            PatientId = r.PatientId,
+            PatientName = r.PatientName,
+            TomographyDate = r.TomographyDate,
+            MessageId = r.MessageId,
+            ReceivedAtUtc = r.ReceivedAtUtc
+        };
+        var applied = await tbiMailStore.UpsertFromMailAsync(info, ct);
+        if (!applied) continue; // mismo mail ya procesado — no re-tocar el turno reservado
+
+        if (r.TreatmentStartDate is not null && !string.IsNullOrWhiteSpace(r.MachineDisplayName))
+        {
+            await reservationStore.SaveOrUpdateAsync(new PatientTurnReservation
+            {
+                ReservationId = $"RES_TBI_{r.PatientId}",
+                PatientId = r.PatientId,
+                PatientName = r.PatientName,
+                CenterName = "MEVA-Central",
+                MachineDisplayName = r.MachineDisplayName,
+                ReservedDate = r.TreatmentStartDate.Value,
+                ReservedTime = r.TreatmentStartTime ?? string.Empty,
+                Observations = "TBI",
+                RegisteredByUsername = $"{r.SenderEmail ?? "Desconocido"} - cargado automáticamente",
+                RegisteredAtUtc = DateTime.UtcNow,
+                PendingReview = true
+            }, ct);
+        }
+    }
     return TypedResults.Ok(new { imported = found.Count });
 });
 
-app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TbiMailEditRequest req, CancellationToken ct) =>
+app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TurnReservationStore reservationStore, TbiMailEditRequest req, CancellationToken ct) =>
 {
-    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, req.TreatmentStartDate, req.MachineDisplayName, ct);
-    return TypedResults.Ok(updated);
+    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, ct);
+
+    if (req.TreatmentStartDate is not null && !string.IsNullOrWhiteSpace(req.MachineDisplayName))
+    {
+        var existing = await reservationStore.GetByPatientIdAsync(patientId, ct);
+        await reservationStore.SaveOrUpdateAsync(new PatientTurnReservation
+        {
+            ReservationId = $"RES_TBI_{patientId}",
+            PatientId = patientId,
+            PatientName = req.PatientName,
+            CenterName = "MEVA-Central",
+            MachineDisplayName = req.MachineDisplayName,
+            ReservedDate = req.TreatmentStartDate.Value,
+            ReservedTime = existing?.ReservedTime ?? string.Empty,
+            Observations = "TBI",
+            RegisteredByUsername = string.IsNullOrWhiteSpace(req.RegisteredBy) ? (existing?.RegisteredByUsername ?? string.Empty) : req.RegisteredBy,
+            RegisteredAtUtc = existing?.RegisteredAtUtc ?? DateTime.UtcNow,
+            PendingReview = false
+        }, ct);
+    }
+    else
+    {
+        await reservationStore.DeleteByIdAsync($"RES_TBI_{patientId}", ct);
+    }
+
+    var reservation = await reservationStore.GetByPatientIdAsync(patientId, ct);
+    return TypedResults.Ok(new { info = updated, reservation });
 });
 
 app.MapGet("/api/machine-capacity", async (string date, string machine,
@@ -1394,4 +1448,4 @@ record CreateReservationRequest(
     string MachineDisplayName, string ReservedDate, string ReservedTime,
     string? Observations, string Username, string Password);
 record DeleteReservationRequest(string Username, string Password);
-record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName);
+record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy);

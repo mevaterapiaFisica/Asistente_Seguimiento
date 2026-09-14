@@ -257,6 +257,9 @@ public sealed class PatientTurnReservation
     public string RegisteredByUsername { get; set; } = string.Empty;
     public DateTime RegisteredAtUtc { get; set; }
     public string? PlannedMachineAtReservation { get; set; }
+    // true solo para turnos TBI auto-cargados desde mail sin revisar todavía. Default false
+    // (registros viejos sin este campo deserializan a false) — nunca marca turnos normales.
+    public bool PendingReview { get; set; }
 }
 
 public sealed class TbiMailInfo
@@ -264,10 +267,23 @@ public sealed class TbiMailInfo
     public string PatientId { get; set; } = string.Empty;
     public string PatientName { get; set; } = string.Empty;
     public DateOnly? TomographyDate { get; set; }
-    public DateOnly? TreatmentStartDate { get; set; }
-    public string? MachineDisplayName { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public bool Confirmed { get; set; }
+    public string? MessageId { get; set; }
+}
+
+// Resultado de parsear+leer un mail de TBI — no persiste tal cual: TomographyDate/Confirmed
+// van a TbiMailInfo, TreatmentStartDate/MachineDisplayName se vuelcan a un PatientTurnReservation.
+public sealed class TbiMailFetchResult
+{
+    public string PatientId { get; set; } = string.Empty;
+    public string PatientName { get; set; } = string.Empty;
+    public DateOnly? TomographyDate { get; set; }
+    public DateOnly? TreatmentStartDate { get; set; }
+    public string? TreatmentStartTime { get; set; }
+    public string? MachineDisplayName { get; set; }
+    public string? SenderEmail { get; set; }
+    public DateTime ReceivedAtUtc { get; set; }
     public string? MessageId { get; set; }
 }
 

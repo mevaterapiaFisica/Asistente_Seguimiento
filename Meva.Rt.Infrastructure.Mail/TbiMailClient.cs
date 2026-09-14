@@ -2,12 +2,13 @@ using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Search;
 using Meva.Rt.Core;
+using MimeKit;
 
 namespace Meva.Rt.Infrastructure.Mail;
 
 public sealed class TbiMailClient(TbiMailOptions options)
 {
-    public async Task<IReadOnlyList<TbiMailInfo>> FetchNewAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<TbiMailFetchResult>> FetchNewAsync(CancellationToken ct)
     {
         if (!options.IsConfigured) return [];
 
@@ -23,7 +24,7 @@ public sealed class TbiMailClient(TbiMailOptions options)
         var since = DateTime.UtcNow.AddDays(-3);
         var uids = await folder.SearchAsync(SearchQuery.DeliveredAfter(since).And(SearchQuery.SubjectContains("TBI")), ct);
 
-        var results = new List<TbiMailInfo>();
+        var results = new List<TbiMailFetchResult>();
         foreach (var uid in uids)
         {
             var message = await folder.GetMessageAsync(uid, ct);
@@ -31,6 +32,7 @@ public sealed class TbiMailClient(TbiMailOptions options)
             if (info != null)
             {
                 info.MessageId = message.MessageId ?? $"{options.Folder}:{uid}";
+                info.SenderEmail = message.From.Mailboxes.FirstOrDefault()?.Address;
                 results.Add(info);
             }
         }

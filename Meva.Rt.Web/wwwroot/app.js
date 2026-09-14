@@ -4563,12 +4563,11 @@ const _TBI_DORMANT_MAX_IDX = _STAGE_ORDER.indexOf('F6A');
 
 // Etapa Asignación Planificación (F6A) o previa, sin físico/equipo/fecha inicio cargados aún —
 // paciente sin actividad real todavía, se atenúa y se manda al fondo (como long-wait en otras tablas).
-function _tbiIsDormant(p, mail) {
+function _tbiIsDormant(p, resv) {
   const stageIdx = _STAGE_ORDER.indexOf((p.stageCode ?? '').toUpperCase());
   if (stageIdx === -1 || stageIdx > _TBI_DORMANT_MAX_IDX) return false;
-  const resv = window.activeReservations.get(p.patientId);
-  const hasEquipo = !!(mail?.machineDisplayName ?? resv?.machineDisplayName ?? p.plannedMachineDisplayName);
-  return !p.assignedPhysicist && !hasEquipo && !mail?.treatmentStartDate;
+  const hasEquipo = !!(resv?.machineDisplayName ?? p.plannedMachineDisplayName);
+  return !p.assignedPhysicist && !hasEquipo && !resv?.reservedDate;
 }
 
 function renderTbi() {
@@ -4585,8 +4584,8 @@ function renderTbi() {
   const { col, dir } = state.tbi.sort;
   const mult = dir === 'asc' ? 1 : -1;
   patients = patients.slice().sort((a, b) => {
-    const doA = _tbiIsDormant(a, state.tbi.mailByPatientId.get(a.patientId)) ? 1 : 0;
-    const doB = _tbiIsDormant(b, state.tbi.mailByPatientId.get(b.patientId)) ? 1 : 0;
+    const doA = _tbiIsDormant(a, window.activeReservations.get(a.patientId)) ? 1 : 0;
+    const doB = _tbiIsDormant(b, window.activeReservations.get(b.patientId)) ? 1 : 0;
     if (doA !== doB) return doA - doB;
     if (col === 'hc') return mult * (a.patientId ?? '').localeCompare(b.patientId ?? '');
     if (col === 'name') return mult * (a.patientName ?? '').localeCompare(b.patientName ?? '');
@@ -4601,16 +4600,6 @@ function renderTbi() {
       return mult * (sa - sb);
     }
     if (col === 'physicist') return mult * (a.assignedPhysicist ?? '').localeCompare(b.assignedPhysicist ?? '');
-    if (col === 'reservation') {
-      const ra = window.activeReservations.get(a.patientId);
-      const rb = window.activeReservations.get(b.patientId);
-      const ka = ra ? `${ra.reservedDate} ${ra.reservedTime}` : '';
-      const kb = rb ? `${rb.reservedDate} ${rb.reservedTime}` : '';
-      if (!ka && !kb) return 0;
-      if (!ka) return 1;
-      if (!kb) return -1;
-      return mult * ka.localeCompare(kb);
-    }
     // Default: stageCode sortOrder → daysInStage DESC
     const stageDefs = state.homeData?.stages ?? [];
     const sa = stageDefs.find(s => s.code === a.stageCode)?.sortOrder ?? 999;
@@ -4629,38 +4618,34 @@ function renderTbi() {
 
   const rows = patients.map(p => {
     const mail = state.tbi.mailByPatientId.get(p.patientId);
-    const pending = mail && !mail.confirmed;
-    const pendingBadge = pending ? '<span class="tbi-mail-badge">✉ sin revisar</span>' : '';
+    const resv = window.activeReservations.get(p.patientId);
 
+    const tomoPending = mail && !mail.confirmed;
+    const tomoBadge = tomoPending ? '<span class="tbi-mail-badge">✉ sin revisar</span>' : '';
     const tomoDisplay = fmtIso(mail?.tomographyDate) ?? fmtIso(p.tomographyDate);
-    const tomoStr = tomoDisplay ? `${tomoDisplay}${pendingBadge}` : '<span class="muted-italic">—</span>';
+    const tomoStr = tomoDisplay ? `${tomoDisplay}${tomoBadge}` : '<span class="muted-italic">—</span>';
 
-    const inicioDisplay = fmtIso(mail?.treatmentStartDate);
-    const inicioStr = inicioDisplay ? `${inicioDisplay}${pendingBadge}` : '<span class="muted-italic">—</span>';
+    const turnoPending = !!resv?.pendingReview;
+    const turnoBadge = turnoPending ? '<span class="tbi-mail-badge">✉ sin revisar</span>' : '';
+    const inicioDisplay = fmtIso(resv?.reservedDate);
+    const inicioStr = inicioDisplay ? `${inicioDisplay}${turnoBadge}` : '<span class="muted-italic">—</span>';
 
     const physicistStr = esc(p.assignedPhysicist ?? '—');
     const nameHtml = priorityBadge(p.priority) +
       (p.sitraMedGuid
         ? `<a href="https://sitramed.mevaterapia.com.ar/medical_histories/${p.sitraMedGuid}/overview" target="_blank" rel="noreferrer" title="Ir a resumen paciente">${esc(p.patientName)}</a>`
         : esc(p.patientName));
-    const resv = window.activeReservations.get(p.patientId);
-    let resvCell = '<span class="muted-italic">—</span>';
-    if (resv) {
-      const [, rm, rd] = resv.reservedDate.split('-');
-      resvCell = `<span class="reservation-badge">${rd}/${rm} ${resv.reservedTime}</span>`;
-    }
-    const equipoDisplay = mail?.machineDisplayName ?? resv?.machineDisplayName ?? p.plannedMachineDisplayName;
-    const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${pendingBadge}` : '—';
+    const equipoDisplay = resv?.machineDisplayName ?? p.plannedMachineDisplayName;
+    const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${turnoBadge}` : '—';
     const selected = state.tbi.selectedId === p.patientId;
-    const dormant = _tbiIsDormant(p, mail);
-    const trClass = [resv ? 'has-reservation' : '', selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
+    const dormant = _tbiIsDormant(p, resv);
+    const trClass = [selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
     return `<tr${trClass ? ` class="${trClass}"` : ''} data-id="${esc(p.patientId)}">
       <td>${esc(fmtHc(p.patientId))}</td>
       <td>${nameHtml}</td>
       <td>${tomoStr}</td>
       <td>${esc(p.stageDisplayName ?? p.stageCode)}</td>
       <td>${physicistStr}</td>
-      <td>${resvCell}</td>
       <td>${equipoStr}</td>
       <td>${inicioStr}</td>
     </tr>`;
@@ -4673,11 +4658,10 @@ function renderTbi() {
       ${thSort('Fecha Tomo', 'tomo')}
       ${thSort('Etapa actual', 'stage')}
       ${thSort('Físico asignado', 'physicist')}
-      ${thSort('Turno reservado', 'reservation')}
       <th>Equipo</th>
       <th>Fecha Inicio TBI</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="7" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
   wrap.innerHTML = html;
 
@@ -4725,14 +4709,16 @@ function _openTbiEditModal(patient) {
   const overlay = document.getElementById('tbi-modal-overlay');
   if (!overlay) return;
   const mail = state.tbi.mailByPatientId.get(patient.patientId);
+  const resv = window.activeReservations.get(patient.patientId);
 
   document.getElementById('tbi-modal-hc').value = fmtHc(patient.patientId);
   document.getElementById('tbi-modal-nombre').value = patient.patientName ?? '';
   document.getElementById('tbi-modal-tomo').value = mail?.tomographyDate ?? patient.tomographyDate ?? '';
-  document.getElementById('tbi-modal-inicio').value = mail?.treatmentStartDate ?? '';
+  document.getElementById('tbi-modal-inicio').value = resv?.reservedDate ?? '';
+  document.getElementById('tbi-modal-registeredby').value = resv?.registeredByUsername ?? '';
 
   const equipoIn = document.getElementById('tbi-modal-equipo');
-  const currentEquipo = mail?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
+  const currentEquipo = resv?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
   const allMachines = state.homeData?.configuration?.machines ?? [];
   let machines = allMachines.filter(m => m.centerName === 'MEVA-Central');
   if (machines.length === 0) machines = allMachines;
@@ -4753,7 +4739,8 @@ function _openTbiEditModal(patient) {
       patientName: patient.patientName ?? '',
       tomographyDate: document.getElementById('tbi-modal-tomo').value || null,
       treatmentStartDate: document.getElementById('tbi-modal-inicio').value || null,
-      machineDisplayName: document.getElementById('tbi-modal-equipo').value || null
+      machineDisplayName: document.getElementById('tbi-modal-equipo').value || null,
+      registeredBy: document.getElementById('tbi-modal-registeredby').value || null
     };
     const resp = await fetch(`/api/tbi-mail/${encodeURIComponent(patient.patientId)}`, {
       method: 'PUT',
@@ -4765,8 +4752,10 @@ function _openTbiEditModal(patient) {
       errorDiv.hidden = false;
       return;
     }
-    const updated = await resp.json();
-    state.tbi.mailByPatientId.set(patient.patientId, updated);
+    const { info, reservation } = await resp.json();
+    state.tbi.mailByPatientId.set(patient.patientId, info);
+    if (reservation) window.activeReservations.set(patient.patientId, reservation);
+    else window.activeReservations.delete(patient.patientId);
     overlay.hidden = true;
     renderTbi();
   };

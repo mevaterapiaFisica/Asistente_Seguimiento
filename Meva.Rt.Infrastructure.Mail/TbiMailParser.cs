@@ -18,12 +18,12 @@ public static partial class TbiMailParser
     private static partial Regex FirstNumberRegex();
 
     // ponytail: parseo best-effort — campos que no matchean quedan null, el admin los completa a mano en la UI
-    public static TbiMailInfo? Parse(string subject, string body, DateTimeOffset receivedAt)
+    public static TbiMailFetchResult? Parse(string subject, string body, DateTimeOffset receivedAt)
     {
         var subjectMatch = SubjectRegex().Match(subject.Trim());
         if (!subjectMatch.Success) return null;
 
-        var info = new TbiMailInfo
+        var info = new TbiMailFetchResult
         {
             PatientId = subjectMatch.Groups[1].Value.Trim(),
             PatientName = subjectMatch.Groups[2].Value.Trim(),
@@ -49,6 +49,9 @@ public static partial class TbiMailParser
             {
                 info.TreatmentStartDate = TryResolveDate(startDay, startMonth, receivedAt);
             }
+
+            if (int.TryParse(treatmentMatch.Groups[3].Value, out var hour))
+                info.TreatmentStartTime = $"{hour:D2}:00";
 
             info.MachineDisplayName = $"MEVA-Central - Equipo {treatmentMatch.Groups[4].Value}";
         }
