@@ -827,6 +827,8 @@ public sealed class PlaywrightSitraMedClient
         // (see DownloadTomographAgendaHtmlAsync). The server only syncs the date on blur;
         // without it, Enter submits the server's previously cached date (today) regardless
         // of what the DOM input shows, silently returning the wrong day's patients.
+        // The blur->server roundtrip is not instant and its timing is flaky (confirmed live:
+        // 400ms missed the sync intermittently, 800ms+ consistently didn't).
         await page.EvaluateAsync("""
             () => {
                 const di = document.querySelector('#search_date')
@@ -835,7 +837,7 @@ public sealed class PlaywrightSitraMedClient
                 di?.blur();
             }
             """);
-        await page.WaitForTimeoutAsync(400);
+        await page.WaitForTimeoutAsync(800);
 
         await page.Keyboard.PressAsync("Enter");
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
