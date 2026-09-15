@@ -810,27 +810,23 @@ public sealed class PlaywrightSitraMedClient
         }
         catch (TimeoutException) { }
 
-        await SelectFirstByLabelAsync(page, new[]
-        {
-            "#search_machine_id",
-            "select[name='search[machine_id]']"
-        }, machine.SitraName);
-
-        // Snapshot the results table BEFORE changing the date, so we can detect the
+        // Snapshot the results table BEFORE changing anything else, so we can detect the
         // moment it actually re-renders instead of guessing a fixed delay (see below).
         var contentBeforeDateChange = await GetAgendaTableHtmlAsync(page);
 
+        // CRITICAL: set the date BEFORE selecting the machine. SitraMed uses Phoenix
+        // LiveView (phx-change="machine_calendar", phx-debounce="blur") on this form — same
+        // component as the tomograph agenda page (see DownloadTomographAgendaHtmlAsync),
+        // which documents that selecting the sub-entity (tomograph/machine) AFTER the date
+        // resets the date back to the server's cached default (today). Confirmed live here
+        // too: with machine selected first, the captured page's #search_date consistently
+        // came back as today's date regardless of blur/wait, silently scraping the wrong day.
         await FillFirstAsync(page, new[]
         {
             "#search_date",
             "input[name='search[date]']"
         }, date.ToString("yyyy-MM-dd"));
 
-        // CRITICAL: SitraMed uses Phoenix LiveView (phx-change="machine_calendar",
-        // phx-debounce="blur") on this form — same component as the tomograph agenda page
-        // (see DownloadTomographAgendaHtmlAsync). The server only syncs the date on blur;
-        // without it, Enter submits the server's previously cached date (today) regardless
-        // of what the DOM input shows, silently returning the wrong day's patients.
         await page.EvaluateAsync("""
             () => {
                 const di = document.querySelector('#search_date')
@@ -839,6 +835,12 @@ public sealed class PlaywrightSitraMedClient
                 di?.blur();
             }
             """);
+
+        await SelectFirstByLabelAsync(page, new[]
+        {
+            "#search_machine_id",
+            "select[name='search[machine_id]']"
+        }, machine.SitraName);
 
         await page.Keyboard.PressAsync("Enter");
 
