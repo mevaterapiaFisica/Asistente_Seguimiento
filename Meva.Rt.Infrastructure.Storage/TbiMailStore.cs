@@ -45,7 +45,7 @@ public sealed class TbiMailStore
         return true;
     }
 
-    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, CancellationToken ct)
+    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, int? totalApplications, CancellationToken ct)
     {
         var all = (await LoadAllAsync(ct)).ToList();
         var item = all.FirstOrDefault(i => i.PatientId == patientId);
@@ -55,6 +55,7 @@ public sealed class TbiMailStore
             all.Add(item);
         }
         item.TomographyDate = tomographyDate;
+        item.TotalApplications = totalApplications;
         item.Confirmed = true;
         await SaveAsync(all, ct);
         return item;

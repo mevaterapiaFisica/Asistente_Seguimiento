@@ -7,6 +7,7 @@ public sealed class TbiMailOptions
     public string Host { get; set; } = "imap.gmail.com";
     public int Port { get; set; } = 993;
     public string Folder { get; set; } = "INBOX";
+    public string? DiagnosticsPath { get; set; }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(User) && !string.IsNullOrWhiteSpace(AppPassword);
 }

@@ -486,18 +486,27 @@ con asunto `TBI {HC} {Nombre}` (ej. `TBI 1-119554-0 LEGUIZAMON, Margarita Antoni
 fecha de tomografía/inicio de tratamiento/hora/equipo en texto libre. Flujo:
 
 - `Meva.Rt.Infrastructure.Mail` (MailKit, IMAP): `TbiMailClient` busca en la casilla Gmail
-  configurada los mails con asunto que contenga "TBI" recibidos en los últimos 3 días (no usa
-  `\Seen`, dedupe real es por `Message-ID`). `TbiMailParser.Parse` devuelve `TbiMailFetchResult`
-  (HC/nombre del asunto, fecha tomo / primer día de tratamiento+hora / equipo del cuerpo — regex
-  best-effort, campos que no matchean quedan `null` y se completan a mano). Año de fechas sin año
-  se resuelve con la fecha de recepción del mail (rollover ±1 si el mes difiere >6 meses, para
-  diciembre/enero). Equipo mencionado (`Equipo N`) siempre se resuelve como
-  `MEVA-Central - Equipo N`. El remitente (`message.From`) se guarda para el turno automático.
+  configurada los mails con asunto que contenga "TBI" recibidos en los últimos **4 meses** (no
+  usa `\Seen`, dedupe real es por `Message-ID`; ventana ancha a propósito — procesa **todos** los
+  mails "TBI" del período, incluso de pacientes que ya no están en la lista activa de Pacientes →
+  TBI, y sirve de "entrenamiento" del parser sobre el histórico real). `TbiMailParser.Parse`
+  devuelve `TbiMailFetchResult` (HC/nombre del asunto; fecha tomo, primer día de tratamiento+hora,
+  equipo y **número total de aplicaciones** del cuerpo — regex best-effort, campos que no
+  matchean quedan `null` y se completan a mano). El número de aplicaciones sale de contar cuántas
+  veces aparece "a las N Hs" en la cláusula horaria (1 = un turno/día, 2 = dos turnos/día, ej.
+  "a las 8 Hs y a las 19:30 Hs") multiplicado por la cantidad de días listados
+  ("14, 15, 16 y 17" = 4 días). Año de fechas sin año se resuelve con la fecha de recepción del
+  mail (rollover ±1 si el mes difiere >6 meses, para diciembre/enero). Equipo mencionado
+  (`Equipo N`) siempre se resuelve como `MEVA-Central - Equipo N`. El remitente (`message.From`)
+  se guarda para el turno automático. Cada corrida sobreescribe `tbi_mail_unparsed.txt`
+  (`MEVA_DATA_DIR`, ver `TbiMailOptions.DiagnosticsPath`) con los mails que no matchearon el
+  asunto o a los que les faltó algún campo (Fecha Tomo / Fecha Inicio+Equipo / Aplicaciones),
+  incluyendo el cuerpo crudo — es sólo diagnóstico, no cambia lo que se guarda.
 - `TbiMailStore` (`Meva.Rt.Infrastructure.Storage`): `tbi_mail_info.json` bajo `MEVA_DATA_DIR`,
-  por HC — sólo `TomographyDate`/`Confirmed`/`MessageId` (fecha inicio y equipo ya NO viven acá,
-  van al turno). Mail nuevo (Message-ID distinto al ya guardado) pisa los datos y marca
-  `Confirmed=false` ("✉ sin revisar"); mismo Message-ID ya procesado no toca nada (no resetea
-  una revisión ya confirmada, ni re-crea el turno).
+  por HC — `TomographyDate`/`TotalApplications`/`Confirmed`/`MessageId` (fecha inicio y equipo
+  van al turno, no viven acá). Mail nuevo (Message-ID distinto al ya guardado) pisa los datos y
+  marca `Confirmed=false` ("✉ sin revisar"); mismo Message-ID ya procesado no toca nada (no
+  resetea una revisión ya confirmada, ni re-crea el turno).
 - Endpoints: `GET /api/tbi-mail`, `POST /api/tbi-mail/refresh` (501 si no hay credenciales
   configuradas — parsea, upsert en `TbiMailStore`, y si vino fecha+equipo también upsert en
   `TurnReservationStore` con `RegisteredByUsername = "{remitente} - cargado automáticamente"` y
@@ -507,11 +516,12 @@ fecha de tomografía/inicio de tratamiento/hora/equipo en texto libre. Flujo:
 - Disparo: **no** es automático al abrir el dashboard — solo corre cuando se llama
   `POST /api/tbi-mail/refresh`, invocado desde `scripts/refresh.bat` (Task Scheduler, paso 7/7)
   o manualmente.
-- UI: badge "✉ sin revisar" en Fecha Tomo (si `!mail.confirmed`) y en Equipo/Fecha Inicio (si
-  `resv.pendingReview`). Click en la fila la selecciona → botón "Editar" (sin `disabled` por
-  tener o no mail — funciona igual para pacientes 100% manuales) → modal con Fecha Tomo/Fecha
-  Inicio/Equipo (select de equipos MEVA-Central, mismo patrón que el modal de reserva de turno)
-  + campo libre "Quién lo cargó" → "Confirmar" hace `PUT`, actualiza `TbiMailInfo` y el turno.
+- UI: columnas Equipo / Fecha Inicio TBI / Aplicaciones. Badge "✉ sin revisar" en Fecha Tomo y
+  Aplicaciones (si `!mail.confirmed`) y en Equipo/Fecha Inicio (si `resv.pendingReview`). Click en
+  la fila la selecciona → botón "Editar" (sin `disabled` por tener o no mail — funciona igual
+  para pacientes 100% manuales) → modal con Fecha Tomo/Fecha Inicio/Equipo (select de equipos
+  MEVA-Central, mismo patrón que el modal de reserva de turno) + "Quién lo cargó" + "Número de
+  aplicaciones" → "Confirmar" hace `PUT`, actualiza `TbiMailInfo` y el turno.
 - **Gmail Workspace no deja generar app passwords por política de admin** (visto en producción,
   2026-09) — workaround usado: reenvío automático (filtro por asunto "TBI") desde la casilla del
   Workspace a una Gmail personal fuera de la organización, y las credenciales IMAP apuntan a esa

@@ -4637,6 +4637,9 @@ function renderTbi() {
         : esc(p.patientName));
     const equipoDisplay = resv?.machineDisplayName ?? p.plannedMachineDisplayName;
     const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${turnoBadge}` : '—';
+    const aplicacionesStr = mail?.totalApplications != null
+      ? `${esc(mail.totalApplications)}${tomoBadge}`
+      : '<span class="muted-italic">—</span>';
     const selected = state.tbi.selectedId === p.patientId;
     const dormant = _tbiIsDormant(p, resv);
     const trClass = [selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
@@ -4648,6 +4651,7 @@ function renderTbi() {
       <td>${physicistStr}</td>
       <td>${equipoStr}</td>
       <td>${inicioStr}</td>
+      <td>${aplicacionesStr}</td>
     </tr>`;
   }).join('');
 
@@ -4660,8 +4664,9 @@ function renderTbi() {
       ${thSort('Físico asignado', 'physicist')}
       <th>Equipo</th>
       <th>Fecha Inicio TBI</th>
+      <th>Aplicaciones</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="7" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
   wrap.innerHTML = html;
 
@@ -4716,6 +4721,7 @@ function _openTbiEditModal(patient) {
   document.getElementById('tbi-modal-tomo').value = mail?.tomographyDate ?? patient.tomographyDate ?? '';
   document.getElementById('tbi-modal-inicio').value = resv?.reservedDate ?? '';
   document.getElementById('tbi-modal-registeredby').value = resv?.registeredByUsername ?? '';
+  document.getElementById('tbi-modal-aplicaciones').value = mail?.totalApplications ?? '';
 
   const equipoIn = document.getElementById('tbi-modal-equipo');
   const currentEquipo = resv?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
@@ -4740,7 +4746,8 @@ function _openTbiEditModal(patient) {
       tomographyDate: document.getElementById('tbi-modal-tomo').value || null,
       treatmentStartDate: document.getElementById('tbi-modal-inicio').value || null,
       machineDisplayName: document.getElementById('tbi-modal-equipo').value || null,
-      registeredBy: document.getElementById('tbi-modal-registeredby').value || null
+      registeredBy: document.getElementById('tbi-modal-registeredby').value || null,
+      totalApplications: parseInt(document.getElementById('tbi-modal-aplicaciones').value, 10) || null
     };
     const resp = await fetch(`/api/tbi-mail/${encodeURIComponent(patient.patientId)}`, {
       method: 'PUT',

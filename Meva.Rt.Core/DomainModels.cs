@@ -267,6 +267,7 @@ public sealed class TbiMailInfo
     public string PatientId { get; set; } = string.Empty;
     public string PatientName { get; set; } = string.Empty;
     public DateOnly? TomographyDate { get; set; }
+    public int? TotalApplications { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public bool Confirmed { get; set; }
     public string? MessageId { get; set; }
@@ -281,6 +282,7 @@ public sealed class TbiMailFetchResult
     public DateOnly? TomographyDate { get; set; }
     public DateOnly? TreatmentStartDate { get; set; }
     public string? TreatmentStartTime { get; set; }
+    public int? TotalApplications { get; set; }
     public string? MachineDisplayName { get; set; }
     public string? SenderEmail { get; set; }
     public DateTime ReceivedAtUtc { get; set; }

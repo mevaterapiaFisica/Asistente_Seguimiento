@@ -48,7 +48,8 @@ var tbiMailOptions = new TbiMailOptions
 {
     User = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_USER") ?? string.Empty,
     AppPassword = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_APP_PASSWORD") ?? string.Empty,
-    Folder = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_FOLDER") ?? "INBOX"
+    Folder = Environment.GetEnvironmentVariable("MEVA_TBI_MAIL_FOLDER") ?? "INBOX",
+    DiagnosticsPath = Path.Combine(snapshotsDirectory, "tbi_mail_unparsed.txt")
 };
 
 // Business day calculator — looks for feriados.txt next to the data directory
@@ -1231,6 +1232,7 @@ app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMail
             PatientId = r.PatientId,
             PatientName = r.PatientName,
             TomographyDate = r.TomographyDate,
+            TotalApplications = r.TotalApplications,
             MessageId = r.MessageId,
             ReceivedAtUtc = r.ReceivedAtUtc
         };
@@ -1260,7 +1262,7 @@ app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMail
 
 app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TurnReservationStore reservationStore, TbiMailEditRequest req, CancellationToken ct) =>
 {
-    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, ct);
+    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, req.TotalApplications, ct);
 
     if (req.TreatmentStartDate is not null && !string.IsNullOrWhiteSpace(req.MachineDisplayName))
     {
@@ -1448,4 +1450,4 @@ record CreateReservationRequest(
     string MachineDisplayName, string ReservedDate, string ReservedTime,
     string? Observations, string Username, string Password);
 record DeleteReservationRequest(string Username, string Password);
-record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy);
+record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy, int? TotalApplications);

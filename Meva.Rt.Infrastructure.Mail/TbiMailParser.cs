@@ -11,8 +11,11 @@ public static partial class TbiMailParser
     [GeneratedRegex(@"Fecha\s+de\s+Tac:?\s*(\d{1,2})/(\d{1,2})", RegexOptions.IgnoreCase)]
     private static partial Regex TomographyRegex();
 
-    [GeneratedRegex(@"los\s+d[ií]as\s+([\d,\s y]+?)/(\d{1,2})\s+a\s+las\s+(\d{1,2})\s*[Hh]s.*?Equipo\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"los\s+d[ií]as\s+([\d,\s y]+?)/(\d{1,2})\s+(a\s+las\s+.+?)\s*en\s+Equipo\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex TreatmentRegex();
+
+    [GeneratedRegex(@"a\s+las\s+(\d{1,2})(?::(\d{2}))?\s*[Hh]s", RegexOptions.IgnoreCase)]
+    private static partial Regex TimeSlotRegex();
 
     [GeneratedRegex(@"\d+")]
     private static partial Regex FirstNumberRegex();
@@ -50,8 +53,17 @@ public static partial class TbiMailParser
                 info.TreatmentStartDate = TryResolveDate(startDay, startMonth, receivedAt);
             }
 
-            if (int.TryParse(treatmentMatch.Groups[3].Value, out var hour))
-                info.TreatmentStartTime = $"{hour:D2}:00";
+            var timeClause = treatmentMatch.Groups[3].Value;
+            var timeSlots = TimeSlotRegex().Matches(timeClause);
+            if (timeSlots.Count > 0)
+            {
+                var first = timeSlots[0];
+                var minute = first.Groups[2].Success ? first.Groups[2].Value : "00";
+                info.TreatmentStartTime = $"{int.Parse(first.Groups[1].Value):D2}:{minute}";
+
+                var daysCount = FirstNumberRegex().Matches(daysList).Count;
+                info.TotalApplications = daysCount * timeSlots.Count;
+            }
 
             info.MachineDisplayName = $"MEVA-Central - Equipo {treatmentMatch.Groups[4].Value}";
         }
