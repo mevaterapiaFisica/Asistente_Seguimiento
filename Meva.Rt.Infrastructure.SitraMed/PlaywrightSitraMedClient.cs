@@ -822,6 +822,21 @@ public sealed class PlaywrightSitraMedClient
             "input[name='search[date]']"
         }, date.ToString("yyyy-MM-dd"));
 
+        // CRITICAL: SitraMed uses Phoenix LiveView (phx-change="machine_calendar",
+        // phx-debounce="blur") on this form — same component as the tomograph agenda page
+        // (see DownloadTomographAgendaHtmlAsync). The server only syncs the date on blur;
+        // without it, Enter submits the server's previously cached date (today) regardless
+        // of what the DOM input shows, silently returning the wrong day's patients.
+        await page.EvaluateAsync("""
+            () => {
+                const di = document.querySelector('#search_date')
+                        ?? document.querySelector('input[name="search[date]"]');
+                di?.focus();
+                di?.blur();
+            }
+            """);
+        await page.WaitForTimeoutAsync(400);
+
         await page.Keyboard.PressAsync("Enter");
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await WaitForAnyAsync(page, new[]
@@ -866,6 +881,18 @@ public sealed class PlaywrightSitraMedClient
             if (count == 0)
             {
                 continue;
+            }
+
+            // Grid can still be appending rows via JS after network-idle (no further requests,
+            // but DOM insertion not finished yet) — poll until the row count stops growing.
+            for (var stabilizeAttempt = 0; stabilizeAttempt < 5; stabilizeAttempt++)
+            {
+                await Task.Delay(300, cancellationToken);
+                int recount;
+                try { recount = await locator.CountAsync(); }
+                catch { break; }
+                if (recount == count) break;
+                count = recount;
             }
 
             var parsed = await ParseAgendaRowsAsync(locator, count, machine, date);

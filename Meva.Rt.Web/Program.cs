@@ -876,18 +876,36 @@ app.MapGet("/api/agenda", async Task<IResult> (
                 string.Equals(s.Code, "F4B", StringComparison.OrdinalIgnoreCase))?.SortOrder ?? int.MaxValue;
 
             // Upper bound: last scraped date on disk (avoids generating slots beyond scrape range)
-            var maxScrapedDate = Directory.Exists(snapshotsDirectory)
+            var scrapedDates = Directory.Exists(snapshotsDirectory)
                 ? Directory.GetFiles(snapshotsDirectory, "agenda_????-??-??.json")
                     .Select(f => Path.GetFileNameWithoutExtension(f).Replace("agenda_", ""))
                     .Where(d => DateOnly.TryParse(d, out _))
-                    .Select(d => DateOnly.Parse(d))
+                    .Select(DateOnly.Parse)
                     .Where(d => d > today)
-                    .DefaultIfEmpty(today)
-                    .Max()
-                : today;
+                    .ToList()
+                : [];
+            var maxScrapedDate = scrapedDates.DefaultIfEmpty(today).Max();
+
+            // Patients with a real (scraped) appointment on any upcoming date must not also get an estimate.
+            var patientsWithRealSlot = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var scrapedDate in scrapedDates)
+            {
+                var daySlots = await snapshotStore.TryLoadAsync<List<MachineAppointmentSnapshot>>(
+                    $"agenda_{scrapedDate:yyyy-MM-dd}", cancellationToken);
+                if (daySlots == null) continue;
+                foreach (var s in daySlots)
+                {
+                    if (string.IsNullOrWhiteSpace(s.SitraMedGuid)) continue;
+                    if (guidHcMapAgenda.TryGetValue(s.SitraMedGuid, out var hc))
+                        patientsWithRealSlot.Add(hc);
+                }
+            }
 
             foreach (var patient in bootstrap.FollowUpPatients)
             {
+                if (!string.IsNullOrWhiteSpace(patient.PatientId) && patientsWithRealSlot.Contains(patient.PatientId))
+                    continue;
+
                 // Resolve machine name and source
                 string? machineName;
                 string estimatedSource;
