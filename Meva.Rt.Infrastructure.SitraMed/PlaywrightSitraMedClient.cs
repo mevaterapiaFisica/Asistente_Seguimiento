@@ -816,6 +816,10 @@ public sealed class PlaywrightSitraMedClient
             "select[name='search[machine_id]']"
         }, machine.SitraName);
 
+        // Snapshot the results table BEFORE changing the date, so we can detect the
+        // moment it actually re-renders instead of guessing a fixed delay (see below).
+        var contentBeforeDateChange = await GetAgendaTableHtmlAsync(page);
+
         await FillFirstAsync(page, new[]
         {
             "#search_date",
@@ -827,8 +831,6 @@ public sealed class PlaywrightSitraMedClient
         // (see DownloadTomographAgendaHtmlAsync). The server only syncs the date on blur;
         // without it, Enter submits the server's previously cached date (today) regardless
         // of what the DOM input shows, silently returning the wrong day's patients.
-        // The blur->server roundtrip is not instant and its timing is flaky (confirmed live:
-        // 400ms missed the sync intermittently, 800ms+ consistently didn't).
         await page.EvaluateAsync("""
             () => {
                 const di = document.querySelector('#search_date')
@@ -837,9 +839,20 @@ public sealed class PlaywrightSitraMedClient
                 di?.blur();
             }
             """);
-        await page.WaitForTimeoutAsync(800);
 
         await page.Keyboard.PressAsync("Enter");
+
+        // LiveView pushes the re-rendered table over the WebSocket connection, which
+        // Playwright's NetworkIdle does NOT track (it only watches HTTP requests) — waiting
+        // on NetworkIdle alone races the update and intermittently scrapes the stale table
+        // for the previous date. Poll until the table content actually changes instead.
+        for (var i = 0; i < 10; i++)
+        {
+            await page.WaitForTimeoutAsync(300);
+            var current = await GetAgendaTableHtmlAsync(page);
+            if (current != contentBeforeDateChange) break;
+        }
+
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await WaitForAnyAsync(page, new[]
         {
@@ -852,6 +865,19 @@ public sealed class PlaywrightSitraMedClient
         });
         cancellationToken.ThrowIfCancellationRequested();
         return await page.ContentAsync();
+    }
+
+    private static async Task<string> GetAgendaTableHtmlAsync(IPage page)
+    {
+        try
+        {
+            return await page.EvaluateAsync<string>(
+                "() => document.querySelector('#machineDrag, #machine_drag, table tbody')?.innerHTML ?? ''");
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     private async Task<List<MachineAppointmentSnapshot>> TryExtractAgendaDomAsync(
