@@ -72,7 +72,8 @@ public sealed class PlaywrightSitraMedClient
                     CenterName = combo.center.Name,
                     StageCode = combo.stage.Code,
                     StageMicroStatus = combo.stage.SitraMicroStatus,
-                    Html = string.Empty
+                    Html = string.Empty,
+                    HasScrapingError = true
                 };
             }
             finally
@@ -230,17 +231,34 @@ public sealed class PlaywrightSitraMedClient
         foreach (var tomograph in tomographs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
-            var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
-
-            results.Add(new TomographAgendaHtmlSnapshot
+            try
             {
-                CenterName            = tomograph.CenterName,
-                TomographDisplayName  = tomograph.DisplayName,
-                AgendaDate            = date,
-                Html                  = html,
-                DomSnapshots          = domSnapshots.Count > 0 ? domSnapshots : null
-            });
+                var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
+                var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
+
+                results.Add(new TomographAgendaHtmlSnapshot
+                {
+                    CenterName            = tomograph.CenterName,
+                    TomographDisplayName  = tomograph.DisplayName,
+                    AgendaDate            = date,
+                    Html                  = html,
+                    DomSnapshots          = domSnapshots.Count > 0 ? domSnapshots : null
+                });
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Un tomógrafo/fecha que falla (p.ej. la fecha no sincronizó con LiveView tras el
+                // reintento) no debe abortar el resto — antes sí lo hacía, sin try/catch alguno.
+                Console.Error.WriteLine($"[SitraMed] Tomografo falló {tomograph.DisplayName}/{date}: {ex.Message}");
+                results.Add(new TomographAgendaHtmlSnapshot
+                {
+                    CenterName = tomograph.CenterName,
+                    TomographDisplayName = tomograph.DisplayName,
+                    AgendaDate = date,
+                    Html = string.Empty,
+                    HasScrapingError = true
+                });
+            }
         }
 
         return results;
@@ -265,17 +283,32 @@ public sealed class PlaywrightSitraMedClient
             foreach (var tomograph in tomographs)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
-                var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
-
-                dateResults.Add(new TomographAgendaHtmlSnapshot
+                try
                 {
-                    CenterName           = tomograph.CenterName,
-                    TomographDisplayName = tomograph.DisplayName,
-                    AgendaDate           = date,
-                    Html                 = html,
-                    DomSnapshots         = domSnapshots.Count > 0 ? domSnapshots : null
-                });
+                    var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
+                    var domSnapshots = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
+
+                    dateResults.Add(new TomographAgendaHtmlSnapshot
+                    {
+                        CenterName           = tomograph.CenterName,
+                        TomographDisplayName = tomograph.DisplayName,
+                        AgendaDate           = date,
+                        Html                 = html,
+                        DomSnapshots         = domSnapshots.Count > 0 ? domSnapshots : null
+                    });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Console.Error.WriteLine($"[SitraMed] Tomografo falló {tomograph.DisplayName}/{date}: {ex.Message}");
+                    dateResults.Add(new TomographAgendaHtmlSnapshot
+                    {
+                        CenterName = tomograph.CenterName,
+                        TomographDisplayName = tomograph.DisplayName,
+                        AgendaDate = date,
+                        Html = string.Empty,
+                        HasScrapingError = true
+                    });
+                }
             }
 
             result[date] = dateResults;
@@ -350,10 +383,15 @@ public sealed class PlaywrightSitraMedClient
             HtmlLength = html.Length,
             HtmlPreview = html.Length > 500 ? html[..500] : html,
             AgendaDomRows = domRows.Count,
+            AgendaRows = domRows,
             CapturedFilePath = capturedFilePath
         };
     }
 
+    // ponytail: antes duplicaba a mano la interacción con el form de tomógrafos (login, selects,
+    // blur, waits) — probaba un camino paralelo que nunca corría en producción. Ahora llama al
+    // mismo DownloadTomographAgendaHtmlAsync/TryExtractTomographAgendaDomAsync que usa el scrape
+    // real, igual que RunAgendaTestAsync ya hacía para equipos.
     public async Task<ScrapingTestResult> RunTomographTestAsync(
         RtTomograph tomograph,
         DateOnly date,
@@ -369,137 +407,23 @@ public sealed class PlaywrightSitraMedClient
         }
 
         await using var page = await CreateLoggedPageAsync(cancellationToken);
-
-        // Capture network requests made after login to understand what AJAX calls the page makes
-        var capturedRequests = new System.Collections.Concurrent.ConcurrentBag<string>();
-        page.Page.Request += (_, req) =>
-        {
-            if (!req.Url.Contains(".js") && !req.Url.Contains(".css") &&
-                !req.Url.Contains("fonts") && !req.Url.Contains(".ico") &&
-                !req.Url.Contains(".png") && !req.Url.Contains(".woff"))
-            {
-                capturedRequests.Add($"{req.Method} {req.Url}");
-            }
-        };
-
-        await page.Page.GotoAsync(TomographAgendaUrl, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-        try { await page.Page.WaitForSelectorAsync("#search_center_id", new PageWaitForSelectorOptions { Timeout = 10000 }); } catch { }
-
-        // Snapshot center and tomograph options before selection
-        var centerOpts = await page.Page.EvaluateAsync<string>(
-            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_center_id option')).map(o => o.textContent?.trim()))");
-
-        // Step 1: select center
-        await SelectFirstByLabelAsync(page.Page, new[] { "#search_center_id", "select[name='search[center_id]']" }, tomograph.CenterName);
-        await page.Page.WaitForTimeoutAsync(600);
-
-        var tomoOptsBefore = await page.Page.EvaluateAsync<string>(
-            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_tomograph_id option')).map(o => o.textContent?.trim()))");
-
-        // Step 2: set date (BEFORE selecting tomograph — on the live page, setting date after
-        //         tomograph resets the tomograph selection)
-        var dateStr = date.ToString("dd/MM/yyyy");
-        await page.Page.EvaluateAsync("""
-            (date) => {
-                const tSel = document.querySelector('#search_tomograph_id');
-                const form = tSel?.closest('form');
-                if (!form) return;
-                const di = form.querySelector('#search_date') ?? form.querySelector('input[name="search[date]"]');
-                if (di) {
-                    di.value = date;
-                    di.dispatchEvent(new Event('input',  { bubbles: true }));
-                    di.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-            """, dateStr);
-        await page.Page.WaitForTimeoutAsync(400);
-
-        // Step 3: select tomograph — this onChange should trigger the results AJAX
-        await SelectFirstByLabelAsync(page.Page, new[] { "#search_tomograph_id", "select[name='search[tomograph_id]']" }, tomograph.SitraName);
-
-        // Capture form info after all selections
-        var tomoOpts = await page.Page.EvaluateAsync<string>(
-            "() => JSON.stringify(Array.from(document.querySelectorAll('#search_tomograph_id option')).map(o => o.textContent?.trim()))");
-
-        var formInfo = await page.Page.EvaluateAsync<string>("""
-            () => {
-                const tSel = document.querySelector('#search_tomograph_id');
-                const form = tSel?.closest('form');
-                if (!form) return JSON.stringify({error: 'no filter form found near #search_tomograph_id'});
-                const di = form.querySelector('#search_date') ?? form.querySelector('input[name="search[date]"]');
-                return JSON.stringify({
-                    action: form.action, method: form.method,
-                    hasDateInput: !!di, dateId: di?.id, dateName: di?.name, dateType: di?.type,
-                    dateValue: di?.value,
-                    centerVal: document.querySelector('#search_center_id')?.value,
-                    tomoVal:   document.querySelector('#search_tomograph_id')?.value,
-                    iframes:   document.querySelectorAll('iframe').length,
-                    hasSubmitBtn: !!form.querySelector('button[type=submit], input[type=submit]')
-                });
-            }
-            """);
-
-        await page.Page.WaitForTimeoutAsync(400);
-        try { await page.Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 }); } catch { }
-        try { await page.Page.WaitForSelectorAsync("table tbody tr", new PageWaitForSelectorOptions { Timeout = 15000 }); } catch { }
-
-        var title    = await page.Page.TitleAsync();
+        var html = await DownloadTomographAgendaHtmlAsync(page.Page, tomograph, date, cancellationToken);
+        var domRows = await TryExtractTomographAgendaDomAsync(page.Page, tomograph, date, cancellationToken);
+        var title = await page.Page.TitleAsync();
         var finalUrl = page.Page.Url;
-        var html     = await page.Page.ContentAsync();
-
-        // Collect raw rows without keyword filter
-        var rawRows = new List<string>();
-        foreach (var selector in new[] { "#tomographDrag tbody tr", "#machineDrag tbody tr", "table.table tbody tr", "table tbody tr" })
-        {
-            var loc = page.Page.Locator(selector);
-            int count; try { count = await loc.CountAsync(); } catch { count = 0; }
-            if (count == 0) continue;
-            for (var i = 0; i < Math.Min(count, 20); i++)
-            {
-                var cells   = await loc.Nth(i).Locator("td").AllInnerTextsAsync();
-                var trimmed = cells.Select(c => string.Join(' ', c.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim()).ToArray();
-                rawRows.Add($"[{selector}] " + string.Join(" | ", trimmed));
-            }
-            break;
-        }
-
-        // DOM snapshot
-        var domInfo = await page.Page.EvaluateAsync<string>("""
-            () => {
-                const frames  = Array.from(document.querySelectorAll('turbo-frame')).map(f => ({
-                    id: f.id, src: f.getAttribute('src') ?? '', rows: f.querySelectorAll('tr').length,
-                    html: f.innerHTML.substring(0, 400)
-                }));
-                const tables  = Array.from(document.querySelectorAll('table')).map(t => ({
-                    id: t.id, cls: t.className, rows: t.rows.length, text: t.innerText?.substring(0, 200)
-                }));
-                const iframes = Array.from(document.querySelectorAll('iframe')).map(f => f.src);
-                const bodyText = document.body.innerText?.substring(0, 600);
-                return JSON.stringify({ frames, tables, iframes, bodyText }, null, 2);
-            }
-            """);
-
-        var preview = JsonSerializer.Serialize(new
-        {
-            formInfo         = JsonSerializer.Deserialize<object>(formInfo       ?? "{}"),
-            centerOpts       = JsonSerializer.Deserialize<object>(centerOpts     ?? "[]"),
-            tomoOptsAfterCtr = JsonSerializer.Deserialize<object>(tomoOptsBefore ?? "[]"),
-            tomoOptsAfterDate= JsonSerializer.Deserialize<object>(tomoOpts      ?? "[]"),
-            requests         = capturedRequests.OrderBy(x => x).ToArray(),
-            dom              = JsonSerializer.Deserialize<object>(domInfo        ?? "{}")
-        }, new JsonSerializerOptions { WriteIndented = true });
 
         return new ScrapingTestResult
         {
             Success = true,
-            Message = rawRows.Count > 0
-                ? $"OK. {rawRows.Count} filas en el DOM (sin filtro)."
-                : "OK pero 0 filas en el DOM. Ver HtmlPreview.",
-            Url       = finalUrl,
+            Message = domRows.Count > 0
+                ? "Login y descarga de agenda de tomografo OK (parse DOM detectado)."
+                : "Login y descarga de agenda de tomografo OK (sin parse DOM, revisar HTML).",
+            Url = finalUrl,
             PageTitle = title,
             HtmlLength = html.Length,
-            HtmlPreview = preview,
-            RawRowSamples = rawRows
+            HtmlPreview = html.Length > 500 ? html[..500] : html,
+            AgendaDomRows = domRows.Count,
+            AgendaRows = domRows
         };
     }
 
@@ -810,63 +734,99 @@ public sealed class PlaywrightSitraMedClient
         }
         catch (TimeoutException) { }
 
-        // Snapshot the results table BEFORE changing anything else, so we can detect the
-        // moment it actually re-renders instead of guessing a fixed delay (see below).
-        var contentBeforeDateChange = await GetAgendaTableHtmlAsync(page);
+        var expectedDate = date.ToString("yyyy-MM-dd");
+        string? actualDate = null;
 
-        // CRITICAL: set the date BEFORE selecting the machine. SitraMed uses Phoenix
-        // LiveView (phx-change="machine_calendar", phx-debounce="blur") on this form — same
-        // component as the tomograph agenda page (see DownloadTomographAgendaHtmlAsync),
-        // which documents that selecting the sub-entity (tomograph/machine) AFTER the date
-        // resets the date back to the server's cached default (today). Confirmed live here
-        // too: with machine selected first, the captured page's #search_date consistently
-        // came back as today's date regardless of blur/wait, silently scraping the wrong day.
-        await FillFirstAsync(page, new[]
+        // El bug histórico (ver BUG_AGENDA_EQUIPOS_Y_ESTIMADOS.md) era que este round-trip de
+        // LiveView terminaba silenciosamente en la fecha de hoy sin que nada lo detectara — ningún
+        // paso de acá arriba falla ni loguea. Por eso, en vez de confiar en que el orden
+        // fecha→blur→equipo alcanza, se relee el value real del input después del poll y se
+        // reintenta una vez si no coincide con lo pedido.
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            "#search_date",
-            "input[name='search[date]']"
-        }, date.ToString("yyyy-MM-dd"));
+            // Snapshot the results table BEFORE changing anything else, so we can detect the
+            // moment it actually re-renders instead of guessing a fixed delay (see below).
+            var contentBeforeDateChange = await GetAgendaTableHtmlAsync(page);
 
-        await page.EvaluateAsync("""
-            () => {
-                const di = document.querySelector('#search_date')
-                        ?? document.querySelector('input[name="search[date]"]');
-                di?.focus();
-                di?.blur();
+            // CRITICAL: set the date BEFORE selecting the machine. SitraMed uses Phoenix
+            // LiveView (phx-change="machine_calendar", phx-debounce="blur") on this form — same
+            // component as the tomograph agenda page (see DownloadTomographAgendaHtmlAsync),
+            // which documents that selecting the sub-entity (tomograph/machine) AFTER the date
+            // resets the date back to the server's cached default (today). Confirmed live here
+            // too: with machine selected first, the captured page's #search_date consistently
+            // came back as today's date regardless of blur/wait, silently scraping the wrong day.
+            await FillFirstAsync(page, new[]
+            {
+                "#search_date",
+                "input[name='search[date]']"
+            }, expectedDate);
+
+            await page.EvaluateAsync("""
+                () => {
+                    const di = document.querySelector('#search_date')
+                            ?? document.querySelector('input[name="search[date]"]');
+                    di?.focus();
+                    di?.blur();
+                }
+                """);
+
+            await SelectFirstByLabelAsync(page, new[]
+            {
+                "#search_machine_id",
+                "select[name='search[machine_id]']"
+            }, machine.SitraName);
+
+            await page.Keyboard.PressAsync("Enter");
+
+            // LiveView pushes the re-rendered table over the WebSocket connection, which
+            // Playwright's NetworkIdle does NOT track (it only watches HTTP requests) — waiting
+            // on NetworkIdle alone races the update and intermittently scrapes the stale table
+            // for the previous date. Poll until the table content actually changes instead.
+            for (var i = 0; i < 10; i++)
+            {
+                await page.WaitForTimeoutAsync(300);
+                var current = await GetAgendaTableHtmlAsync(page);
+                if (current != contentBeforeDateChange) break;
             }
-            """);
 
-        await SelectFirstByLabelAsync(page, new[]
-        {
-            "#search_machine_id",
-            "select[name='search[machine_id]']"
-        }, machine.SitraName);
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            await WaitForAnyAsync(page, new[]
+            {
+                "#machineDrag",
+                "#machine_drag",
+                "#machineDrag tbody tr",
+                "#machine_drag tbody tr",
+                "table tbody tr",
+                "body"
+            });
+            cancellationToken.ThrowIfCancellationRequested();
 
-        await page.Keyboard.PressAsync("Enter");
+            actualDate = await GetAgendaDateValueAsync(page);
+            if (actualDate == expectedDate) break;
 
-        // LiveView pushes the re-rendered table over the WebSocket connection, which
-        // Playwright's NetworkIdle does NOT track (it only watches HTTP requests) — waiting
-        // on NetworkIdle alone races the update and intermittently scrapes the stale table
-        // for the previous date. Poll until the table content actually changes instead.
-        for (var i = 0; i < 10; i++)
-        {
-            await page.WaitForTimeoutAsync(300);
-            var current = await GetAgendaTableHtmlAsync(page);
-            if (current != contentBeforeDateChange) break;
+            Console.Error.WriteLine(
+                $"[SitraMed] Agenda equipos {machine.DisplayName}: fecha pedida {expectedDate} pero el form quedó en {actualDate ?? "(sin leer)"} " +
+                (attempt == 0 ? "— reintentando." : "— reintento agotado."));
         }
 
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await WaitForAnyAsync(page, new[]
-        {
-            "#machineDrag",
-            "#machine_drag",
-            "#machineDrag tbody tr",
-            "#machine_drag tbody tr",
-            "table tbody tr",
-            "body"
-        });
-        cancellationToken.ThrowIfCancellationRequested();
+        if (actualDate != expectedDate)
+            throw new InvalidOperationException(
+                $"Agenda equipos {machine.DisplayName}: la fecha del form no coincide con la pedida ({expectedDate} vs {actualDate ?? "desconocida"}) tras reintentar.");
+
         return await page.ContentAsync();
+    }
+
+    private static async Task<string?> GetAgendaDateValueAsync(IPage page)
+    {
+        try
+        {
+            return await page.EvaluateAsync<string?>(
+                "() => (document.querySelector('#search_date') ?? document.querySelector('input[name=\"search[date]\"]'))?.value ?? null");
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static async Task<string> GetAgendaTableHtmlAsync(IPage page)
@@ -973,8 +933,7 @@ public sealed class PlaywrightSitraMedClient
             // Skip rows whose estimated end date (fechaFin, offset+9) is before the requested date.
             // This catches grey rows: treatment already finished, slot still appears in agenda.
             {
-                var fOff = 0;
-                while (fOff < trimmed.Length - 2 && string.IsNullOrWhiteSpace(trimmed[fOff])) fOff++;
+                var fOff = FindAgendaColumnOffset(trimmed);
                 if (trimmed.Length > fOff + 9)
                 {
                     var fechaCell = trimmed[fOff + 9];
@@ -1067,15 +1026,32 @@ public sealed class PlaywrightSitraMedClient
     /// observaciones, institución, tipo, tratamiento, fecha inicio, fecha fin, hora fin, acciones.
     /// La primera columna (signs) tiene innerText vacío aunque contenga HTML; se saltea.
     /// </summary>
+    private static readonly Regex AgendaTimeCellRegex = new(@"^\d{1,2}:\d{2}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Ubica la columna "inicio" (siempre formato H:MM/HH:MM) para anclar el resto de los
+    /// offsets. Antes se saltaban las celdas iniciales vacías asumiendo que la(s) columna(s) de
+    /// "signs" siempre están en blanco — pero SitraMed las puebla con un ícono/texto visible
+    /// ("URG") en turnos marcados urgentes, lo que corría el offset una celda de menos y
+    /// desalineaba PatientName/Treatment/fechas para esas filas específicas.
+    /// </summary>
+    private static int FindAgendaColumnOffset(string[] cells)
+    {
+        var timeIdx = Array.FindIndex(cells, c => AgendaTimeCellRegex.IsMatch(c.Trim()));
+        if (timeIdx >= 0) return timeIdx;
+
+        // Fallback: heurística anterior, para filas que no tengan ninguna celda con formato hora.
+        var offset = 0;
+        while (offset < cells.Length - 2 && string.IsNullOrWhiteSpace(cells[offset]))
+            offset++;
+        return offset;
+    }
+
     private static (string PatientName, string StartTime, string EndTime, string Treatment, int? Priority)? MapAgendaCells(string[] cells)
     {
         if (cells.Length < 2) return null;
 
-        // Saltear celdas iniciales vacías (p.ej. la columna signs div)
-        var offset = 0;
-        while (offset < cells.Length - 2 && string.IsNullOrWhiteSpace(cells[offset]))
-            offset++;
-
+        var offset = FindAgendaColumnOffset(cells);
         var remaining = cells.Length - offset;
 
         if (remaining >= 11)
@@ -1124,78 +1100,98 @@ public sealed class PlaywrightSitraMedClient
 
         await page.WaitForTimeoutAsync(600);
 
-        // 2. Set the date BEFORE selecting the tomograph.
-        //    SitraMed uses Phoenix LiveView with phx-change="machine_calendar" on the form and
-        //    phx-debounce="blur" on the date input. LiveView maintains server-side form state:
-        //    the server only updates its stored date when the input fires a blur event.
-        //    Without blur, selecting the tomograph sends a phx-change with the server's cached
-        //    date (today), not the DOM value — so all dates return today's patients.
-        var dateStr = date.ToString("dd/MM/yyyy");  // for JS Date parsing
-        var isoStr  = date.ToString("yyyy-MM-dd");  // ISO format SitraMed stores server-side
+        var isoStr = date.ToString("yyyy-MM-dd");  // ISO format SitraMed stores server-side
+        string? actualDate = null;
 
-        var flatpickrSet = await page.EvaluateAsync<bool>("""
-            (date) => {
-                // date is "dd/MM/yyyy" — parse manually to avoid flatpickr dateFormat mismatch.
-                const [dd, mm, yyyy] = date.split('/').map(Number);
-                const di = document.querySelector('#search_date') ?? document.querySelector('input[name="search[date]"]');
-                if (!di?._flatpickr) return false;
-                // triggerChange=false: set internal state silently to avoid resetting the tomograph dropdown.
-                // The blur dispatch below will inform LiveView of the new date.
-                di._flatpickr.setDate(new Date(yyyy, mm - 1, dd), false);
-                return true;
+        // Mismo problema que en agenda de equipos (ver DownloadAgendaHtmlAsync): el round-trip de
+        // LiveView puede terminar en la fecha de hoy sin avisar. Se relee el value real tras el
+        // blur y se reintenta una vez si no coincide.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            // 2. Set the date BEFORE selecting the tomograph.
+            //    SitraMed uses Phoenix LiveView with phx-change="machine_calendar" on the form and
+            //    phx-debounce="blur" on the date input. LiveView maintains server-side form state:
+            //    the server only updates its stored date when the input fires a blur event.
+            //    Without blur, selecting the tomograph sends a phx-change with the server's cached
+            //    date (today), not the DOM value — so all dates return today's patients.
+            var dateStr = date.ToString("dd/MM/yyyy");  // for JS Date parsing
+
+            var flatpickrSet = await page.EvaluateAsync<bool>("""
+                (date) => {
+                    // date is "dd/MM/yyyy" — parse manually to avoid flatpickr dateFormat mismatch.
+                    const [dd, mm, yyyy] = date.split('/').map(Number);
+                    const di = document.querySelector('#search_date') ?? document.querySelector('input[name="search[date]"]');
+                    if (!di?._flatpickr) return false;
+                    // triggerChange=false: set internal state silently to avoid resetting the tomograph dropdown.
+                    // The blur dispatch below will inform LiveView of the new date.
+                    di._flatpickr.setDate(new Date(yyyy, mm - 1, dd), false);
+                    return true;
+                }
+                """, dateStr);
+
+            if (!flatpickrSet)
+            {
+                // No flatpickr: fill with ISO format — SitraMed's server expects "yyyy-MM-dd"
+                // (captured HTML shows value="2026-04-30").
+                await FillFirstAsync(page, new[] { "#search_date", "input[name='search[date]']" }, isoStr);
             }
-            """, dateStr);
 
-        if (!flatpickrSet)
-        {
-            // No flatpickr: fill with ISO format — SitraMed's server expects "yyyy-MM-dd"
-            // (captured HTML shows value="2026-04-30").
-            await FillFirstAsync(page, new[] { "#search_date", "input[name='search[date]']" }, isoStr);
-        }
+            // CRITICAL: fire blur so LiveView (phx-debounce="blur") syncs the new date to the server.
+            // Without this the server retains today's date regardless of what the DOM shows.
+            await page.EvaluateAsync("""
+                () => {
+                    const di = document.querySelector('#search_date')
+                            ?? document.querySelector('input[name="search[date]"]');
+                    di?.focus();
+                    di?.blur();
+                }
+                """);
 
-        // CRITICAL: fire blur so LiveView (phx-debounce="blur") syncs the new date to the server.
-        // Without this the server retains today's date regardless of what the DOM shows.
-        await page.EvaluateAsync("""
-            () => {
-                const di = document.querySelector('#search_date')
-                        ?? document.querySelector('input[name="search[date]"]');
-                di?.focus();
-                di?.blur();
+            await page.WaitForTimeoutAsync(400);
+            try
+            {
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                    new PageWaitForLoadStateOptions { Timeout = 8000 });
             }
-            """);
+            catch (TimeoutException) { }
 
-        await page.WaitForTimeoutAsync(400);
-        try
-        {
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
-                new PageWaitForLoadStateOptions { Timeout = 8000 });
+            // 3. Now select the tomograph — phx-change fires with the date already stored server-side.
+            await SelectFirstByLabelAsync(page, new[]
+            {
+                "#search_tomograph_id",
+                "select[name='search[tomograph_id]']"
+            }, tomograph.SitraName);
+
+            // 4. Wait for the AJAX/NetworkIdle to finish loading results.
+            await page.WaitForTimeoutAsync(400);
+            try
+            {
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                    new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 });
+            }
+            catch (TimeoutException) { }
+
+            try
+            {
+                await page.WaitForSelectorAsync("table tbody tr",
+                    new PageWaitForSelectorOptions { Timeout = 15000 });
+            }
+            catch (TimeoutException) { }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            actualDate = await GetAgendaDateValueAsync(page);
+            if (actualDate == isoStr) break;
+
+            Console.Error.WriteLine(
+                $"[SitraMed] Agenda tomografo {tomograph.DisplayName}: fecha pedida {isoStr} pero el form quedó en {actualDate ?? "(sin leer)"} " +
+                (attempt == 0 ? "— reintentando." : "— reintento agotado."));
         }
-        catch (TimeoutException) { }
 
-        // 3. Now select the tomograph — phx-change fires with the date already stored server-side.
-        await SelectFirstByLabelAsync(page, new[]
-        {
-            "#search_tomograph_id",
-            "select[name='search[tomograph_id]']"
-        }, tomograph.SitraName);
+        if (actualDate != isoStr)
+            throw new InvalidOperationException(
+                $"Agenda tomografo {tomograph.DisplayName}: la fecha del form no coincide con la pedida ({isoStr} vs {actualDate ?? "desconocida"}) tras reintentar.");
 
-        // 4. Wait for the AJAX/NetworkIdle to finish loading results.
-        await page.WaitForTimeoutAsync(400);
-        try
-        {
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
-                new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 });
-        }
-        catch (TimeoutException) { }
-
-        try
-        {
-            await page.WaitForSelectorAsync("table tbody tr",
-                new PageWaitForSelectorOptions { Timeout = 15000 });
-        }
-        catch (TimeoutException) { }
-
-        cancellationToken.ThrowIfCancellationRequested();
         return await page.ContentAsync();
     }
 
@@ -1384,7 +1380,7 @@ public sealed class PlaywrightSitraMedClient
         return null;
     }
 
-    private static async Task FillFirstAsync(IPage page, IEnumerable<string> selectors, string value)
+    private static async Task<bool> FillFirstAsync(IPage page, IEnumerable<string> selectors, string value)
     {
         foreach (var selector in selectors)
         {
@@ -1393,9 +1389,11 @@ public sealed class PlaywrightSitraMedClient
             {
                 await locator.First.FillAsync(string.Empty);
                 await locator.First.FillAsync(value);
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
     private static async Task SelectFirstAsync(IPage page, IEnumerable<string> selectors, string value)
@@ -1437,7 +1435,7 @@ public sealed class PlaywrightSitraMedClient
         return false;
     }
 
-    private static async Task SelectFirstByLabelAsync(IPage page, IEnumerable<string> selectors, string label)
+    private static async Task<bool> SelectFirstByLabelAsync(IPage page, IEnumerable<string> selectors, string label)
     {
         foreach (var selector in selectors)
         {
@@ -1447,7 +1445,7 @@ public sealed class PlaywrightSitraMedClient
                 try
                 {
                     await locator.First.SelectOptionAsync(new SelectOptionValue { Label = label });
-                    return;
+                    return true;
                 }
                 catch
                 {
@@ -1456,11 +1454,13 @@ public sealed class PlaywrightSitraMedClient
                     if (!string.IsNullOrWhiteSpace(match))
                     {
                         await locator.First.SelectOptionAsync(new SelectOptionValue { Label = match });
-                        return;
+                        return true;
                     }
                 }
             }
         }
+
+        return false;
     }
 
     private static async Task ClickFirstAsync(IPage page, IEnumerable<string> selectors)
@@ -1893,6 +1893,7 @@ public sealed class FollowUpHtmlSnapshot
     public string StageMicroStatus { get; set; } = string.Empty;
     public string Html { get; set; } = string.Empty;
     public List<FollowUpPatientDomRow>? DomRows { get; set; }
+    public bool HasScrapingError { get; set; }
 }
 
 public sealed class FollowUpPatientDomRow
@@ -1933,6 +1934,10 @@ public sealed class ScrapingTestResult
     public string? SelectedMicroStatusValue { get; set; }
     // Raw cell values for each TR row (without any keyword filter), up to 20 rows
     public List<string> RawRowSamples { get; set; } = [];
+    // Filas ya parseadas por el mismo código de producción (TryExtractAgendaDomAsync /
+    // TryExtractTomographAgendaDomAsync) — permite comparar nombre/hora/GUID contra SitraMed en
+    // vivo sin tener que re-parsear HtmlPreview a mano.
+    public List<MachineAppointmentSnapshot> AgendaRows { get; set; } = [];
 }
 
 public sealed class AgendaHtmlSnapshot
@@ -1953,6 +1958,7 @@ public sealed class TomographAgendaHtmlSnapshot
     public string TomographDisplayName  { get; set; } = string.Empty;
     public DateOnly AgendaDate          { get; set; }
     public string Html                  { get; set; } = string.Empty;
+    public bool HasScrapingError        { get; set; }
     public List<MachineAppointmentSnapshot>? DomSnapshots { get; set; }
 }
 
