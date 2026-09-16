@@ -34,6 +34,7 @@ public sealed class TbiMailStore
         {
             if (!string.IsNullOrEmpty(info.MessageId) && all[idx].MessageId == info.MessageId) return false;
             info.Confirmed = false;
+            info.Observations = all[idx].Observations; // nota del admin, no viene del mail — no pisarla
             all[idx] = info;
         }
         else
@@ -45,7 +46,7 @@ public sealed class TbiMailStore
         return true;
     }
 
-    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, int? totalApplications, CancellationToken ct)
+    public async Task<TbiMailInfo> UpdateAsync(string patientId, string patientName, DateOnly? tomographyDate, string? observations, CancellationToken ct)
     {
         var all = (await LoadAllAsync(ct)).ToList();
         var item = all.FirstOrDefault(i => i.PatientId == patientId);
@@ -55,7 +56,7 @@ public sealed class TbiMailStore
             all.Add(item);
         }
         item.TomographyDate = tomographyDate;
-        item.TotalApplications = totalApplications;
+        item.Observations = observations;
         item.Confirmed = true;
         await SaveAsync(all, ct);
         return item;

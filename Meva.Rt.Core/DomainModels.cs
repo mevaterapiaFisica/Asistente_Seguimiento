@@ -267,7 +267,8 @@ public sealed class TbiMailInfo
     public string PatientId { get; set; } = string.Empty;
     public string PatientName { get; set; } = string.Empty;
     public DateOnly? TomographyDate { get; set; }
-    public int? TotalApplications { get; set; }
+    public int? TotalApplications { get; set; } // sin uso desde que la dosis viene de SitraMed — ver TbiMailParser
+    public string? Observations { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public bool Confirmed { get; set; }
     public string? MessageId { get; set; }

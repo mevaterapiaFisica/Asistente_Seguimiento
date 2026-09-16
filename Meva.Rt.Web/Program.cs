@@ -1315,9 +1315,9 @@ app.MapPost("/api/tbi-mail/refresh", async (TbiMailClient tbiMailClient, TbiMail
     return TypedResults.Ok(new { imported = found.Count });
 });
 
-app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TurnReservationStore reservationStore, TbiMailEditRequest req, CancellationToken ct) =>
+app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tbiMailStore, TurnReservationStore reservationStore, TbiDoseStore tbiDoseStore, TbiMailEditRequest req, CancellationToken ct) =>
 {
-    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, req.TotalApplications, ct);
+    var updated = await tbiMailStore.UpdateAsync(patientId, req.PatientName, req.TomographyDate, req.Observations, ct);
 
     if (req.TreatmentStartDate is not null && !string.IsNullOrWhiteSpace(req.MachineDisplayName))
     {
@@ -1342,8 +1342,17 @@ app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tb
         await reservationStore.DeleteByIdAsync($"RES_TBI_{patientId}", ct);
     }
 
+    await tbiDoseStore.UpsertAsync(new TbiDoseInfo
+    {
+        PatientId = patientId,
+        DailyDoseCGy = req.DailyDoseCGy,
+        TotalDoseCGy = req.TotalDoseCGy,
+        FetchedAtUtc = DateTime.UtcNow
+    }, ct);
+
     var reservation = await reservationStore.GetByPatientIdAsync(patientId, ct);
-    return TypedResults.Ok(new { info = updated, reservation });
+    var dose = (await tbiDoseStore.LoadAllAsync(ct)).FirstOrDefault(d => d.PatientId == patientId);
+    return TypedResults.Ok(new { info = updated, reservation, dose });
 });
 
 // ─── TBI — dosis (SitraMed) ──────────────────────────────────────────────────
@@ -1541,4 +1550,4 @@ record CreateReservationRequest(
     string MachineDisplayName, string ReservedDate, string ReservedTime,
     string? Observations, string Username, string Password);
 record DeleteReservationRequest(string Username, string Password);
-record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy, int? TotalApplications);
+record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy, int? DailyDoseCGy, int? TotalDoseCGy, string? Observations);

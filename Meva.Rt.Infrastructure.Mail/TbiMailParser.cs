@@ -57,19 +57,20 @@ public static partial class TbiMailParser
         var dateMatch = StartDateRegex().Match(body);
         if (dateMatch.Success && int.TryParse(dateMatch.Groups["month"].Value, out var startMonth))
         {
-            int daysCount;
             int? startDay;
             if (dateMatch.Groups["days"].Success)
             {
                 var daysList = dateMatch.Groups["days"].Value;
                 var firstDayMatch = FirstNumberRegex().Match(daysList);
                 startDay = firstDayMatch.Success ? int.Parse(firstDayMatch.Value) : null;
-                daysCount = FirstNumberRegex().Matches(daysList).Count;
+                // ponytail: conteo de días comentado junto con TotalApplications más abajo — la
+                // dosis total/diaria ahora viene de SitraMed, ya no hace falta calcular aplicaciones
+                // acá. Revivir (var daysCount = FirstNumberRegex().Matches(daysList).Count;) si
+                // vuelve a necesitarse.
             }
             else
             {
                 startDay = int.Parse(dateMatch.Groups["day"].Value);
-                daysCount = 1;
             }
 
             if (startDay is not null)
@@ -85,7 +86,7 @@ public static partial class TbiMailParser
                 var first = timeSlots[0];
                 var minute = first.Groups[2].Success ? first.Groups[2].Value : "00";
                 info.TreatmentStartTime = $"{int.Parse(first.Groups[1].Value):D2}:{minute}";
-                info.TotalApplications = daysCount * timeSlots.Count;
+                // info.TotalApplications = daysCount * timeSlots.Count;
             }
         }
 

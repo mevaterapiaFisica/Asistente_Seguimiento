@@ -468,10 +468,12 @@ Pacientes con técnica SBRT o RC, desde etapa F4B en adelante.
 
 Pacientes con `treatmentTechnique === 'TBI'` (siguen flujo paralelo, no cuentan para
 estadísticas de demora). Sub-tab de Pacientes, pills solo por Etapa (técnica es única).
-Tabla: HC | Nombre | Fecha Tomo | Etapa actual | Físico asignado | Equipo | Fecha Inicio TBI.
-Orden default: etapa (sortOrder) DESC. Pacientes en etapa Asignación Planificación (F6A) o
-previa sin físico/equipo/fecha inicio cargados (`_tbiIsDormant` en `app.js`) se atenúan
-(`.tbi-dormant`) y se mandan al fondo del orden, aunque respetando el criterio de etapa entre sí.
+Tabla: HC | Nombre | Fecha Tomo | Etapa actual | Físico asignado | Equipo | Fecha Inicio TBI |
+Dosis total (cGy) | Dosis diaria (cGy) | Alerta | Observaciones. Orden default: etapa
+(sortOrder) DESC. Pacientes en etapa Asignación Planificación (F6A) o previa sin
+físico/equipo/fecha inicio cargados (`_tbiIsDormant` en `app.js`) se atenúan (`.tbi-dormant`) y
+se mandan al fondo del orden, aunque respetando el criterio de etapa entre sí. Columna Alerta:
+badge rojo "Lleva Pbs" si `dose.totalDoseCGy > 800` (umbral fijo, no configurable hoy).
 
 **Fecha Inicio TBI es un turno reservado real** (desde sesión 2026-09-14): en vez de un campo
 propio, guardarlo crea/actualiza un `PatientTurnReservation` en `TurnReservationStore`
@@ -490,38 +492,38 @@ fecha de tomografía/inicio de tratamiento/hora/equipo en texto libre. Flujo:
   usa `\Seen`, dedupe real es por `Message-ID`; ventana ancha a propósito — procesa **todos** los
   mails "TBI" del período, incluso de pacientes que ya no están en la lista activa de Pacientes →
   TBI, y sirve de "entrenamiento" del parser sobre el histórico real). `TbiMailParser.Parse`
-  devuelve `TbiMailFetchResult` (HC/nombre del asunto; fecha tomo, primer día de tratamiento+hora,
-  equipo y **número total de aplicaciones** del cuerpo — regex best-effort, campos que no
-  matchean quedan `null` y se completan a mano). El número de aplicaciones sale de contar cuántas
-  veces aparece "a las N Hs" en la cláusula horaria (1 = un turno/día, 2 = dos turnos/día, ej.
-  "a las 8 Hs y a las 19:30 Hs") multiplicado por la cantidad de días listados
-  ("14, 15, 16 y 17" = 4 días). Año de fechas sin año se resuelve con la fecha de recepción del
-  mail (rollover ±1 si el mes difiere >6 meses, para diciembre/enero). Equipo mencionado
-  (`Equipo N`) siempre se resuelve como `MEVA-Central - Equipo N`. El remitente (`message.From`)
-  se guarda para el turno automático. Cada corrida sobreescribe `tbi_mail_unparsed.txt`
-  (`MEVA_DATA_DIR`, ver `TbiMailOptions.DiagnosticsPath`) con los mails que no matchearon el
-  asunto o a los que les faltó algún campo (Fecha Tomo / Fecha Inicio+Equipo / Aplicaciones),
-  incluyendo el cuerpo crudo — es sólo diagnóstico, no cambia lo que se guarda.
+  devuelve `TbiMailFetchResult` (HC/nombre del asunto; fecha tomo, primer día de
+  tratamiento+hora, equipo del cuerpo — regex best-effort, campos que no matchean quedan `null`
+  y se completan a mano). Año de fechas sin año se resuelve con la fecha de recepción del mail
+  (rollover ±1 si el mes difiere >6 meses, para diciembre/enero). Equipo mencionado (`Equipo N`)
+  siempre se resuelve como `MEVA-Central - Equipo N`. El remitente (`message.From`) se guarda
+  para el turno automático. Cada corrida sobreescribe `tbi_mail_unparsed.txt` (`MEVA_DATA_DIR`,
+  ver `TbiMailOptions.DiagnosticsPath`) con los mails que no matchearon el asunto o a los que les
+  faltó algún campo, incluyendo el cuerpo crudo — es sólo diagnóstico, no cambia lo que se guarda.
+  **Nota (2026-09-17):** el conteo de "número de aplicaciones" (`TotalApplications` en
+  `TbiMailFetchResult`/`TbiMailInfo`) quedó comentado en `TbiMailParser` — la dosis total/diaria
+  de SitraMed lo hizo redundante. Código dejado a propósito por si se necesita revivir.
 - `TbiMailStore` (`Meva.Rt.Infrastructure.Storage`): `tbi_mail_info.json` bajo `MEVA_DATA_DIR`,
-  por HC — `TomographyDate`/`TotalApplications`/`Confirmed`/`MessageId` (fecha inicio y equipo
-  van al turno, no viven acá). Mail nuevo (Message-ID distinto al ya guardado) pisa los datos y
-  marca `Confirmed=false` ("✉ sin revisar"); mismo Message-ID ya procesado no toca nada (no
-  resetea una revisión ya confirmada, ni re-crea el turno).
+  por HC — `TomographyDate`/`Observations`/`Confirmed`/`MessageId` (fecha inicio y equipo van al
+  turno, no viven acá; `Observations` es nota libre del admin, no viene del mail — se preserva
+  explícitamente al reprocesar un mail nuevo). Mail nuevo (Message-ID distinto al ya guardado)
+  pisa los datos y marca `Confirmed=false` ("✉ sin revisar"); mismo Message-ID ya procesado no
+  toca nada (no resetea una revisión ya confirmada, ni re-crea el turno).
 - Endpoints: `GET /api/tbi-mail`, `POST /api/tbi-mail/refresh` (501 si no hay credenciales
   configuradas — parsea, upsert en `TbiMailStore`, y si vino fecha+equipo también upsert en
   `TurnReservationStore` con `RegisteredByUsername = "{remitente} - cargado automáticamente"` y
   `PendingReview=true`), `PUT /api/tbi-mail/{patientId}` (edición manual: upsert `TbiMailStore`
-  `Confirmed=true` + upsert/delete el turno según si vino fecha+equipo, `PendingReview=false`,
-  sin pedir contraseña).
+  `Confirmed=true` + upsert/delete el turno según si vino fecha+equipo + upsert `TbiDoseStore`
+  con dosis manual, `PendingReview=false`, sin pedir contraseña).
 - Disparo: **no** es automático al abrir el dashboard — solo corre cuando se llama
   `POST /api/tbi-mail/refresh`, invocado desde `scripts/refresh.bat` (Task Scheduler, paso 7/8)
   o manualmente.
-- UI: columnas Equipo / Fecha Inicio TBI / Aplicaciones. Badge "✉ sin revisar" en Fecha Tomo y
-  Aplicaciones (si `!mail.confirmed`) y en Equipo/Fecha Inicio (si `resv.pendingReview`). Click en
-  la fila la selecciona → botón "Editar" (sin `disabled` por tener o no mail — funciona igual
-  para pacientes 100% manuales) → modal con Fecha Tomo/Fecha Inicio/Equipo (select de equipos
-  MEVA-Central, mismo patrón que el modal de reserva de turno) + "Quién lo cargó" + "Número de
-  aplicaciones" → "Confirmar" hace `PUT`, actualiza `TbiMailInfo` y el turno.
+- UI: badge "✉ sin revisar" en Fecha Tomo (si `!mail.confirmed`) y en Equipo/Fecha Inicio (si
+  `resv.pendingReview`). Click en la fila la selecciona → botón "Editar/Revisar" (sin `disabled`
+  por tener o no mail — funciona igual para pacientes 100% manuales) → modal con Fecha
+  Tomo/Fecha Inicio/Equipo (select de equipos MEVA-Central, mismo patrón que el modal de reserva
+  de turno) + "Quién lo cargó" + Dosis total/Dosis diaria + Observaciones → "Confirmar" hace
+  `PUT`, actualiza `TbiMailInfo`, el turno y `TbiDoseInfo` juntos.
 
 Tercera fuente de datos (desde sesión 2026-09-16): **dosis total/diaria desde SitraMed**, no
 siempre disponible en el flujo de seguimiento normal. `PlaywrightSitraMedClient.FetchTbiDosesForGuidsAsync`
@@ -534,12 +536,17 @@ lee "Dosis diaria (cGy)" y "Dosis total (cGy)" del `<div class="info">` de esa p
 Extracción de campos por clon-y-remove del `<strong>` (no por longitud de string — la
 indentación del HTML metía espacios en el medio y corrompía el valor con slice naive).
 - `TbiDoseStore` (`Meva.Rt.Infrastructure.Storage`): `tbi_dose_info.json` bajo `MEVA_DATA_DIR`,
-  por HC, siempre pisa (no hay concepto de "sin revisar" acá, es dato crudo de SitraMed).
+  por HC, siempre pisa con lo scrapeado de SitraMed — **también editable a mano** desde el mismo
+  modal de Editar/Revisar de TBI (`PUT /api/tbi-mail/{patientId}`), que la sobreescribe con lo
+  que ponga el admin. Sin protección tipo `PendingReview`: si el próximo refresh de SitraMed trae
+  un valor, pisa la corrección manual (aceptado — el uso esperado es completar huecos, no
+  overridear de forma permanente valores que SitraMed sí tiene).
 - Endpoints: `GET /api/tbi-dose`, `POST /api/tbi-dose/refresh` (501 sin credenciales SitraMed;
   filtra pacientes TBI con `SitraMedGuid` y etapa ≥ F6A por `SortOrder`).
 - Disparo: paso 8/8 de `scripts/refresh.bat` (no automático al abrir dashboard).
-- UI: columnas "Dosis diaria (cGy)" / "Dosis total (cGy)" al final de la tabla TBI, solo lectura
-  (no hay edición manual — viene de SitraMed, no de mail).
+- UI: columnas "Dosis total (cGy)" / "Dosis diaria (cGy)" después de Fecha Inicio TBI. Columna
+  "Alerta" (badge rojo "Lleva Pbs" si `totalDoseCGy > 800`) y columna "Observaciones" (texto
+  libre del admin, mismo patrón que Física → Pedidos) al final de la tabla.
 - **Gmail Workspace no deja generar app passwords por política de admin** (visto en producción,
   2026-09) — workaround usado: reenvío automático (filtro por asunto "TBI") desde la casilla del
   Workspace a una Gmail personal fuera de la organización, y las credenciales IMAP apuntan a esa

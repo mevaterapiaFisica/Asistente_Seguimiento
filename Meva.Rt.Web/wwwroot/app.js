@@ -4647,12 +4647,13 @@ function renderTbi() {
         : esc(p.patientName));
     const equipoDisplay = resv?.machineDisplayName ?? p.plannedMachineDisplayName;
     const equipoStr = equipoDisplay ? `${esc(equipoDisplay)}${turnoBadge}` : '—';
-    const aplicacionesStr = mail?.totalApplications != null
-      ? `${esc(mail.totalApplications)}${tomoBadge}`
-      : '<span class="muted-italic">—</span>';
     const dose = state.tbi.doseByPatientId.get(p.patientId);
-    const dosisDiariaStr = dose?.dailyDoseCGy != null ? esc(dose.dailyDoseCGy) : '<span class="muted-italic">—</span>';
     const dosisTotalStr = dose?.totalDoseCGy != null ? esc(dose.totalDoseCGy) : '<span class="muted-italic">—</span>';
+    const dosisDiariaStr = dose?.dailyDoseCGy != null ? esc(dose.dailyDoseCGy) : '<span class="muted-italic">—</span>';
+    const pbsAlertStr = dose?.totalDoseCGy != null && dose.totalDoseCGy > 800
+      ? '<span class="tbi-pbs-alert">Lleva Pbs</span>'
+      : '';
+    const observacionesStr = esc(mail?.observations ?? '—');
     const selected = state.tbi.selectedId === p.patientId;
     const dormant = _tbiIsDormant(p, resv);
     const trClass = [selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
@@ -4664,9 +4665,10 @@ function renderTbi() {
       <td>${physicistStr}</td>
       <td>${equipoStr}</td>
       <td>${inicioStr}</td>
-      <td>${aplicacionesStr}</td>
-      <td>${dosisDiariaStr}</td>
       <td>${dosisTotalStr}</td>
+      <td>${dosisDiariaStr}</td>
+      <td>${pbsAlertStr}</td>
+      <td>${observacionesStr}</td>
     </tr>`;
   }).join('');
 
@@ -4679,11 +4681,12 @@ function renderTbi() {
       ${thSort('Físico asignado', 'physicist')}
       <th>Equipo</th>
       <th>Fecha Inicio TBI</th>
-      <th>Aplicaciones</th>
-      <th>Dosis diaria (cGy)</th>
       <th>Dosis total (cGy)</th>
+      <th>Dosis diaria (cGy)</th>
+      <th>Alerta</th>
+      <th>Observaciones</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="10" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="11" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
   wrap.innerHTML = html;
 
@@ -4732,13 +4735,16 @@ function _openTbiEditModal(patient) {
   if (!overlay) return;
   const mail = state.tbi.mailByPatientId.get(patient.patientId);
   const resv = window.activeReservations.get(patient.patientId);
+  const dose = state.tbi.doseByPatientId.get(patient.patientId);
 
   document.getElementById('tbi-modal-hc').value = fmtHc(patient.patientId);
   document.getElementById('tbi-modal-nombre').value = patient.patientName ?? '';
   document.getElementById('tbi-modal-tomo').value = mail?.tomographyDate ?? patient.tomographyDate ?? '';
   document.getElementById('tbi-modal-inicio').value = resv?.reservedDate ?? '';
   document.getElementById('tbi-modal-registeredby').value = resv?.registeredByUsername ?? '';
-  document.getElementById('tbi-modal-aplicaciones').value = mail?.totalApplications ?? '';
+  document.getElementById('tbi-modal-dosistotal').value = dose?.totalDoseCGy ?? '';
+  document.getElementById('tbi-modal-dosisdiaria').value = dose?.dailyDoseCGy ?? '';
+  document.getElementById('tbi-modal-observaciones').value = mail?.observations ?? '';
 
   const equipoIn = document.getElementById('tbi-modal-equipo');
   const currentEquipo = resv?.machineDisplayName ?? patient.plannedMachineDisplayName ?? '';
@@ -4764,7 +4770,9 @@ function _openTbiEditModal(patient) {
       treatmentStartDate: document.getElementById('tbi-modal-inicio').value || null,
       machineDisplayName: document.getElementById('tbi-modal-equipo').value || null,
       registeredBy: document.getElementById('tbi-modal-registeredby').value || null,
-      totalApplications: parseInt(document.getElementById('tbi-modal-aplicaciones').value, 10) || null
+      dailyDoseCGy: parseInt(document.getElementById('tbi-modal-dosisdiaria').value, 10) || null,
+      totalDoseCGy: parseInt(document.getElementById('tbi-modal-dosistotal').value, 10) || null,
+      observations: document.getElementById('tbi-modal-observaciones').value.trim() || null
     };
     const resp = await fetch(`/api/tbi-mail/${encodeURIComponent(patient.patientId)}`, {
       method: 'PUT',
@@ -4776,10 +4784,11 @@ function _openTbiEditModal(patient) {
       errorDiv.hidden = false;
       return;
     }
-    const { info, reservation } = await resp.json();
+    const { info, reservation, dose: updatedDose } = await resp.json();
     state.tbi.mailByPatientId.set(patient.patientId, info);
     if (reservation) window.activeReservations.set(patient.patientId, reservation);
     else window.activeReservations.delete(patient.patientId);
+    if (updatedDose) state.tbi.doseByPatientId.set(patient.patientId, updatedDose);
     overlay.hidden = true;
     renderTbi();
   };
