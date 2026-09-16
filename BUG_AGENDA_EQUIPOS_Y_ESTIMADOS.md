@@ -1,8 +1,11 @@
 # Hallazgos: agenda de equipos, estimados, y scraping SitraMed
 
-**Fecha:** 2026-09-15/16, exploración profunda 2026-09-16b.
-**Estado:** 11 bugs encontrados y arreglados (pusheados a `main`), exploración profunda del plan
-de abajo **completada** — ver sección "Exploración profunda 2026-09-16b" al final.
+**Fecha:** 2026-09-15/16, exploración profunda 2026-09-16b/c/d.
+**Estado:** 11 bugs encontrados y arreglados (pusheados a `main`). Exploración profunda completada
+para: agenda de equipos (6 centros × 3 fechas), tomógrafos (2 centros × 2 fechas),
+`SitraMedAttendedPatientsExtractor`, y seguimiento de pacientes (`follow_up_search`, punto 1 del
+plan original) — ver sección "Exploración profunda 2026-09-16b" y las notas 2026-09-16c/d inline
+en el plan de abajo. Sin bugs adicionales encontrados en seguimiento ni en attended-patients.
 
 **Redactado para otra instancia de Claude que retoma el trabajo.** Contexto: usuario reportó paciente
 (CAMPOLO, Carlos Alberto, HC `1-119858-0`) con turno real confirmado en SitraMed que no aparecía en la
@@ -211,13 +214,25 @@ LiveView empuja por WebSocket?**
 
 Puntos concretos a revisar, con prioridad sugerida:
 
-1. **Seguimiento de pacientes (`follow_up_search`)** — `DownloadFollowUpAsync` en
-   `PlaywrightSitraMedClient.cs`. Selecciona centro y luego micro-status, dispara búsqueda por click.
-   ¿Usa LiveView también? ¿El orden centro→microstatus puede tener el mismo problema que
-   equipo→fecha? Si microstatus se resetea o el filtro de centro no queda aplicado bajo ciertas
-   condiciones, pacientes de un centro podrían aparecer bajo otro, o faltar directamente — mismo tipo
-   de bug que encontramos, en la fuente de datos que alimenta TODO el sistema de seguimiento/proyección
-   (no solo agenda).
+1. ~~Seguimiento de pacientes (`follow_up_search`)~~ **auditado 2026-09-16d, sin bugs de LiveView:**
+   verificado en vivo (`/agent-browser`, login real + inspección del form) que `#filters_attention_center_id`
+   y `#filters_micro_status` **no tienen `phx-change`/`phx-debounce` propios** — el form entero viaja junto
+   en un solo `phx-submit` (evento interno `search_conduct_definitions`, nombre engañoso pero es el
+   correcto — confirmado que es el que dispara "Buscar seguimientos", no un botón distinto) disparado
+   por el click del botón. A diferencia de agenda de equipos (que hace un round-trip de LiveView por
+   campo vía `phx-change`+`phx-debounce="blur"`), acá **no hay ningún round-trip incremental entre
+   seleccionar centro y seleccionar micro-status** — ambos valores se leen juntos recién al submit, así
+   que el bug de "seleccionar B resetea A" es estructuralmente imposible en este form. Confirmado también
+   que el dropdown de micro-status **no depende de AJAX poblado por centro** (a diferencia del dropdown
+   de equipo en agenda) — sus 22 opciones son fijas sin importar el centro elegido.
+   
+   Bonus encontrado al inspeccionar el DOM real: la tabla de resultados tiene filas espurias
+   intercaladas (0 o 5 celdas) que vienen de un `<tr>` mal anidado dentro del modal de "Comunicaciones
+   Internas" de cada fila — el HTML parser del browser las "levanta" como hermanas de la fila real por
+   ser markup inválido. El código **ya usa el selector correcto** (`#follow-up-tables > tbody > tr`,
+   hijo directo) que las filtra automáticamente; confirmado en vivo que con ese selector solo quedan
+   las filas reales (74 celdas, nombre correcto). Sin paginación en los resultados (se muestran todos
+   de una), así que no hay riesgo de sub-conteo por eso tampoco.
 
 2. **Tomógrafos** — el fix de LiveView ya está aplicado ahí, pero **nunca se verificó día a día contra
    SitraMed en vivo** como se hizo acá con Quilmes Equipo 2. Repetir la comparación (conteo por
