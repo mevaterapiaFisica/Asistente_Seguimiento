@@ -273,6 +273,14 @@ public sealed class TbiMailInfo
     public string? MessageId { get; set; }
 }
 
+public sealed class TbiDoseInfo
+{
+    public string PatientId { get; set; } = string.Empty;
+    public int? DailyDoseCGy { get; set; }
+    public int? TotalDoseCGy { get; set; }
+    public DateTime FetchedAtUtc { get; set; }
+}
+
 // Resultado de parsear+leer un mail de TBI — no persiste tal cual: TomographyDate/Confirmed
 // van a TbiMailInfo, TreatmentStartDate/MachineDisplayName se vuelcan a un PatientTurnReservation.
 public sealed class TbiMailFetchResult

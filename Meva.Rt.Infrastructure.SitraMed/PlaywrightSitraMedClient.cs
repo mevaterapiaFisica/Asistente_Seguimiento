@@ -543,6 +543,89 @@ public sealed class PlaywrightSitraMedClient
         return result;
     }
 
+    // Dosis TBI: la planificación más reciente (por "Fecha de solicitud") cuyo GTV/CTV1 sea TBI —
+    // un paciente puede tener planificaciones de otras técnicas o replanes previos.
+    public async Task<IReadOnlyDictionary<string, (int? DailyDoseCGy, int? TotalDoseCGy)>> FetchTbiDosesForGuidsAsync(
+        IEnumerable<(string PatientId, string Guid)> patients,
+        CancellationToken cancellationToken)
+    {
+        var list = patients.Where(p => !string.IsNullOrWhiteSpace(p.Guid)).ToList();
+        if (list.Count == 0 || !CanUseRemoteScraping())
+            return new Dictionary<string, (int?, int?)>();
+
+        await using var session = await CreateLoggedPageAsync(cancellationToken);
+        var page = session.Page;
+        var result = new Dictionary<string, (int? DailyDoseCGy, int? TotalDoseCGy)>();
+
+        foreach (var (patientId, guid) in list)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await page.GotoAsync($"https://sitramed.mevaterapia.com.ar/medical_histories/{guid}/planifications",
+                    new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+
+                var rowsJson = await page.EvaluateAsync<string>(
+                    """
+                    () => {
+                        const th = Array.from(document.querySelectorAll('th')).find(t => t.textContent.trim().includes('Fecha de solicitud'));
+                        if (!th) return '[]';
+                        const table = th.closest('table');
+                        const idx = Array.from(th.parentElement.children).indexOf(th);
+                        const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => {
+                            const cell = tr.children[idx];
+                            const link = cell?.querySelector('a');
+                            return { date: cell?.textContent.trim() || '', href: link?.href || '' };
+                        }).filter(r => r.href);
+                        return JSON.stringify(rows);
+                    }
+                    """);
+                var rows = JsonSerializer.Deserialize<List<PlanificationRow>>(rowsJson, JsonCaseInsensitiveOptions) ?? [];
+                var hrefsNewestFirst = rows.OrderByDescending(r => r.Date, StringComparer.Ordinal).Select(r => r.Href);
+
+                foreach (var href in hrefsNewestFirst)
+                {
+                    await page.GotoAsync(href, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+                    var fieldsJson = await page.EvaluateAsync<string>(
+                        """
+                        () => {
+                            const containers = Array.from(document.querySelectorAll('div.info'));
+                            const result = {};
+                            for (const container of containers) {
+                                for (const row of container.children) {
+                                    const strong = row.querySelector('strong');
+                                    if (!strong) continue;
+                                    const label = strong.textContent.trim().replace(/:\s*$/, '');
+                                    const clone = row.cloneNode(true);
+                                    clone.querySelector('strong')?.remove();
+                                    result[label] = clone.textContent.trim();
+                                }
+                            }
+                            return JSON.stringify(result);
+                        }
+                        """);
+                    var fields = JsonSerializer.Deserialize<Dictionary<string, string>>(fieldsJson) ?? new();
+
+                    if (!fields.TryGetValue("GTV/CTV1", out var gtv) ||
+                        !gtv.Contains("tbi", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    int? daily = fields.TryGetValue("Dosis diaria (cGy)", out var d) && int.TryParse(d, out var dv) ? dv : null;
+                    int? total = fields.TryGetValue("Dosis total (cGy)", out var t) && int.TryParse(t, out var tv) ? tv : null;
+                    result[patientId] = (daily, total);
+                    break;
+                }
+            }
+            catch { }
+        }
+
+        return result;
+    }
+
+    private sealed record PlanificationRow(string Date, string Href);
+
+    private static readonly JsonSerializerOptions JsonCaseInsensitiveOptions = new() { PropertyNameCaseInsensitive = true };
+
     private async Task<PlaywrightSession> CreateLoggedPageAsync(CancellationToken cancellationToken)
     {
         var playwright = await Playwright.CreateAsync();

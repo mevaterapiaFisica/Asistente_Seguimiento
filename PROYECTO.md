@@ -514,7 +514,7 @@ fecha de tomografía/inicio de tratamiento/hora/equipo en texto libre. Flujo:
   `Confirmed=true` + upsert/delete el turno según si vino fecha+equipo, `PendingReview=false`,
   sin pedir contraseña).
 - Disparo: **no** es automático al abrir el dashboard — solo corre cuando se llama
-  `POST /api/tbi-mail/refresh`, invocado desde `scripts/refresh.bat` (Task Scheduler, paso 7/7)
+  `POST /api/tbi-mail/refresh`, invocado desde `scripts/refresh.bat` (Task Scheduler, paso 7/8)
   o manualmente.
 - UI: columnas Equipo / Fecha Inicio TBI / Aplicaciones. Badge "✉ sin revisar" en Fecha Tomo y
   Aplicaciones (si `!mail.confirmed`) y en Equipo/Fecha Inicio (si `resv.pendingReview`). Click en
@@ -522,6 +522,24 @@ fecha de tomografía/inicio de tratamiento/hora/equipo en texto libre. Flujo:
   para pacientes 100% manuales) → modal con Fecha Tomo/Fecha Inicio/Equipo (select de equipos
   MEVA-Central, mismo patrón que el modal de reserva de turno) + "Quién lo cargó" + "Número de
   aplicaciones" → "Confirmar" hace `PUT`, actualiza `TbiMailInfo` y el turno.
+
+Tercera fuente de datos (desde sesión 2026-09-16): **dosis total/diaria desde SitraMed**, no
+siempre disponible en el flujo de seguimiento normal. `PlaywrightSitraMedClient.FetchTbiDosesForGuidsAsync`
+(mismo patrón de sesión logueada que `FetchPhonesForGuidsAsync`) navega a
+`/medical_histories/{guid}/planifications` de cada paciente TBI (desde etapa Asignación
+Planificación (F6A) en adelante, `TbiDoseStore` no toca a los anteriores), busca la columna
+"Fecha de solicitud" para listar las planificaciones y sigue el link de la más reciente cuyo
+`GTV/CTV1` sea TBI (un paciente puede tener planificaciones de otras técnicas o replanes) —
+lee "Dosis diaria (cGy)" y "Dosis total (cGy)" del `<div class="info">` de esa planificación.
+Extracción de campos por clon-y-remove del `<strong>` (no por longitud de string — la
+indentación del HTML metía espacios en el medio y corrompía el valor con slice naive).
+- `TbiDoseStore` (`Meva.Rt.Infrastructure.Storage`): `tbi_dose_info.json` bajo `MEVA_DATA_DIR`,
+  por HC, siempre pisa (no hay concepto de "sin revisar" acá, es dato crudo de SitraMed).
+- Endpoints: `GET /api/tbi-dose`, `POST /api/tbi-dose/refresh` (501 sin credenciales SitraMed;
+  filtra pacientes TBI con `SitraMedGuid` y etapa ≥ F6A por `SortOrder`).
+- Disparo: paso 8/8 de `scripts/refresh.bat` (no automático al abrir dashboard).
+- UI: columnas "Dosis diaria (cGy)" / "Dosis total (cGy)" al final de la tabla TBI, solo lectura
+  (no hay edición manual — viene de SitraMed, no de mail).
 - **Gmail Workspace no deja generar app passwords por política de admin** (visto en producción,
   2026-09) — workaround usado: reenvío automático (filtro por asunto "TBI") desde la casilla del
   Workspace a una Gmail personal fuera de la organización, y las credenciales IMAP apuntan a esa

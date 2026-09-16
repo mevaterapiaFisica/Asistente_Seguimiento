@@ -75,6 +75,7 @@ const state = {
     stageFilter: null,
     sort: { col: 'stage', dir: 'desc' },
     mailByPatientId: new Map(),
+    doseByPatientId: new Map(),
     selectedId: null
   },
 
@@ -180,6 +181,15 @@ async function _refreshTbiMail() {
     if (!resp.ok) return;
     const list = await resp.json();
     state.tbi.mailByPatientId = new Map(list.map(m => [m.patientId, m]));
+  } catch {}
+}
+
+async function _refreshTbiDose() {
+  try {
+    const resp = await fetch('/api/tbi-dose');
+    if (!resp.ok) return;
+    const list = await resp.json();
+    state.tbi.doseByPatientId = new Map(list.map(d => [d.patientId, d]));
   } catch {}
 }
 
@@ -497,7 +507,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'config') loadConfigData();
   if (targetTab === 'fisica') renderFisicaView();
   if (targetTab === 'especiales') renderEspeciales();
-  if (targetTab === 'tbi') _refreshTbiMail().then(renderTbi);
+  if (targetTab === 'tbi') Promise.all([_refreshTbiMail(), _refreshTbiDose()]).then(renderTbi);
   if (targetTab === 'expectantes') renderExpectantes();
   if (targetTab === 'derivacion') openDerivacion();
   if (targetTab === 'reservations') loadReservationsTab();
@@ -683,7 +693,7 @@ function renderHome(data) {
   buildEspecialesFilters(data);
   renderEspeciales();
   buildTbiFilters(data);
-  _refreshTbiMail().then(renderTbi);
+  Promise.all([_refreshTbiMail(), _refreshTbiDose()]).then(renderTbi);
   populateAgendaTestControls(data);
   loadAlertasTab();
   _refreshReservations().then(() => loadPedidosData().then(computeAutoPedidos));
@@ -4640,6 +4650,9 @@ function renderTbi() {
     const aplicacionesStr = mail?.totalApplications != null
       ? `${esc(mail.totalApplications)}${tomoBadge}`
       : '<span class="muted-italic">—</span>';
+    const dose = state.tbi.doseByPatientId.get(p.patientId);
+    const dosisDiariaStr = dose?.dailyDoseCGy != null ? esc(dose.dailyDoseCGy) : '<span class="muted-italic">—</span>';
+    const dosisTotalStr = dose?.totalDoseCGy != null ? esc(dose.totalDoseCGy) : '<span class="muted-italic">—</span>';
     const selected = state.tbi.selectedId === p.patientId;
     const dormant = _tbiIsDormant(p, resv);
     const trClass = [selected ? 'qa-selected' : '', dormant ? 'tbi-dormant' : ''].filter(Boolean).join(' ');
@@ -4652,6 +4665,8 @@ function renderTbi() {
       <td>${equipoStr}</td>
       <td>${inicioStr}</td>
       <td>${aplicacionesStr}</td>
+      <td>${dosisDiariaStr}</td>
+      <td>${dosisTotalStr}</td>
     </tr>`;
   }).join('');
 
@@ -4665,8 +4680,10 @@ function renderTbi() {
       <th>Equipo</th>
       <th>Fecha Inicio TBI</th>
       <th>Aplicaciones</th>
+      <th>Dosis diaria (cGy)</th>
+      <th>Dosis total (cGy)</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="8" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="10" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
   </table>`;
   wrap.innerHTML = html;
 

@@ -84,6 +84,7 @@ builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, 
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiMailStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new TbiDoseStore(snapshotsDirectory));
 builder.Services.AddSingleton(tbiMailOptions);
 builder.Services.AddSingleton<TbiMailClient>();
 
@@ -1343,6 +1344,42 @@ app.MapPut("/api/tbi-mail/{patientId}", async (string patientId, TbiMailStore tb
 
     var reservation = await reservationStore.GetByPatientIdAsync(patientId, ct);
     return TypedResults.Ok(new { info = updated, reservation });
+});
+
+// ─── TBI — dosis (SitraMed) ──────────────────────────────────────────────────
+
+app.MapGet("/api/tbi-dose", async (TbiDoseStore tbiDoseStore, CancellationToken ct) =>
+    TypedResults.Ok(await tbiDoseStore.LoadAllAsync(ct)));
+
+app.MapPost("/api/tbi-dose/refresh", async (
+    PlaywrightSitraMedClient sitraMedClient, TbiDoseStore tbiDoseStore,
+    ISnapshotStore snapshotStore, IRtSystemConfigurationProvider configProvider, CancellationToken ct) =>
+{
+    if (!sitraMedClient.CanUseRemoteScraping())
+        return Results.StatusCode(StatusCodes.Status501NotImplemented);
+
+    var snapshot = await snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", ct);
+    var f6aOrder = configProvider.Configuration.Stages.FirstOrDefault(s => s.Code == "F6A")?.SortOrder ?? 0;
+    var stageOrderByCode = configProvider.Configuration.Stages.ToDictionary(s => s.Code, s => s.SortOrder);
+
+    var candidates = (snapshot?.FollowUpPatients ?? [])
+        .Where(p => p.TreatmentTechnique == "TBI" && !string.IsNullOrWhiteSpace(p.SitraMedGuid))
+        .Where(p => stageOrderByCode.TryGetValue(p.StageCode, out var order) && order >= f6aOrder)
+        .Select(p => (p.PatientId, p.SitraMedGuid!))
+        .ToList();
+
+    var found = await sitraMedClient.FetchTbiDosesForGuidsAsync(candidates, ct);
+    foreach (var (patientId, dose) in found)
+    {
+        await tbiDoseStore.UpsertAsync(new TbiDoseInfo
+        {
+            PatientId = patientId,
+            DailyDoseCGy = dose.DailyDoseCGy,
+            TotalDoseCGy = dose.TotalDoseCGy,
+            FetchedAtUtc = DateTime.UtcNow
+        }, ct);
+    }
+    return TypedResults.Ok(new { scanned = candidates.Count, found = found.Count });
 });
 
 app.MapGet("/api/machine-capacity", async (string date, string machine,
