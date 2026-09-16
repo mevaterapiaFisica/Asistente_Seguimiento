@@ -109,29 +109,41 @@ en su etapa, en vez de asumir que todos arrancaron hoy.
 
 ---
 
-## Bug pendiente — NO resuelto todavía
+## Bug pendiente — causa raíz confirmada 2026-09-16e, fix actual insuficiente
 
-### Paciente duplicado en `FollowUpPatients` bajo dos etapas simultáneas
+### Paciente duplicado en `FollowUpPatients` bajo dos (o más) etapas simultáneas
 
-Caso: SARCHIONI, Natalia Elizabeth (`1-118582-0`) aparece en `bootstrap.FollowUpPatients` **dos veces**
-el mismo día — una vez en etapa F9 ("Placa Verificadora") y otra en F11 ("Turno Equipo") — generando
-**dos slots estimados** para el mismo paciente, mismo equipo, mismo día.
+Caso: SARCHIONI, Natalia Elizabeth (`1-118582-0`). **Confirmado a mano en SitraMed** (usuario revisó
+la historia clínica real): la paciente tiene **3 flujos de tratamiento distintos** cargados —
+BQT en Tomosimulación, IMRT Retroperitoneo en Placa Verificadora, e IMRT de Pelvis con flujo
+**terminado**. No es un dato corrupto ni una entrada huérfana: son cursos de tratamiento
+genuinamente independientes (distinto sitio anatómico/técnica cada uno), y es esperable que un
+paciente oncológico curse más de un tratamiento a la vez o en secuencia sin que SitraMed cierre el
+anterior de inmediato.
 
-`SitraMedFollowUpExtractor.ParseRemoteSnapshots` dedupea por `PatientId|StageCode`
-(`SitraMedExtractors.cs:321-327`), así que si SitraMed realmente tiene a la paciente cargada en dos
-etapas distintas simultáneamente (dato real, o entrada vieja no depurada en el sistema de SitraMed), no
-hay dedup que lo evite — el `StageCode` es distinto en cada fila, así que la key de dedup no colisiona.
+**Esto invalida parcialmente el fix de dedup aplicado el 2026-09-16b** (`Program.cs`,
+`dedupedFollowUpPatients`, colapsa por `PatientId` quedándose con la etapa de mayor `SortOrder`):
+sirve bien para el caso que motivó el fix (mismo curso de tratamiento reflejado en dos filas por
+inconsistencia de SitraMed), pero para un paciente como SARCHIONI **descarta silenciosamente el
+estimado del flujo menos avanzado** (ej. el BQT en Tomosimulación) aunque sea un tratamiento real y
+activo que sí necesita su propio turno proyectado — probablemente en un equipo o técnica distinta al
+flujo más avanzado.
 
-**No investigado:**
-- ¿Es un dato real de SitraMed (paciente genuinamente en dos etapas a la vez, por algún motivo clínico
-  válido) o una entrada vieja/huérfana que debería haberse cerrado?
-- Si es dato real: ¿el loop de estimados debería dedupear por paciente y quedarse con la etapa más
-  avanzada (la más cercana a tratamiento)?
-- ¿Cuántos pacientes en todo el sistema están en esta situación (no solo Quilmes)?
+**Sin resolver, queda marcado para retomar:**
+- Distinguir "duplicado espurio" (mismo curso, dato mal cargado) de "flujos concurrentes reales"
+  (cursos independientes) — posible señal: ¿difieren en `TreatmentZone`/técnica? En SARCHIONI sí
+  (BQT vs IMRT), lo que sugiere que comparar técnica/zona de tratamiento entre las filas del mismo
+  paciente podría ser la clave para decidir si dedupear o generar un estimado por cada flujo.
+- Si se generan estimados por flujo, evitar que dos flujos del mismo paciente terminen proyectados
+  al mismo equipo/horario si en la práctica no pueden coexistir (haría falta info que hoy no se
+  extrae: si los cursos son secuenciales o realmente simultáneos).
+- Cuantificar cuántos de los 58 pacientes multi-etapa son casos "SARCHIONI" (flujos reales
+  distintos) vs. casos donde de verdad conviene dedupear.
 
-**Sugerencia de arranque:** comparar en vivo con `/follow_up_search` en SitraMed (filtrando por HC
-`1-118582-0` o navegando a `medical_histories/d9c8da7c-2e8a-46b7-b14c-4af45d8fe2ec/overview`) si la
-paciente está genuinamente en dos micro-estados a la vez.
+**Punto de partida para retomar:** comparar en vivo con `/follow_up_search` en SitraMed (HC
+`1-118582-0`, o `medical_histories/d9c8da7c-2e8a-46b7-b14c-4af45d8fe2ec/overview`) los otros pacientes
+de la lista de 58 (ver query en la sección "Exploración profunda" más abajo) para clasificar cada
+caso.
 
 ---
 

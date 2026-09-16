@@ -905,6 +905,14 @@ app.MapGet("/api/agenda", async Task<IResult> (
             // (ver BUG_AGENDA_EQUIPOS_Y_ESTIMADOS.md, "bug pendiente") — sin dedup generaba dos
             // slots estimados duplicados, mismo equipo, mismo día. Se dedupea por PatientId y se
             // conserva la etapa más avanzada (mayor SortOrder), la más cercana a tratamiento.
+            //
+            // TODO (2026-09-16e, sin resolver): confirmado a mano en SitraMed que al menos un caso
+            // (SARCHIONI, 1-118582-0) no es un duplicado espurio sino 3 FLUJOS DE TRATAMIENTO
+            // REALES Y DISTINTOS (BQT, IMRT Retroperitoneo, IMRT Pelvis) — este dedup descarta en
+            // silencio el estimado del flujo menos avanzado aunque sea un tratamiento activo que
+            // necesita su propio turno. No hay hoy una forma barata de distinguir "duplicado
+            // espurio" de "flujos concurrentes reales" (posible pista: comparar TreatmentZone/
+            // técnica entre las filas del mismo paciente). Ver doc para el plan de retomar esto.
             var dedupedFollowUpPatients = bootstrap.FollowUpPatients
                 .GroupBy(p => string.IsNullOrWhiteSpace(p.PatientId) ? Guid.NewGuid().ToString() : p.PatientId,
                     StringComparer.OrdinalIgnoreCase)
