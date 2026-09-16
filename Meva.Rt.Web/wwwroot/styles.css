@@ -1206,6 +1206,8 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 }
 
 .tbi-th-narrow { max-width: 70px; line-height: 1.25; }
+#tbi-table-wrap .spec-table th:first-child,
+#tbi-table-wrap .spec-table td:first-child { min-width: 95px; white-space: nowrap; }
 
 .pacientes-action-panel {
   background: var(--panel); border: 1px solid var(--line);
