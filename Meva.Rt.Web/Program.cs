@@ -901,7 +901,20 @@ app.MapGet("/api/agenda", async Task<IResult> (
                 }
             }
 
-            foreach (var patient in bootstrap.FollowUpPatients)
+            // Un mismo paciente puede aparecer en FollowUpPatients bajo dos etapas simultáneas
+            // (ver BUG_AGENDA_EQUIPOS_Y_ESTIMADOS.md, "bug pendiente") — sin dedup generaba dos
+            // slots estimados duplicados, mismo equipo, mismo día. Se dedupea por PatientId y se
+            // conserva la etapa más avanzada (mayor SortOrder), la más cercana a tratamiento.
+            var dedupedFollowUpPatients = bootstrap.FollowUpPatients
+                .GroupBy(p => string.IsNullOrWhiteSpace(p.PatientId) ? Guid.NewGuid().ToString() : p.PatientId,
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(g => g
+                    .OrderByDescending(p => stages.FirstOrDefault(s =>
+                        string.Equals(s.Code, p.StageCode, StringComparison.OrdinalIgnoreCase))?.SortOrder ?? -1)
+                    .First())
+                .ToList();
+
+            foreach (var patient in dedupedFollowUpPatients)
             {
                 if (!string.IsNullOrWhiteSpace(patient.PatientId) && patientsWithRealSlot.Contains(patient.PatientId))
                     continue;
