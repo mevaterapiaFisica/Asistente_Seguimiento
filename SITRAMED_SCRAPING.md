@@ -169,6 +169,14 @@ Para cada máquina:
 > `phx-change` del equipo, sin importar qué mostrara el input. Bug sistemático: cualquier fecha futura
 > pedida devolvía el roster de hoy repetido, sin lanzar error. Mismo patrón que el quirk de tomógrafos
 > (abajo), nunca replicado acá hasta ese fix.
+>
+> **Post-condición (fix 2026-09-16b):** el fix de orden por sí solo no garantizaba nada — nada
+> volvía a chequear que el round-trip de LiveView realmente haya terminado en la fecha pedida.
+> Ahora, tras el poll de cambio de tabla, se relee el `value` real de `#search_date`; si no
+> coincide con lo pedido se reintenta una vez el bloque fecha→blur→equipo→enter, y si sigue sin
+> coincidir se lanza excepción (antes: silencio total). Mismo tratamiento en tomógrafos
+> (`DownloadTomographAgendaHtmlAsync`). Este chequeo es el que habría cazado el bug de arriba
+> desde el primer día, en vez de necesitar meses + un reporte de paciente puntual.
 
 ### Parseo de filas de agenda (DOM)
 
@@ -178,7 +186,7 @@ Para cada máquina:
 - `data-type` contiene "Finalizado" — tratamientos finalizados que quedan en gris
 - `fechaFin` (offset+9) es anterior a la fecha pedida — también son past-treatment remnants
 
-**Columnas (tras saltear columna vacía `signs`):**
+**Columnas (offset ancla en la celda "inicio", NO en saltear celdas vacías):**
 ```
 offset+0  → StartTime (hora inicio)
 offset+1  → PatientName
@@ -186,6 +194,17 @@ offset+3  → Priority
 offset+7  → Treatment
 offset+10 → EndTime (hora fin)
 ```
+
+> **Bug encontrado y arreglado (2026-09-16, auditoría de scraping):** `FindAgendaColumnOffset`
+> ubicaba la columna "inicio" saltando celdas iniciales en blanco (la columna `signs`). Pero
+> SitraMed puebla esa columna con un ícono/texto visible ("URG") en turnos marcados **urgentes**
+> — el loop paraba una celda antes de lo debido y corría todo el mapeo una columna: `PatientName`
+> terminaba siendo la hora de inicio ("13:10"), `Treatment` el texto genérico "Tratamiento" en vez
+> de la técnica real, etc. Afectaba silenciosamente cualquier fila con esa marca. Confirmado con
+> HTML real capturado (`agenda-captures/...MEVA-Viamonte...`) comparando una fila URG contra una
+> normal. **Fix:** el offset ahora ancla en la primera celda con formato `H:MM`/`HH:MM` (la celda
+> "inicio" siempre tiene ese formato, a diferencia de la columna `signs` que es de contenido
+> variable), con el skip-de-blancos viejo como fallback si ninguna celda matchea.
 
 Si hay menos de 11 celdas, usa heurística `LooksLikePersonName` para encontrar el nombre.
 
@@ -236,6 +255,17 @@ SitraMed usa **Phoenix LiveView** en el formulario de tomógrafos. LiveView mant
    ```
 5. `await WaitForTimeoutAsync(400)` + `WaitForLoadStateAsync(NetworkIdle, 8000)`
 6. **Ahora** seleccionar el tomógrafo — el `phx-change` lleva la fecha ya sincronizada
+
+> **Post-condición (fix 2026-09-16b):** igual que en agenda de equipos, se relee `#search_date`
+> tras el flujo completo y se reintenta una vez si no coincide con lo pedido, en vez de asumir
+> que el orden alcanza.
+
+> **`/api/scraping/test-tomograph` corría un camino separado (fix 2026-09-16b):**
+> `RunTomographTestAsync` tenía ~150 líneas de lógica de diagnóstico duplicada inline (selects,
+> blur, waits propios) que **nunca llamaba** a `DownloadTomographAgendaHtmlAsync` — el endpoint de
+> test no probaba el código que corre en producción. Ahora reusa
+> `DownloadTomographAgendaHtmlAsync` + `TryExtractTomographAgendaDomAsync`, igual que
+> `RunAgendaTestAsync` ya hacía para equipos, y devuelve las filas parseadas en `AgendaRows`.
 
 ### Parseo de filas de tomógrafo
 

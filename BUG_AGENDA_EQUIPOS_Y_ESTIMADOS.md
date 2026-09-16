@@ -1,8 +1,8 @@
 # Hallazgos: agenda de equipos, estimados, y scraping SitraMed
 
-**Fecha:** 2026-09-15/16
-**Estado:** 5 bugs encontrados y arreglados (pusheados a `main`), 1 pendiente sin resolver, exploración
-profunda pendiente (este doc es el punto de partida para esa exploración).
+**Fecha:** 2026-09-15/16, exploración profunda 2026-09-16b.
+**Estado:** 11 bugs encontrados y arreglados (pusheados a `main`), exploración profunda del plan
+de abajo **completada** — ver sección "Exploración profunda 2026-09-16b" al final.
 
 **Redactado para otra instancia de Claude que retoma el trabajo.** Contexto: usuario reportó paciente
 (CAMPOLO, Carlos Alberto, HC `1-119858-0`) con turno real confirmado en SitraMed que no aparecía en la
@@ -257,6 +257,110 @@ Puntos concretos a revisar, con prioridad sugerida:
   `DownloadAgendaHtmlAsync`, poll de cambio real de tabla en vez de wait fijo, estabilización de conteo
   de filas en `ParseAgendaRowsAsync`.
 
-Ver también `SITRAMED_SCRAPING.md` (doc general de arquitectura de scraping) — **su sección de "Agenda
-de equipos" todavía no refleja el fix del bug #4** (orden fecha antes de equipo); actualizarla si se
-retoma este código, para que no quede desalineada con el código real.
+Ver también `SITRAMED_SCRAPING.md` (doc general de arquitectura de scraping) — actualizada en
+2026-09-16b con todos los fixes de abajo.
+
+---
+
+## Exploración profunda 2026-09-16b — resultados
+
+Se ejecutó el plan de la sección anterior: lectura completa de `PlaywrightSitraMedClient.cs` y del
+flujo `/api/agenda`, seguido de comparación local-vs-SitraMed-en-vivo usando una instancia de test
+aislada en `:5099` (mismo método documentado arriba) + `/agent-browser` para verificación puntual.
+
+### Bugs nuevos encontrados y arreglados
+
+7. **Fila "URG" (turno marcado urgente) corría todas las columnas del parseo de agenda de
+   equipos.** `Meva.Rt.Infrastructure.SitraMed/PlaywrightSitraMedClient.cs` —
+   `FindAgendaColumnOffset` (antes inline en `MapAgendaCells`). El heurístico de "saltear celdas
+   iniciales en blanco" para ubicar la columna `signs` asumía que esa columna siempre está vacía.
+   Para turnos marcados urgentes, SitraMed la puebla con un ícono + texto "URG" visible — el skip
+   paraba una celda antes de lo debido y todo el mapeo quedaba corrido: `PatientName` terminaba
+   siendo la hora de inicio (ej. `"13:10"`), `Treatment` el texto genérico "Tratamiento" en vez de
+   la técnica real. Confirmado con HTML real capturado (Viamonte Equipo 2, 16/09, paciente PARODI,
+   GUID `c32514d7-...`) comparando la fila URG contra una fila normal. **Fix:** el offset ahora
+   ancla en la primera celda con formato `H:MM`/`HH:MM` (la celda "inicio" siempre tiene ese
+   formato; la columna signs es de contenido variable), con el skip-de-blancos viejo como fallback.
+   Verificado: tras el fix, `PatientName`/`Treatment`/`StartTime` quedan correctos para esa fila.
+
+8. **El fix del bug #4 (orden fecha/equipo) nunca chequeaba que hubiera funcionado.** Todo el
+   round-trip de LiveView (fecha→blur→equipo→Enter→poll) corría a ciegas — si el server no
+   sincronizaba la fecha por cualquier motivo (una regresión futura de SitraMed, timing distinto),
+   nada lo iba a detectar, igual que pasó con el bug original durante meses. **Fix:** tras el poll,
+   se relee el `value` real de `#search_date` y se compara contra la fecha pedida; si no coincide
+   se reintenta una vez el bloque completo, y si sigue sin coincidir se lanza excepción (antes:
+   silencio total, roster de otro día servido como si fuera correcto). Mismo tratamiento en
+   `DownloadTomographAgendaHtmlAsync`.
+
+9. **`/api/scraping/test-tomograph` no probaba código de producción.** `RunTomographTestAsync`
+   tenía ~150 líneas de lógica de diagnóstico duplicada inline (selects, blur, waits propios,
+   nunca llamaba a `DownloadTomographAgendaHtmlAsync`) — cualquier bug arreglado en el scraper real
+   de tomógrafos podía seguir roto ahí sin que el endpoint de test lo notara. **Fix:** ahora reusa
+   `DownloadTomographAgendaHtmlAsync` + `TryExtractTomographAgendaDomAsync`, igual que
+   `RunAgendaTestAsync` ya hacía para equipos.
+
+10. **`FollowUpHtmlSnapshot`/`TomographAgendaHtmlSnapshot` sin `HasScrapingError`.** Un fallo de
+    scraping en seguimiento o tomógrafos era indistinguible de "0 pacientes" — la propiedad solo
+    existía en `AgendaHtmlSnapshot`. **Fix:** agregada a ambos tipos, seteada en los catches
+    correspondientes. Los loops de tomógrafo (`DownloadTomographAgendaPagesAsync`/
+    `...ForDatesAsync`) tampoco tenían try/catch — una fecha/tomógrafo que fallara abortaba el
+    resto del lote sin guardar nada de lo ya scrapeado. **Fix:** try/catch por combo.
+
+11. **Loop de estimados no dedupeaba pacientes en dos etapas simultáneas** (el "bug pendiente" de
+    la sección anterior). Cuantificado: **58 pacientes** en `dashboard_bootstrap.FollowUpPatients`
+    del 16/09 aparecen bajo 2+ etapas a la vez (mayoría `F11+F9`, `F11+F2B`, `F1+F2A`). **Fix:**
+    dedup por `PatientId`, se conserva la fila de la etapa con mayor `SortOrder` (la más avanzada,
+    más cercana a tratamiento) — no se investigó si SitraMed tiene el dato duplicado por error o es
+    un estado real transitorio, pero el fix es correcto en cualquier caso: nunca se quiere un
+    estimado duplicado del mismo paciente el mismo día.
+
+12. **`refresh.bat` scrapeaba 7 días en vez de los 15 configurados.** El encabezado del script decía
+    "próximos 15 días hábiles" y `rt_configuration.UpcomingScrapeDays` está en 15, pero los dos
+    `curl` de agenda/tomógrafos tenían `days=7` hardcodeado — desalineado y sin relación con la
+    config. Consecuencia medida: `agenda_2026-09-28/29/30.json` quedaron escritos el 15/09 10:24
+    (antes del fix del bug #4) y **nunca se volvieron a scrapear** porque estaban fuera de la
+    ventana de 7 días; `/api/agenda` los sirve igual y el loop de estimados los usa como
+    `maxScrapedDate`. **Fix:** variable `UPCOMING_DAYS=15` en el `.bat`.
+
+### Verificación en vivo (Fase 2 del plan) — resultados
+
+Instancia de test aislada en `:5099` (`MEVA_DATA_DIR` apuntando a los datos reales en modo lectura,
+sin tocar el servicio `MevaRT` de producción en ningún momento) + `/api/scraping/test-agenda` /
+`test-tomograph` / `test-followup-full` (código real de producción) comparados contra
+`agenda_*.json` locales y, para el caso puntual del bug #7, contra el HTML capturado y contra
+SitraMed en vivo por `/agent-browser`.
+
+**Agenda de equipos — 18 checks (6 equipos, uno por centro × 3 fechas: hoy 16/09, +2h 18/09, +7h
+25/09):** tras el fix del bug #7, **14/18 coinciden exacto** (conteo + nombres idénticos). Las 4
+diferencias restantes son turnos agregados/modificados en SitraMed entre el último scrape (esta
+mañana) y el momento del check — drift normal de una agenda viva, no bug (verificado que no son
+turnos "fantasma": los pacientes nuevos aparecen coherentemente en fechas consecutivas, patrón
+típico de altas de tratamiento del día).
+
+**Tomógrafos — 4 checks (2 centros × 2 fechas):** 3/4 exactos, 1 diferencia de +1 en la fecha de
+hoy (mismo tipo de drift). Sin bugs de parseo encontrados.
+
+**Seguimiento — `test-followup-full` (todos los centros × todas las etapas habilitadas, 126
+combos):** 44 combos devolvieron 0 pacientes. Investigado el patrón más sospechoso — las etapas
+F6E/F7B/F8 fallando en los 6 centros simultáneamente con HTML de longitud idéntica byte-a-byte —
+hipótesis inicial: `SitraMicroStatus` desactualizado en `rt_configuration.json`. **Descartada**:
+verificado contra el `<select>` real de SitraMed (`/agent-browser`) que los 3 `value` (
+`waiting_mod_reception`, `proteccion_confection`, `localization_plate`) existen exactos, y
+reproducida la búsqueda a mano para MEVA-Central (el centro más grande) + F6E — 0 resultados reales,
+sin bug. Conclusión: son etapas angostas del workflow que legítimamente pueden estar vacías en
+varios centros a la vez; el HTML idéntico es simplemente la misma página-esqueleto de "0 filas"
+sin contenido dinámico. Los demás mismatches de conteo (Program.cs vs vivo) están en el rango de
+drift normal ya visto en agenda — no se profundizó combo por combo dado el volumen (806 pacientes).
+
+### Puntos del plan original NO cubiertos en esta sesión
+
+- **Otros centros de agenda de equipos más allá de los 6 muestreados**: quedan sin verificar en
+  vivo directamente (aunque el fix del bug #7 es genérico a `MapAgendaCells`, no específico de
+  centro/equipo).
+- **Auditoría exhaustiva del resto de `SitraMedAttendedPatientsExtractor`**: confirmado por lectura
+  que reusa `DownloadAgendaHtmlAsync` (hereda todos los fixes), pero no se ejecutó un check en vivo
+  dedicado.
+- **Cuantificar los 58 pacientes multi-etapa a nivel SitraMed** (¿dato real o entrada huérfana?):
+  el dedup ya soluciona el síntoma (estimados duplicados) independientemente de la causa, así que
+  no se investigó más a fondo — si se quiere saber el porqué, comparar un caso puntual (ej.
+  SARCHIONI, `1-118582-0`) contra `/follow_up_search` filtrando por HC en SitraMed.
