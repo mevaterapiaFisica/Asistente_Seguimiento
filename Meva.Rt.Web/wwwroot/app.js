@@ -4681,9 +4681,9 @@ function renderTbi() {
       ${thSort('Físico asignado', 'physicist')}
       <th>Equipo</th>
       <th>Fecha Inicio TBI</th>
-      <th>Dosis total (cGy)</th>
-      <th>Dosis diaria (cGy)</th>
-      <th>Alerta</th>
+      <th class="tbi-th-narrow">Dosis<br>total (cGy)</th>
+      <th class="tbi-th-narrow">Dosis<br>diaria (cGy)</th>
+      <th></th>
       <th>Observaciones</th>
     </tr></thead>
     <tbody>${rows || '<tr><td colspan="11" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes</td></tr>'}</tbody>
