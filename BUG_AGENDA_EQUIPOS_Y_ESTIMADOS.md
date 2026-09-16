@@ -357,9 +357,16 @@ drift normal ya visto en agenda — no se profundizó combo por combo dado el vo
 - **Otros centros de agenda de equipos más allá de los 6 muestreados**: quedan sin verificar en
   vivo directamente (aunque el fix del bug #7 es genérico a `MapAgendaCells`, no específico de
   centro/equipo).
-- **Auditoría exhaustiva del resto de `SitraMedAttendedPatientsExtractor`**: confirmado por lectura
-  que reusa `DownloadAgendaHtmlAsync` (hereda todos los fixes), pero no se ejecutó un check en vivo
-  dedicado.
+- ~~Auditoría exhaustiva del resto de `SitraMedAttendedPatientsExtractor`~~ **hecha 2026-09-16c**:
+  usa un regex propio sobre el HTML crudo (`ParseAttendedGuids`, busca `<button>Atendido</button>`
+  por fila + GUID del link `overview`) — **no** pasa por `MapAgendaCells`, así que el bug URG del
+  #7 no lo afectaba nunca. Sí hereda la post-condición de fecha del #8 vía
+  `DownloadAgendaPageHtmlForMachineAsync → DownloadAgendaHtmlAsync`. Verificado en vivo
+  (`/api/derivation/attended-patients`, 3 equipos × 2 fechas): conteos crecientes a lo largo del
+  día (más "Atendido" según pasan las horas, como se espera) y comparación directa contra una
+  captura HTML fresca — 21 filas con botón "Atendido" colapsan a 18 GUIDs únicos por el `HashSet`
+  (pacientes con 2 sesiones el mismo día), número que coincide exacto con lo que devolvió el
+  endpoint. Sin bugs.
 - **Cuantificar los 58 pacientes multi-etapa a nivel SitraMed** (¿dato real o entrada huérfana?):
   el dedup ya soluciona el síntoma (estimados duplicados) independientemente de la causa, así que
   no se investigó más a fondo — si se quiere saber el porqué, comparar un caso puntual (ej.
