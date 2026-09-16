@@ -933,7 +933,13 @@ app.MapGet("/api/agenda", async Task<IResult> (
                     estimatedSource = "center";
                 }
 
-                var remainingDays = stages.Skip(stageIdx).Sum(s => s.ExpectedDays);
+                // Stagger the estimate by how long the patient has already been sitting in
+                // their current stage, instead of assuming every patient in a stage just
+                // started it today — otherwise everyone in the same stage lands on the exact
+                // same projected date, an artificial pile-up that doesn't reflect reality.
+                var currentStageRemaining = Math.Max(stages[stageIdx].ExpectedDays - patient.DaysInStage, 0);
+                var laterStagesDays = stages.Skip(stageIdx + 1).Sum(s => s.ExpectedDays);
+                var remainingDays = currentStageRemaining + laterStagesDays;
                 var daysToStart = Math.Max(remainingDays, 1);
                 var estimatedStart = bdCalc.AddBusinessDays(today, daysToStart);
 
@@ -953,9 +959,18 @@ app.MapGet("/api/agenda", async Task<IResult> (
 
                 if (!inWindow) continue;
 
+                // Center must match the assigned machine, not the patient's registered
+                // treating center in SitraMed — patients get transferred between centers,
+                // so patient.CenterName can point at a different center than where ARIA
+                // actually planned the machine. Grouping by CenterName (dashboard) with a
+                // mismatched value silently hides the estimate from the right center's view.
+                var slotCenterName = machines
+                    .FirstOrDefault(m => string.Equals(m.DisplayName, machineName, StringComparison.OrdinalIgnoreCase))
+                    ?.CenterName ?? patient.CenterName ?? string.Empty;
+
                 slots.Add(new AgendaSlotDto
                 {
-                    CenterName = patient.CenterName ?? string.Empty,
+                    CenterName = slotCenterName,
                     MachineName = machineName,
                     PatientName = patient.PatientName,
                     AgendaDate = targetDate.ToString("yyyy-MM-dd"),
