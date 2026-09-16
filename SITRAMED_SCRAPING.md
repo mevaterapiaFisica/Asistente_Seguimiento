@@ -153,10 +153,22 @@ https://sitramed.mevaterapia.com.ar/reception/appointments/machine
 Para cada máquina:
 1. Selecciona centro en `#search_center_id`
 2. **Espera activa** a que `#search_machine_id` tenga `options.length > 1` (AJAX rellena el dropdown tras seleccionar centro — sin esta espera se selecciona sin equipo y devuelve 0 pacientes)
-3. Selecciona equipo por `machine.SitraName` en `#search_machine_id`
-4. Llena fecha en `#search_date` con formato `yyyy-MM-dd`
-5. Presiona Enter, espera `NetworkIdle`
-6. Espera a que aparezca `#machineDrag` o `#machine_drag` o `table tbody tr`
+3. Llena fecha en `#search_date` con formato `yyyy-MM-dd`
+4. **Dispara blur** (`focus()` + `blur()`) — este form también usa Phoenix LiveView
+   (`phx-debounce="blur"`), igual que el de tomógrafos (ver quirk más abajo)
+5. **Recién ahora** selecciona equipo por `machine.SitraName` en `#search_machine_id`
+6. Presiona Enter
+7. **Poll de cambio real de contenido** — antes de Enter se guarda un snapshot del HTML de la tabla; después
+   se hace poll (hasta 3s, 300ms por intento) esperando que cambie de verdad, en vez de un timeout fijo o
+   `NetworkIdle` — LiveView empuja la tabla actualizada por WebSocket, que Playwright's `NetworkIdle` no
+   trackea
+8. Espera a que aparezca `#machineDrag` o `#machine_drag` o `table tbody tr`
+
+> **Bug histórico (fix 2026-09-16, ver `BUG_AGENDA_EQUIPOS_Y_ESTIMADOS.md`):** el orden original
+> seleccionaba equipo **antes** de la fecha — eso reseteaba la fecha al default del server (hoy) vía el
+> `phx-change` del equipo, sin importar qué mostrara el input. Bug sistemático: cualquier fecha futura
+> pedida devolvía el roster de hoy repetido, sin lanzar error. Mismo patrón que el quirk de tomógrafos
+> (abajo), nunca replicado acá hasta ese fix.
 
 ### Parseo de filas de agenda (DOM)
 
