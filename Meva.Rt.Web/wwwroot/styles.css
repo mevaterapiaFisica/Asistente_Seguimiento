@@ -1266,7 +1266,9 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .spec-table tr.pedido-warn td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
 .pedido-urgent-text { color: var(--red); }
 .pedido-warn-text { color: var(--orange); }
-.spec-table tr.pedido-selected td { background: var(--color-reservation-bg); }
+.spec-table tr.pedido-selected td { border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+.spec-table tr.pedido-selected td:first-child { border-left: 2px solid var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.spec-table tr.pedido-selected td:last-child { border-right: 2px solid var(--accent); }
 .pedido-modal { width: 480px; }
 .pedido-search-results {
   max-height: 180px; overflow-y: auto; margin-top: 6px;

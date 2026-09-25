@@ -109,7 +109,9 @@ const state = {
   pedidos: {
     items: [],
     selectedId: null,
-    loaded: false
+    loaded: false,
+    centerFilter: 'MEVA-Central',
+    dismissedIds: new Set(JSON.parse(localStorage.getItem('pedidos.dismissedIds') ?? '[]'))
   },
 
   qaEspecifico: {
@@ -4902,6 +4904,7 @@ async function computeAutoPedidos() {
   let notedExisting = false;
   for (const p of candidates) {
     if (_pedidoIsPastDate(_pedidoInicioFecha(p))) continue;
+    if (state.pedidos.dismissedIds.has(p.patientId)) continue;
     const existing = _findExistingPedidoForPatient(p);
     if (existing) {
       const info = _pedidoInicioInfo(p);
@@ -4955,6 +4958,12 @@ function _etapaActualLabel(p) {
 
 function _normPedidoName(name) {
   return (name ?? '').trim().toLowerCase();
+}
+
+function _dismissIfAutoPedido(item) {
+  if (!item || item.origin !== 'Auto' || item.type !== 'Paciente' || !item.patientId) return;
+  state.pedidos.dismissedIds.add(item.patientId);
+  localStorage.setItem('pedidos.dismissedIds', JSON.stringify([...state.pedidos.dismissedIds]));
 }
 
 function _findExistingPedidoForPatient(p) {
@@ -5015,18 +5024,46 @@ function _pedidoUrgencyClass(fechaLimite) {
   return '';
 }
 
+function _pedidoCenterName(p, patientById, machineCenterByName) {
+  if (p.type === 'Paciente') return patientById.get(p.patientId)?.centerName ?? null;
+  if (p.type === 'Equipo') return machineCenterByName.get(p.equipoName) ?? null;
+  return null;
+}
+
+function buildPedidosCenterFilter(patientById, machineCenterByName) {
+  const row = document.getElementById('pedidos-center-pills');
+  if (!row) return;
+  const active = state.pedidos.centerFilter;
+  const centers = [...new Set((state.homeData?.configuration?.machineCapacities ?? []).map(c => c.centerName))];
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', active === null, () => {
+    state.pedidos.centerFilter = null; renderPedidos();
+  }));
+  centers.forEach(c => row.appendChild(
+    makePill(c, active === c, () => {
+      state.pedidos.centerFilter = c; renderPedidos();
+    })
+  ));
+}
+
 function renderPedidos() {
   const wrap = document.getElementById('pedidos-table-wrap');
   if (!wrap) return;
 
-  const items = state.pedidos.items.filter(p => !p.completed).sort((a, b) => {
+  const patientById = new Map((state.homeData?.patients ?? []).map(p => [p.patientId, p]));
+  const machineCenterByName = new Map((state.homeData?.configuration?.machineCapacities ?? []).map(c => [c.machineName, c.centerName]));
+  buildPedidosCenterFilter(patientById, machineCenterByName);
+
+  let items = state.pedidos.items.filter(p => !p.completed);
+  if (state.pedidos.centerFilter)
+    items = items.filter(p => _pedidoCenterName(p, patientById, machineCenterByName) === state.pedidos.centerFilter);
+
+  items = items.sort((a, b) => {
     if (!a.fechaLimite && !b.fechaLimite) return 0;
     if (!a.fechaLimite) return 1;
     if (!b.fechaLimite) return -1;
     return new Date(a.fechaLimite) - new Date(b.fechaLimite);
   });
-
-  const patientById = new Map((state.homeData?.patients ?? []).map(p => [p.patientId, p]));
 
   const rows = items.map(p => {
     const urgClass = _pedidoUrgencyClass(p.fechaLimite);
@@ -5104,6 +5141,7 @@ function _wirePedidosActionBar() {
     const id = state.pedidos.selectedId;
     if (!id) return;
     if (!confirm('¿Eliminar este pedido?')) return;
+    _dismissIfAutoPedido(state.pedidos.items.find(p => p.id === id));
     await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
     state.pedidos.items = state.pedidos.items.filter(p => p.id !== id);
     state.pedidos.selectedId = null;
@@ -5113,6 +5151,7 @@ function _wirePedidosActionBar() {
   document.getElementById('pedidoCompleteBtn').addEventListener('click', async () => {
     const id = state.pedidos.selectedId;
     if (!id) return;
+    _dismissIfAutoPedido(state.pedidos.items.find(p => p.id === id));
     const resp = await fetch(`/api/pedidos/${id}/complete`, { method: 'POST' });
     if (resp.ok) {
       const updated = await resp.json();
