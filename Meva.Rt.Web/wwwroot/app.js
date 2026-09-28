@@ -448,6 +448,7 @@ const NAV_GROUPS = {
     { id: 'fisica',   label: 'Seguimiento' },
     { id: 'pedidos',  label: 'Pedidos' },
     { id: 'qa-especifico', label: 'QA Paciente Específico' },
+    { id: 'buscar-planes', label: 'Buscar planes' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -515,6 +516,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'reservations') loadReservationsTab();
   if (targetTab === 'pedidos') loadPedidosTab();
   if (targetTab === 'qa-especifico') loadQaEspecificoTab();
+  if (targetTab === 'buscar-planes') loadBuscarPlanesTab();
   return true;
 }
 
@@ -5363,6 +5365,230 @@ async function loadQaEspecificoTab() {
   await computeQaEspecifico();
   renderQaEspecifico();
   _wireQaEspecificoActionBar();
+}
+
+// ─── Buscar planes (tabBuscar de PlanHelper, migrado) ──────────────────────────
+
+let _buscarPlanesWired = false;
+let _buscarPlanesLastResults = [];
+let _buscarPlanesLastCriteria = null;
+
+function loadBuscarPlanesTab() {
+  _populateBuscarPlanesEquipoSelect();
+  if (!_buscarPlanesWired) {
+    _buscarPlanesWired = true;
+    document.getElementById('bpAddStructureClause').addEventListener('click', () => _addStructureClauseRow());
+    document.getElementById('bpRunSearch').addEventListener('click', runPlanSearch);
+    document.getElementById('bpExportCsv').addEventListener('click', _exportBuscarPlanesCsv);
+    document.getElementById('bpExportHtml').addEventListener('click', _exportBuscarPlanesHtml);
+    _addStructureClauseRow(); // arranca con una fila vacía
+  }
+}
+
+function _populateBuscarPlanesEquipoSelect() {
+  const sel = document.getElementById('bpEquipo');
+  const machines = (state.homeData?.configuration?.machines ?? []).filter(m => m.ariaName);
+  sel.innerHTML = '<option value="">(todos)</option>' +
+    machines.map(m => `<option value="${esc(m.ariaName)}">${esc(m.displayName)}</option>`).join('');
+}
+
+function _addStructureClauseRow(mode = 'include', text = '') {
+  const container = document.getElementById('bpStructureClauses');
+  const row = document.createElement('div');
+  row.className = 'structure-clause-row';
+  row.innerHTML = `
+    <select class="filter-select bp-clause-mode">
+      <option value="include">contiene</option>
+      <option value="exclude">no contiene</option>
+    </select>
+    <input type="text" class="filter-input bp-clause-text" placeholder="estructura" />
+    <button type="button" class="ghost-button bp-clause-remove">×</button>`;
+  row.querySelector('.bp-clause-mode').value = mode;
+  row.querySelector('.bp-clause-text').value = text;
+  row.querySelector('.bp-clause-remove').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function _buildSearchCriteria() {
+  const val = id => document.getElementById(id).value.trim();
+  const estructuras = [...document.querySelectorAll('#bpStructureClauses .structure-clause-row')]
+    .map(row => ({
+      mode: row.querySelector('.bp-clause-mode').value,
+      text: row.querySelector('.bp-clause-text').value.trim(),
+    }))
+    .filter(c => c.text);
+
+  return {
+    apellido: val('bpApellido') || null,
+    hc: val('bpHc') || null,
+    curso: val('bpCurso') || null,
+    plan: val('bpPlan') || null,
+    machineAriaId: val('bpEquipo') || null,
+    fechaDesde: val('bpFechaDesde') || null,
+    fechaHasta: val('bpFechaHasta') || null,
+    estadoAprobacion: val('bpEstado') || null,
+    numeroFracciones: val('bpFracciones') ? Number(val('bpFracciones')) : null,
+    dosisPorFraccion: val('bpDosisFraccion') ? Number(val('bpDosisFraccion')) : null,
+    dosisTotal: val('bpDosisTotal') ? Number(val('bpDosisTotal')) : null,
+    irradiationModality: val('bpModalidad') || null,
+    beamType: val('bpBeamType') || null,
+    estructuras,
+  };
+}
+
+async function runPlanSearch() {
+  const btn = document.getElementById('bpRunSearch');
+  const statusEl = document.getElementById('bpSearchStatus');
+  btn.disabled = true;
+  document.getElementById('bpExportCsv').disabled = true;
+  document.getElementById('bpExportHtml').disabled = true;
+  _buscarPlanesLastResults = [];
+  document.getElementById('buscar-planes-table-wrap').innerHTML = '';
+  statusEl.textContent = 'Iniciando búsqueda...';
+  try {
+    _buscarPlanesLastCriteria = _buildSearchCriteria();
+    const resp = await fetch('/api/plan-search/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_buscarPlanesLastCriteria),
+    });
+    if (resp.status === 202 || resp.status === 409) {
+      await _pollPlanSearchStatus(statusEl);
+    } else {
+      const r = await resp.json().catch(() => ({}));
+      statusEl.textContent = r.error ?? `Error ${resp.status}`;
+    }
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function _pollPlanSearchStatus(statusEl) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const st = await fetch('/api/plan-search/status').then(r => r.json());
+      if (st.isRunning) {
+        statusEl.textContent = 'Consultando ARIA...';
+        continue;
+      }
+      if (st.lastRunSucceeded) {
+        statusEl.textContent = 'Cargando resultados...';
+        const results = await fetch('/api/plan-search/results').then(r => r.json());
+        _renderPlanSearchResults(results);
+        statusEl.textContent = `${results.results.length} resultado(s)`;
+      } else {
+        statusEl.textContent = `Error ARIA: ${st.lastError ?? 'desconocido'}`;
+      }
+      break;
+    } catch (e) {
+      statusEl.textContent = `Error estado: ${e.message}`;
+      break;
+    }
+  }
+}
+
+const _BP_HEADERS = ['HC', 'Apellido', 'Nombre', 'Curso', 'Plan', 'Estado', 'Fecha', 'Equipo',
+  'Fx', 'Dosis/fx (cGy)', 'Dosis total (cGy)', 'Modalidad', 'Haz'];
+
+function _bpRowCells(r) {
+  return [r.patientId, r.lastName, r.firstName, r.courseId, r.planId, r.status,
+    r.creationDate, r.machineAriaId, r.numberOfFractions, r.prescribedDosePerFraction,
+    r.totalDose, r.irradiationModality, r.beamType];
+}
+
+function _renderPlanSearchResults(output) {
+  const wrap = document.getElementById('buscar-planes-table-wrap');
+  const rows = output?.results ?? [];
+  _buscarPlanesLastResults = rows;
+  document.getElementById('bpExportCsv').disabled = rows.length === 0;
+  document.getElementById('bpExportHtml').disabled = rows.length === 0;
+  if (rows.length === 0) {
+    wrap.innerHTML = '<p class="detail-placeholder">Sin resultados.</p>';
+    return;
+  }
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>${_BP_HEADERS.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${_bpRowCells(r).map(c => `<td>${esc(c ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+}
+
+const _BP_CRITERIA_LABELS = {
+  apellido: 'Apellido', hc: 'HC', curso: 'Curso', plan: 'Plan', machineAriaId: 'Equipo',
+  fechaDesde: 'Desde', fechaHasta: 'Hasta', estadoAprobacion: 'Estado',
+  numeroFracciones: 'Fracciones', dosisPorFraccion: 'Dosis/fx (cGy)', dosisTotal: 'Dosis total (cGy)',
+  irradiationModality: 'Modalidad', beamType: 'Tipo de haz',
+};
+
+// Texto legible de los filtros usados, para el header del export (CSV/HTML).
+function _formatSearchCriteriaSummary(c) {
+  if (!c) return [];
+  const parts = [];
+  for (const [key, label] of Object.entries(_BP_CRITERIA_LABELS)) {
+    if (c[key] !== null && c[key] !== undefined && c[key] !== '') parts.push(`${label}: ${c[key]}`);
+  }
+  for (const cl of (c.estructuras ?? [])) {
+    parts.push(`Estructura ${cl.mode === 'exclude' ? 'no contiene' : 'contiene'}: ${cl.text}`);
+  }
+  return parts.length ? parts : ['(sin filtros)'];
+}
+
+function _csvField(v) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function _exportBuscarPlanesCsv() {
+  if (_buscarPlanesLastResults.length === 0) return;
+  const lines = [_BP_HEADERS.map(_csvField).join(',')];
+  for (const r of _buscarPlanesLastResults) lines.push(_bpRowCells(r).map(_csvField).join(','));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `buscar_planes_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function _exportBuscarPlanesHtml() {
+  if (_buscarPlanesLastResults.length === 0) return;
+  const now = new Date().toLocaleString('es-AR');
+  const criteriaHtml = _formatSearchCriteriaSummary(_buscarPlanesLastCriteria)
+    .map(p => esc(p)).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+  const rowsHtml = _buscarPlanesLastResults
+    .map(r => `<tr>${_bpRowCells(r).map(c => `<td>${esc(c ?? '')}</td>`).join('')}</tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Buscar planes</title>
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;margin:32px;color:#1b2f38;font-size:13px;line-height:1.5}
+h1{font-size:20px;color:#0f6c74;margin:0 0 4px}
+.meta{color:#6b7b83;font-size:12px;margin-bottom:24px}
+.criteria{font-size:12px;color:#1b2f38;background:#f3efe6;border:1px solid #d8cec0;border-radius:8px;padding:8px 12px;margin-bottom:20px}
+table{border-collapse:collapse;width:100%;margin-bottom:20px}
+th{background:#f3efe6;border:1px solid #d8cec0;padding:8px 10px;text-align:left;font-size:12px;font-weight:600}
+td{border:1px solid #d8cec0;padding:7px 10px;vertical-align:top}
+tr:nth-child(even) td{background:#fafaf7}
+@media print{body{margin:16px}}
+</style></head><body>
+<h1>Buscar planes</h1>
+<div class="meta">Generado el: ${now}&nbsp;·&nbsp;Generado por: MevaDash&nbsp;·&nbsp;${_buscarPlanesLastResults.length} resultado(s)</div>
+<div class="criteria">${criteriaHtml}</div>
+<table><thead><tr>${_BP_HEADERS.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+<tbody>${rowsHtml}</tbody></table>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `buscar_planes_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.html`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 function _qaEspecificoEligiblePlans() {

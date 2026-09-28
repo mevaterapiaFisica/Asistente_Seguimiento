@@ -198,6 +198,127 @@ public sealed class AriaQuery
     }
 
     /// <summary>
+    /// Búsqueda de planes por criterios (equivalente al tabBuscar de PlanHelper, corregido).
+    /// </summary>
+    public PlanSearchOutput SearchPlans(SearchCriteria c)
+    {
+        using var ctx = CreateContext();
+
+        IQueryable<PlanSetup> q = ctx.PlanSetups
+            .Include("Course.Patient")
+            .Include("RTPlans")
+            .Include("StructureSet.Structures")
+            .Include("Radiations.RadiationDevice.Machine")
+            .Include("Radiations.ExternalFieldCommon.EnergyMode")
+            .Include("Radiations.ExternalFieldCommon.Technique")
+            .Where(p => p.Status != "Rejected"
+                && p.Course.CourseId != null
+                && !p.Course.CourseId.Contains("qa")
+                && !p.Course.CourseId.Contains("fisica")
+                && !p.Course.CourseId.Contains("física"));
+
+        if (!string.IsNullOrWhiteSpace(c.Apellido))
+            q = q.Where(p => p.Course.Patient.LastName.Contains(c.Apellido));
+        if (!string.IsNullOrWhiteSpace(c.Hc))
+            q = q.Where(p => p.Course.Patient.PatientId.Contains(c.Hc));
+        if (!string.IsNullOrWhiteSpace(c.Curso))
+            q = q.Where(p => p.Course.CourseId.Contains(c.Curso)); // legacy tenía un "!" acá (bug: excluía en vez de incluir)
+        if (!string.IsNullOrWhiteSpace(c.Plan))
+            q = q.Where(p => p.PlanSetupId.Contains(c.Plan));
+        if (!string.IsNullOrWhiteSpace(c.MachineAriaId))
+            q = q.Where(p => p.Radiations.Any(r => r.RadiationDevice.Machine.MachineId == c.MachineAriaId));
+        if (c.FechaDesde.HasValue)
+            q = q.Where(p => p.CreationDate >= c.FechaDesde.Value);
+        if (c.FechaHasta.HasValue)
+            q = q.Where(p => p.CreationDate <= c.FechaHasta.Value);
+        if (!string.IsNullOrWhiteSpace(c.EstadoAprobacion))
+            q = q.Where(p => p.Status == c.EstadoAprobacion);
+        if (c.NumeroFracciones.HasValue)
+            q = q.Where(p => p.RTPlans.Any(r => r.NoFractions == c.NumeroFracciones.Value));
+        // Dosis (cGy, entero) se filtra en memoria más abajo: PrescribedDose es Gy en ARIA, y
+        // redondear a cGy en el propio SQL no es expresable de forma confiable en LINQ-to-Entities.
+
+        foreach (var clause in c.Estructuras.Where(cl => !string.IsNullOrWhiteSpace(cl.Text)))
+        {
+            // ToLower() en ambos lados: la columna StructureId no es case-insensitive por default
+            // (a diferencia de apellido/curso/plan, que sí lo son por la collation de la DB) — mismo
+            // problema que ya tenía PlanHelper con este filtro.
+            var text = clause.Text.ToLower();
+            q = string.Equals(clause.Mode, "exclude", StringComparison.OrdinalIgnoreCase)
+                ? q.Where(p => !p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text)))
+                : q.Where(p => p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text)));
+        }
+
+        // Sin límite: se necesita ver el grupo completo, no un top-N. OJO — no usar .Take() acá:
+        // con varios .Include() de colecciones (RTPlans, StructureSet.Structures, Radiations) en la
+        // misma query, EF6 arma un JOIN cartesiano y aplica el Take sobre las filas del join, no
+        // sobre las entidades ya armadas — cortaba la búsqueda muy por debajo del límite real
+        // (~20 resultados con cap=2000). Se materializa toda la query.
+        var planSetups = q.ToList();
+
+        // Modalidad/tipo de haz/dosis total: sin equivalente SQL, se calculan en memoria
+        // (reusa los mismos clasificadores privados que BuildPlanResult).
+        var rows = planSetups.Select(BuildSearchRow).ToList();
+
+        if (!string.IsNullOrWhiteSpace(c.IrradiationModality))
+            rows = rows.Where(r => string.Equals(r.IrradiationModality, c.IrradiationModality, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!string.IsNullOrWhiteSpace(c.BeamType))
+            rows = rows.Where(r => string.Equals(r.BeamType, c.BeamType, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (c.DosisPorFraccion.HasValue)
+            rows = rows.Where(r => r.PrescribedDosePerFraction == c.DosisPorFraccion.Value).ToList();
+        if (c.DosisTotal.HasValue)
+            rows = rows.Where(r => r.TotalDose == c.DosisTotal.Value).ToList();
+
+        _log.Info($"Búsqueda de planes: {rows.Count} resultado(s)");
+        return new PlanSearchOutput { Results = rows };
+    }
+
+    private static PlanSearchResultRow BuildSearchRow(PlanSetup plan)
+    {
+        // Excluye campos de setup (kV/CBCT), mismo criterio que BuildPlanResult: si caen primero
+        // contaminan técnica/CPs y la modalidad sale mal clasificada.
+        var ordered = plan.Radiations?.OrderBy(r => r.RadiationSer).ToList();
+        var firstRadiation = ordered?.FirstOrDefault(r => r.ExternalFieldCommon?.SetupFieldFlag != 1)
+            ?? ordered?.FirstOrDefault();
+        var rtPlan = plan.RTPlans?.OrderByDescending(r => r.CreationDate).FirstOrDefault();
+
+        var row = new PlanSearchResultRow
+        {
+            PatientId = plan.Course?.Patient?.PatientId?.Trim() ?? string.Empty,
+            LastName = plan.Course?.Patient?.LastName?.Trim(),
+            FirstName = plan.Course?.Patient?.FirstName?.Trim(),
+            CourseId = plan.Course?.CourseId?.Trim(),
+            PlanId = plan.PlanSetupId?.Trim(),
+            PlanName = plan.PlanSetupName?.Trim(),
+            Status = plan.Status?.Trim(),
+            CreationDate = plan.CreationDate == default ? null : plan.CreationDate.ToString("yyyy-MM-dd"),
+            MachineAriaId = firstRadiation?.RadiationDevice?.Machine?.MachineId?.Trim(),
+            NumberOfFractions = rtPlan?.NoFractions,
+        };
+
+        // PrescribedDose de ARIA está en Gy; se muestra en cGy. Redondear a cGy ANTES de
+        // multiplicar por fracciones (no después) evita el arrastre de error de punto flotante
+        // que daba totales como 4999 en vez de 5000.
+        if (rtPlan?.PrescribedDose != null)
+        {
+            var doseCgy = (int)Math.Round(rtPlan.PrescribedDose.Value * 100, MidpointRounding.AwayFromZero);
+            row.PrescribedDosePerFraction = doseCgy;
+            if (rtPlan.NoFractions != null)
+                row.TotalDose = doseCgy * rtPlan.NoFractions.Value;
+        }
+
+        if (firstRadiation != null)
+        {
+            var em = firstRadiation.ExternalFieldCommon?.EnergyMode;
+            var techniqueLabel = firstRadiation.TechniqueLabel?.Trim() ?? string.Empty;
+            row.BeamType = DetermineBeamType(em?.RadiationType?.Trim(), em?.Energy, techniqueLabel);
+            row.IrradiationModality = Modalidad(firstRadiation);
+        }
+
+        return row;
+    }
+
+    /// <summary>
     /// Busca un único paciente. Útil para pruebas y consultas individuales.
     /// </summary>
     public PatientResult QueryPatient(string patientId)

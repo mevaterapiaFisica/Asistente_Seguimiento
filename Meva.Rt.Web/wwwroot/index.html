@@ -254,6 +254,73 @@
         <div id="qa-especifico-table-wrap" class="table-wrap"></div>
       </section>
 
+      <!-- ── Física · Buscar planes ───────────────────────────────────── -->
+      <section id="tab-buscar-planes" class="tab-panel">
+        <div class="filter-bar filter-bar-stacked" id="buscarPlanesFilters">
+          <div class="filter-row">
+            <label class="filter-label">Apellido:</label>
+            <input id="bpApellido" type="text" class="filter-input" />
+            <label class="filter-label">HC:</label>
+            <input id="bpHc" type="text" class="filter-input" />
+            <label class="filter-label">Curso:</label>
+            <input id="bpCurso" type="text" class="filter-input" />
+            <label class="filter-label">Plan:</label>
+            <input id="bpPlan" type="text" class="filter-input" />
+          </div>
+          <div class="filter-row">
+            <label class="filter-label">Equipo:</label>
+            <select id="bpEquipo" class="filter-select"><option value="">(todos)</option></select>
+            <label class="filter-label">Desde:</label>
+            <input id="bpFechaDesde" type="date" class="filter-input" />
+            <label class="filter-label">Hasta:</label>
+            <input id="bpFechaHasta" type="date" class="filter-input" />
+            <label class="filter-label">Estado:</label>
+            <select id="bpEstado" class="filter-select">
+              <option value="">(todos)</option>
+              <option value="Unapproved">Unapproved</option>
+              <option value="PlanApproval">PlanApproval</option>
+              <option value="TreatApproval">TreatApproval</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="filter-label">Modalidad:</label>
+            <select id="bpModalidad" class="filter-select">
+              <option value="">(todas)</option>
+              <option value="VMAT">VMAT</option>
+              <option value="ArcoConformado">Arco Conformado</option>
+              <option value="IMRT">IMRT</option>
+              <option value="3DC">3DC</option>
+            </select>
+            <label class="filter-label">Tipo de haz:</label>
+            <select id="bpBeamType" class="filter-select">
+              <option value="">(todos)</option>
+              <option value="6X">6X</option>
+              <option value="AltaE">Alta Energía</option>
+              <option value="SRS">SRS</option>
+              <option value="Electrones">Electrones</option>
+            </select>
+            <label class="filter-label">Fracciones:</label>
+            <input id="bpFracciones" type="number" class="filter-input filter-input-narrow" />
+            <label class="filter-label">Dosis/fracción (cGy):</label>
+            <input id="bpDosisFraccion" type="number" step="1" class="filter-input filter-input-narrow" />
+            <label class="filter-label">Dosis total (cGy):</label>
+            <input id="bpDosisTotal" type="number" step="1" class="filter-input filter-input-narrow" />
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Estructuras:</span>
+            <div id="bpStructureClauses"></div>
+            <button id="bpAddStructureClause" class="ghost-button" type="button">+ estructura</button>
+          </div>
+          <div class="filter-row">
+            <button id="bpRunSearch" class="tab-button active" type="button">Buscar</button>
+            <button id="bpExportCsv" class="ghost-button" type="button" disabled>Exportar CSV</button>
+            <button id="bpExportHtml" class="ghost-button" type="button" disabled>Exportar HTML</button>
+            <span id="bpSearchStatus" class="filter-label"></span>
+          </div>
+        </div>
+        <div id="buscar-planes-table-wrap" class="table-wrap table-wrap-scroll"></div>
+      </section>
+
       <!-- ── Técnicas Especiales ──────────────────────────────────────── -->
       <section id="tab-especiales" class="tab-panel">
         <div class="filter-bar filter-bar-stacked" id="especiales-filters">

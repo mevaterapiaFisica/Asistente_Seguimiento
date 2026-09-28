@@ -23,7 +23,6 @@ class Program
         var outputDir = ResolveOutputDir(args, exeDir);
 
         var logPath = Path.Combine(outputDir, $"aria_runner_{timestamp}.log");
-        var resultsPath = Path.Combine(outputDir, $"aria_results_{timestamp}.json");
 
         using var log = new RunnerLogger(logPath);
 
@@ -31,7 +30,6 @@ class Program
         log.Info($"Exe dir:     {exeDir}");
         log.Info($"Output dir:  {outputDir}");
         log.Info($"Log:         {logPath}");
-        log.Info($"Resultados:  {resultsPath}");
 
         // ─── 1. Archivo de entrada ────────────────────────────────────────────────
         var inputPath = ResolveInputPath(args, exeDir, log);
@@ -55,11 +53,16 @@ class Program
             return 1;
         }
 
-        if (input.PatientIds.Count == 0)
+        if (input.Search == null && input.PatientIds.Count == 0)
         {
-            log.Warn("La lista de patientIds está vacía. Sin trabajo que hacer.");
+            log.Warn("La lista de patientIds está vacía y no hay criterio de búsqueda. Sin trabajo que hacer.");
             return 0;
         }
+
+        // plansearch_* no colisiona con el glob aria_results_*.json que usa el importador del dashboard.
+        var resultsPath = Path.Combine(outputDir,
+            input.Search != null ? $"plansearch_results_{timestamp}.json" : $"aria_results_{timestamp}.json");
+        log.Info($"Resultados:  {resultsPath}");
 
         // ─── 2. Impersonación para conectar a ARIAMEVADB-SVR ──────────────────────
         var ariaPassword = Environment.GetEnvironmentVariable("ARIA_VARIAN_PASSWORD")
@@ -99,6 +102,18 @@ class Program
         {
             log.Error("Falló el test de conexión. Revisá ARIA_VARIAN_PASSWORD y conectividad a ARIAMEVADB-SVR.");
             return 1;
+        }
+
+        if (input.Search != null)
+        {
+            log.Info(new string('-', 60));
+            log.Info("Iniciando búsqueda de planes por criterios...");
+            var searchOutput = query.SearchPlans(input.Search);
+            File.WriteAllText(resultsPath,
+                JsonConvert.SerializeObject(searchOutput, Formatting.Indented),
+                System.Text.Encoding.UTF8);
+            log.Info($"Resultados: {resultsPath}");
+            return 0;
         }
 
         // ─── Búsqueda bulk ────────────────────────────────────────────────────────

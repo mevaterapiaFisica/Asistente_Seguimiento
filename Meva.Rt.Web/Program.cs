@@ -747,6 +747,88 @@ app.MapGet("/api/aria/query-status", (AriaJobState jobState) =>
     });
 });
 
+// ─── Buscar planes (tabBuscar de PlanHelper, migrado) ──────────────────────────
+// Mismo patrón subprocess+poll que /api/aria/run-query, mismo AriaJobState (serializa el acceso
+// a ARIA con la consulta bulk de arriba). El criterio de búsqueda se reenvía tal cual al runner
+// (pass-through, sin re-tipar en Web) — solo el runner necesita interpretarlo.
+app.MapPost("/api/plan-search/run", async Task<IResult> (
+        HttpRequest request, AriaJobState jobState, CancellationToken cancellationToken) =>
+{
+    var runnerExe = Environment.GetEnvironmentVariable("MEVA_ARIA_RUNNER_EXE");
+    if (string.IsNullOrWhiteSpace(runnerExe) || !File.Exists(runnerExe))
+        return TypedResults.Problem("AriaRunner no configurado (MEVA_ARIA_RUNNER_EXE).", statusCode: 500);
+
+    if (jobState.IsRunning)
+        return TypedResults.Conflict(new { error = "Ya hay una consulta ARIA en curso. Usar /api/plan-search/status para ver el progreso." });
+
+    using var reader = new StreamReader(request.Body);
+    var criteriaJson = await reader.ReadToEndAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(criteriaJson))
+        return TypedResults.BadRequest(new { error = "Falta el criterio de búsqueda." });
+
+    if (!jobState.TryStart(0, snapshotsDirectory))
+        return TypedResults.Conflict(new { error = "Consulta ya iniciada (race condition)." });
+
+    var inputPath = Path.Combine(snapshotsDirectory, "plansearch_input_tmp.json");
+    await File.WriteAllTextAsync(inputPath, $"{{\"search\":{criteriaJson}}}", cancellationToken);
+
+    var runnerDir = Path.GetDirectoryName(runnerExe)!;
+    var psi = new ProcessStartInfo(runnerExe)
+    {
+        Arguments = $"--input=\"{inputPath}\" --output-dir=\"{snapshotsDirectory}\"",
+        WorkingDirectory = runnerDir,
+        RedirectStandardOutput = false,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+    };
+
+    var proc = Process.Start(psi);
+    if (proc == null)
+    {
+        jobState.Complete(false, 0, "No se pudo iniciar AriaRunner.exe.");
+        return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
+    }
+
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                jobState.Complete(false, 0, $"AriaRunner salio con codigo {proc.ExitCode}. {stderr.Trim()}");
+                return;
+            }
+            jobState.Complete(true, 0, null);
+        }
+        catch (Exception ex) { jobState.Complete(false, 0, ex.Message); }
+        finally { proc.Dispose(); }
+    });
+
+    return TypedResults.Accepted("/api/plan-search/status", new { status = "started" });
+});
+
+app.MapGet("/api/plan-search/status", (AriaJobState jobState) => Results.Ok(new
+{
+    isRunning = jobState.IsRunning,
+    lastRunSucceeded = jobState.LastRunSucceeded,
+    lastError = jobState.LastError,
+    completedAt = jobState.CompletedAt
+}));
+
+app.MapGet("/api/plan-search/results", async () =>
+{
+    var resultFile = Directory.GetFiles(snapshotsDirectory, "plansearch_results_*.json")
+        .OrderByDescending(f => f).FirstOrDefault();
+    if (resultFile == null)
+        return Results.NotFound(new { error = "No hay resultados de búsqueda todavía." });
+
+    var json = await File.ReadAllTextAsync(resultFile);
+    return Results.Content(json, "application/json");
+});
+
 // ─── Agenda ───────────────────────────────────────────────────────────────────
 
 // Returns sorted list of dates that have a stored agenda snapshot.
