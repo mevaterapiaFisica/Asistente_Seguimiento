@@ -243,10 +243,13 @@ public sealed class AriaQuery
             // ToLower() en ambos lados: la columna StructureId no es case-insensitive por default
             // (a diferencia de apellido/curso/plan, que sí lo son por la collation de la DB) — mismo
             // problema que ya tenía PlanHelper con este filtro.
+            // FirstSlice != null: ignora estructuras creadas pero nunca delineadas (sin contornos) —
+            // sin esto "contiene X" matcheaba estructuras vacías, y "no contiene X" las contaba como
+            // presentes. Confirmado contra ARIA real (613→492 planes, más rápido, no más lento).
             var text = clause.Text.ToLower();
             q = string.Equals(clause.Mode, "exclude", StringComparison.OrdinalIgnoreCase)
-                ? q.Where(p => !p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text)))
-                : q.Where(p => p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text)));
+                ? q.Where(p => !p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text) && s.FirstSlice != null))
+                : q.Where(p => p.StructureSet.Structures.Any(s => s.StructureId.ToLower().Contains(text) && s.FirstSlice != null));
         }
 
         // Sin límite: se necesita ver el grupo completo, no un top-N. OJO — no usar .Take() acá:
