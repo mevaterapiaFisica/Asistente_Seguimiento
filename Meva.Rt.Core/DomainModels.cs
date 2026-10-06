@@ -339,3 +339,13 @@ public sealed class QaEspecificoItem
     public string? EquipoName { get; set; }
     public string? Observaciones { get; set; }
 }
+
+// Pacientes marcados a mano como "no monitorear" en Frecuencia de Imágenes (ExacTrac, electrones
+// descartado, o cualquier otro motivo) — mismo HC nunca vuelve a aparecer en rojo/amarillo.
+public sealed class ImagingMonitoringExclusion
+{
+    public string PatientId { get; set; } = string.Empty;
+    public string? PatientName { get; set; }
+    public string? Reason { get; set; } // ExacTrac | Electrones | otro texto libre
+    public DateTime CreatedAtUtc { get; set; }
+}

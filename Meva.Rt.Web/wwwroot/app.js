@@ -449,6 +449,7 @@ const NAV_GROUPS = {
     { id: 'pedidos',  label: 'Pedidos' },
     { id: 'qa-especifico', label: 'QA Paciente Específico' },
     { id: 'buscar-planes', label: 'Buscar planes' },
+    { id: 'frecuencia-imagenes', label: 'Frecuencia de Imágenes' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -517,6 +518,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'pedidos') loadPedidosTab();
   if (targetTab === 'qa-especifico') loadQaEspecificoTab();
   if (targetTab === 'buscar-planes') loadBuscarPlanesTab();
+  if (targetTab === 'frecuencia-imagenes') loadFrecuenciaImagenesTab();
   return true;
 }
 
@@ -5589,6 +5591,218 @@ tr:nth-child(even) td{background:#fafaf7}
   a.download = `buscar_planes_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.html`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ─── Frecuencia de Imágenes (MEVA-Central Equipo 1/3/4, IMRT/VMAT/3DC) ─────────
+
+let _fiWired = false;
+let _fiRows = [];
+let _fiExclusions = new Map(); // patientId -> { reason }
+let _fiSelectedMachines = new Set(); // vacío = todos
+let _fiSelectedSemaforos = new Set(['Rojo', 'Amarillo']); // arranca sin Verde
+let _fiSortKey = 'businessDaysSinceLastImage';
+let _fiSortDir = 'desc';
+
+function loadFrecuenciaImagenesTab() {
+  if (!_fiWired) {
+    _fiWired = true;
+    document.getElementById('fiRunBtn').addEventListener('click', runFrecuenciaImagenes);
+    document.getElementById('fiShowFinished').addEventListener('change', _renderFrecuenciaImagenes);
+    document.getElementById('fiShowExcluded').addEventListener('change', _renderFrecuenciaImagenes);
+  }
+  _loadFiExclusions().then(() => {
+    fetch('/api/imaging-frequency/results')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) { _fiRows = data.rows ?? []; _renderFrecuenciaImagenes(); } });
+  });
+}
+
+async function _loadFiExclusions() {
+  try {
+    const list = await fetch('/api/imaging-frequency/exclusions').then(r => r.json());
+    _fiExclusions = new Map(list.map(e => [e.patientId, e]));
+  } catch { _fiExclusions = new Map(); }
+}
+
+async function runFrecuenciaImagenes() {
+  const btn = document.getElementById('fiRunBtn');
+  const statusEl = document.getElementById('fiStatus');
+  btn.disabled = true;
+  statusEl.textContent = 'Iniciando consulta ARIA...';
+  try {
+    const resp = await fetch('/api/imaging-frequency/run', { method: 'POST' });
+    if (resp.status === 202 || resp.status === 409) {
+      await _pollFiStatus(statusEl);
+    } else {
+      const r = await resp.json().catch(() => ({}));
+      statusEl.textContent = r.error ?? `Error ${resp.status}`;
+    }
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function _pollFiStatus(statusEl) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const st = await fetch('/api/imaging-frequency/status').then(r => r.json());
+      if (st.isRunning) { statusEl.textContent = 'Consultando ARIA...'; continue; }
+      if (st.lastRunSucceeded) {
+        const data = await fetch('/api/imaging-frequency/results').then(r => r.json());
+        _fiRows = data.rows ?? [];
+        _renderFrecuenciaImagenes();
+        statusEl.textContent = `${_fiRows.length} plan(es)`;
+      } else {
+        statusEl.textContent = `Error ARIA: ${st.lastError ?? 'desconocido'}`;
+      }
+      break;
+    } catch (e) {
+      statusEl.textContent = `Error estado: ${e.message}`;
+      break;
+    }
+  }
+}
+
+async function _fiToggleExclusion(patientId, patientName, exclude, reason) {
+  if (exclude) {
+    const body = { patientId, patientName, reason: reason || 'Manual' };
+    await fetch('/api/imaging-frequency/exclusions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    _fiExclusions.set(patientId, body);
+  } else {
+    await fetch(`/api/imaging-frequency/exclusions/${encodeURIComponent(patientId)}`, { method: 'DELETE' });
+    _fiExclusions.delete(patientId);
+  }
+  _renderFrecuenciaImagenes();
+}
+
+const _FI_SEMAFORO_ROW_CLASS = { Verde: 'fi-row-verde', Amarillo: 'fi-row-amarillo', Rojo: 'fi-row-rojo' };
+const _FI_SEMAFORO_OPTIONS = ['Rojo', 'Amarillo', 'Verde'];
+const _FI_COLUMNS = [
+  { key: 'patientId', label: 'HC' },
+  { key: 'lastName', label: 'Apellido' },
+  { key: 'firstName', label: 'Nombre' },
+  { key: 'machineAriaId', label: 'Equipo' },
+  { key: 'irradiationModality', label: 'Modalidad' },
+  { key: 'beamType', label: 'Haz' },
+  { key: 'lastValidImageDate', label: 'Última imagen' },
+  { key: 'lastValidImageType', label: 'Tipo' },
+  { key: 'businessDaysSinceLastImage', label: 'Días s/placa' },
+  { key: 'applicationsSinceLastImage', label: 'Aplic. s/placa' },
+];
+
+function _renderFiMachinePills() {
+  const row = document.getElementById('fiMachineFilterPills');
+  const machines = [...new Set(_fiRows.map(r => r.machineAriaId).filter(Boolean))].sort();
+  const nameByAria = new Map((state.homeData?.configuration?.machines ?? []).map(m => [m.ariaName, m.displayName]));
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', _fiSelectedMachines.size === 0, () => {
+    _fiSelectedMachines.clear();
+    _renderFrecuenciaImagenes();
+  }));
+  machines.forEach(m => {
+    row.appendChild(makePill(nameByAria.get(m) || m, _fiSelectedMachines.has(m), () => {
+      if (_fiSelectedMachines.has(m)) _fiSelectedMachines.delete(m); else _fiSelectedMachines.add(m);
+      _renderFrecuenciaImagenes();
+    }));
+  });
+}
+
+function _renderFiSemaforoPills() {
+  const row = document.getElementById('fiSemaforoFilterPills');
+  row.innerHTML = '';
+  row.appendChild(makePill('Todos', _FI_SEMAFORO_OPTIONS.every(o => _fiSelectedSemaforos.has(o)), () => {
+    _FI_SEMAFORO_OPTIONS.forEach(o => _fiSelectedSemaforos.add(o));
+    _renderFrecuenciaImagenes();
+  }));
+  _FI_SEMAFORO_OPTIONS.forEach(o => {
+    row.appendChild(makePill(o, _fiSelectedSemaforos.has(o), () => {
+      if (_fiSelectedSemaforos.has(o)) _fiSelectedSemaforos.delete(o); else _fiSelectedSemaforos.add(o);
+      _renderFrecuenciaImagenes();
+    }));
+  });
+}
+
+function _renderFrecuenciaImagenes() {
+  const wrap = document.getElementById('frecuencia-imagenes-table-wrap');
+  const showFinished = document.getElementById('fiShowFinished').checked;
+  const showExcluded = document.getElementById('fiShowExcluded').checked;
+
+  _renderFiMachinePills();
+  _renderFiSemaforoPills();
+
+  const rows = _fiRows.filter(r => {
+    const excluded = _fiExclusions.has(r.patientId);
+    if (excluded && !showExcluded) return false;
+    if (r.isFinished && !showFinished) return false;
+    if (_fiSelectedMachines.size > 0 && !_fiSelectedMachines.has(r.machineAriaId)) return false;
+    if (r.semaforo && !_fiSelectedSemaforos.has(r.semaforo)) return false;
+    return true;
+  });
+
+  if (rows.length === 0) {
+    wrap.innerHTML = '<p class="detail-placeholder">Sin pacientes para mostrar — probá "Actualizar" o tildar los filtros de arriba.</p>';
+    return;
+  }
+
+  rows.sort((a, b) => {
+    let av = a[_fiSortKey], bv = b[_fiSortKey];
+    if (av == null) av = typeof bv === 'number' ? -Infinity : '';
+    if (bv == null) bv = typeof av === 'number' ? -Infinity : '';
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return _fiSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const rowHtml = r => {
+    const excl = _fiExclusions.get(r.patientId);
+    const isElectrones = r.beamType === 'Electrones';
+    const tags = [];
+    if (excl) tags.push(`<span class="fi-tag">No monitoreado (${esc(excl.reason)})</span>`);
+    else if (isElectrones) tags.push('<span class="fi-tag">Electrones</span>');
+    if (r.isFinished) tags.push('<span class="fi-tag">Finalizado</span>');
+
+    const actionBtn = excl
+      ? `<button type="button" class="ghost-button fi-reactivar" data-patient="${esc(r.patientId)}" data-name="${esc(r.lastName ?? '')}">Reactivar</button>`
+      : `<button type="button" class="ghost-button fi-excluir" data-patient="${esc(r.patientId)}" data-name="${esc(r.lastName ?? '')}" data-reason="${isElectrones ? 'Electrones' : 'Manual'}">No monitorear</button>`;
+
+    const rowClass = excl || r.isFinished ? 'fi-row-dim' : (_FI_SEMAFORO_ROW_CLASS[r.semaforo] ?? '');
+
+    return `<tr class="${rowClass}">
+      <td>${esc(r.patientId)}</td><td>${esc(r.lastName ?? '')}</td><td>${esc(r.firstName ?? '')}</td>
+      <td>${esc(r.machineAriaId ?? '')}</td><td>${esc(r.irradiationModality ?? '')}</td><td>${esc(r.beamType ?? '')}</td>
+      <td>${esc(r.lastValidImageDate ?? '—')}</td><td>${esc(r.lastValidImageType ?? '')}</td>
+      <td>${r.businessDaysSinceLastImage ?? '—'}</td>
+      <td>${r.applicationsSinceLastImage ?? 0}</td>
+      <td>${tags.join(' ')} ${actionBtn}</td>
+    </tr>`;
+  };
+
+  const headerHtml = _FI_COLUMNS.map(c => {
+    const arrow = _fiSortKey === c.key ? (_fiSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="fi-sortable" data-key="${c.key}">${esc(c.label)}${arrow}</th>`;
+  }).join('') + '<th></th>';
+
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>${headerHtml}</tr></thead>
+    <tbody>${rows.map(rowHtml).join('')}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('.fi-sortable').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (_fiSortKey === key) _fiSortDir = _fiSortDir === 'asc' ? 'desc' : 'asc';
+    else { _fiSortKey = key; _fiSortDir = key === 'businessDaysSinceLastImage' ? 'desc' : 'asc'; }
+    _renderFrecuenciaImagenes();
+  }));
+  wrap.querySelectorAll('.fi-excluir').forEach(btn => btn.addEventListener('click', () =>
+    _fiToggleExclusion(btn.dataset.patient, btn.dataset.name, true, btn.dataset.reason)));
+  wrap.querySelectorAll('.fi-reactivar').forEach(btn => btn.addEventListener('click', () =>
+    _fiToggleExclusion(btn.dataset.patient, btn.dataset.name, false)));
 }
 
 function _qaEspecificoEligiblePlans() {

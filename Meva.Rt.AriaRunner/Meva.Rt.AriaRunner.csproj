@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Meva.Rt.Application\Meva.Rt.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="sample_input.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

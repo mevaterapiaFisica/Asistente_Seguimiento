@@ -83,6 +83,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new ImagingMonitoringExclusionStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiMailStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiDoseStore(snapshotsDirectory));
 builder.Services.AddSingleton(tbiMailOptions);
@@ -827,6 +828,99 @@ app.MapGet("/api/plan-search/results", async () =>
 
     var json = await File.ReadAllTextAsync(resultFile);
     return Results.Content(json, "application/json");
+});
+
+// ─── Frecuencia de imágenes (MEVA-Central Equipo 1/3/4, IMRT/VMAT/3DC) ─────────
+// Mismo patrón subprocess+poll que Buscar planes — sin criterio de entrada, siempre corre el
+// mismo reporte completo.
+app.MapPost("/api/imaging-frequency/run", async Task<IResult> (
+        AriaJobState jobState, CancellationToken cancellationToken) =>
+{
+    var runnerExe = Environment.GetEnvironmentVariable("MEVA_ARIA_RUNNER_EXE");
+    if (string.IsNullOrWhiteSpace(runnerExe) || !File.Exists(runnerExe))
+        return TypedResults.Problem("AriaRunner no configurado (MEVA_ARIA_RUNNER_EXE).", statusCode: 500);
+
+    if (jobState.IsRunning)
+        return TypedResults.Conflict(new { error = "Ya hay una consulta ARIA en curso. Usar /api/imaging-frequency/status para ver el progreso." });
+
+    if (!jobState.TryStart(0, snapshotsDirectory))
+        return TypedResults.Conflict(new { error = "Consulta ya iniciada (race condition)." });
+
+    var inputPath = Path.Combine(snapshotsDirectory, "imagingfrequency_input_tmp.json");
+    await File.WriteAllTextAsync(inputPath, "{\"imagingFrequency\":true}", cancellationToken);
+
+    var runnerDir = Path.GetDirectoryName(runnerExe)!;
+    var psi = new ProcessStartInfo(runnerExe)
+    {
+        Arguments = $"--input=\"{inputPath}\" --output-dir=\"{snapshotsDirectory}\"",
+        WorkingDirectory = runnerDir,
+        RedirectStandardOutput = false,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+    };
+
+    var proc = Process.Start(psi);
+    if (proc == null)
+    {
+        jobState.Complete(false, 0, "No se pudo iniciar AriaRunner.exe.");
+        return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
+    }
+
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                jobState.Complete(false, 0, $"AriaRunner salio con codigo {proc.ExitCode}. {stderr.Trim()}");
+                return;
+            }
+            jobState.Complete(true, 0, null);
+        }
+        catch (Exception ex) { jobState.Complete(false, 0, ex.Message); }
+        finally { proc.Dispose(); }
+    });
+
+    return TypedResults.Accepted("/api/imaging-frequency/status", new { status = "started" });
+});
+
+app.MapGet("/api/imaging-frequency/status", (AriaJobState jobState) => Results.Ok(new
+{
+    isRunning = jobState.IsRunning,
+    lastRunSucceeded = jobState.LastRunSucceeded,
+    lastError = jobState.LastError,
+    completedAt = jobState.CompletedAt
+}));
+
+app.MapGet("/api/imaging-frequency/results", async () =>
+{
+    var resultFile = Directory.GetFiles(snapshotsDirectory, "imaging_frequency_*.json")
+        .OrderByDescending(f => f).FirstOrDefault();
+    if (resultFile == null)
+        return Results.NotFound(new { error = "No hay resultados todavía." });
+
+    var json = await File.ReadAllTextAsync(resultFile);
+    return Results.Content(json, "application/json");
+});
+
+app.MapGet("/api/imaging-frequency/exclusions", async (ImagingMonitoringExclusionStore store, CancellationToken ct) =>
+    Results.Ok(await store.LoadAllAsync(ct)));
+
+app.MapPost("/api/imaging-frequency/exclusions", async (ImagingMonitoringExclusionStore store, ImagingMonitoringExclusion req, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.PatientId)) return Results.BadRequest(new { error = "Falta patientId." });
+    req.CreatedAtUtc = DateTime.UtcNow;
+    await store.AddAsync(req, ct);
+    return Results.Ok(req);
+});
+
+app.MapDelete("/api/imaging-frequency/exclusions/{patientId}", async (string patientId, ImagingMonitoringExclusionStore store, CancellationToken ct) =>
+{
+    await store.RemoveAsync(patientId, ct);
+    return Results.NoContent();
 });
 
 // ─── Agenda ───────────────────────────────────────────────────────────────────

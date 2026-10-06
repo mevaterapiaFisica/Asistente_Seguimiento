@@ -321,6 +321,27 @@
         <div id="buscar-planes-table-wrap" class="table-wrap table-wrap-scroll"></div>
       </section>
 
+      <!-- ── Física · Frecuencia de Imágenes ──────────────────────────── -->
+      <section id="tab-frecuencia-imagenes" class="tab-panel">
+        <div class="filter-bar filter-bar-stacked" id="fiActionBar">
+          <div class="filter-row">
+            <button id="fiRunBtn" class="tab-button active" type="button">Actualizar</button>
+            <label class="filter-label"><input type="checkbox" id="fiShowFinished" /> Mostrar finalizados</label>
+            <label class="filter-label"><input type="checkbox" id="fiShowExcluded" /> Mostrar no monitoreados</label>
+            <span id="fiStatus" class="filter-label"></span>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Equipo:</span>
+            <div id="fiMachineFilterPills" class="pill-row"></div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Semáforo:</span>
+            <div id="fiSemaforoFilterPills" class="pill-row"></div>
+          </div>
+        </div>
+        <div id="frecuencia-imagenes-table-wrap" class="table-wrap table-wrap-scroll"></div>
+      </section>
+
       <!-- ── Técnicas Especiales ──────────────────────────────────────── -->
       <section id="tab-especiales" class="tab-panel">
         <div class="filter-bar filter-bar-stacked" id="especiales-filters">

@@ -53,15 +53,20 @@ class Program
             return 1;
         }
 
-        if (input.Search == null && input.PatientIds.Count == 0)
+        if (!input.ImagingFrequency && input.Search == null && input.PatientIds.Count == 0)
         {
             log.Warn("La lista de patientIds está vacía y no hay criterio de búsqueda. Sin trabajo que hacer.");
             return 0;
         }
 
-        // plansearch_* no colisiona con el glob aria_results_*.json que usa el importador del dashboard.
-        var resultsPath = Path.Combine(outputDir,
-            input.Search != null ? $"plansearch_results_{timestamp}.json" : $"aria_results_{timestamp}.json");
+        // plansearch_*/imaging_frequency_* no colisionan con el glob aria_results_*.json que usa
+        // el importador del dashboard.
+        var resultsPath = Path.Combine(outputDir, input switch
+        {
+            { ImagingFrequency: true } => $"imaging_frequency_{timestamp}.json",
+            { Search: not null } => $"plansearch_results_{timestamp}.json",
+            _ => $"aria_results_{timestamp}.json",
+        });
         log.Info($"Resultados:  {resultsPath}");
 
         // ─── 2. Impersonación para conectar a ARIAMEVADB-SVR ──────────────────────
@@ -92,6 +97,7 @@ class Program
     }
 
 
+
     static int RunQueries(RunnerInput input, string resultsPath, RunnerLogger log)
     {
         // ─── Test de conexión ─────────────────────────────────────────────────────
@@ -102,6 +108,18 @@ class Program
         {
             log.Error("Falló el test de conexión. Revisá ARIA_VARIAN_PASSWORD y conectividad a ARIAMEVADB-SVR.");
             return 1;
+        }
+
+        if (input.ImagingFrequency)
+        {
+            log.Info(new string('-', 60));
+            log.Info("Iniciando reporte de frecuencia de imágenes...");
+            var rows = query.GetImagingFrequencyReport();
+            File.WriteAllText(resultsPath,
+                JsonConvert.SerializeObject(new ImagingFrequencyOutput { Rows = rows }, Formatting.Indented),
+                System.Text.Encoding.UTF8);
+            log.Info($"Resultados: {resultsPath}");
+            return 0;
         }
 
         if (input.Search != null)

@@ -9,6 +9,57 @@ public sealed class RunnerInput
 
     [JsonProperty("search")]
     public SearchCriteria? Search { get; set; }
+
+    [JsonProperty("imagingFrequency")]
+    public bool ImagingFrequency { get; set; }
+}
+
+public sealed class ImagingFrequencyRow
+{
+    [JsonProperty("patientId")]
+    public string PatientId { get; set; } = string.Empty;
+
+    [JsonProperty("lastName")]
+    public string? LastName { get; set; }
+
+    [JsonProperty("firstName")]
+    public string? FirstName { get; set; }
+
+    [JsonProperty("machineAriaId")]
+    public string? MachineAriaId { get; set; } // máquina planificada del plan
+
+    [JsonProperty("irradiationModality")]
+    public string? IrradiationModality { get; set; } // IMRT | 3DC
+
+    [JsonProperty("beamType")]
+    public string? BeamType { get; set; } // Electrones | SRS | AltaE | 6X — Electrones suele no llevar imagen
+
+    [JsonProperty("isFinished")]
+    public bool IsFinished { get; set; } // ya entregó todas las fracciones prescriptas
+
+    [JsonProperty("lastValidImageDate")]
+    public string? LastValidImageDate { get; set; } // yyyy-MM-dd, null = nunca
+
+    [JsonProperty("lastValidImageType")]
+    public string? LastValidImageType { get; set; } // MV | kV/CBCT
+
+    [JsonProperty("businessDaysSinceLastImage")]
+    public int? BusinessDaysSinceLastImage { get; set; } // null = nunca tuvo imagen válida; si
+    // IsFinished, cuenta hasta la última aplicación real, no hasta hoy
+
+    [JsonProperty("applicationsSinceLastImage")]
+    public int ApplicationsSinceLastImage { get; set; } // días de tratamiento real entregados
+    // después de la última imagen válida (o todos, si nunca tuvo imagen) — distingue "paciente
+    // sigue en tratamiento sin placa" (muchas aplicaciones) de "suspendió y no volvió" (pocas/0)
+
+    [JsonProperty("semaforo")]
+    public string? Semaforo { get; set; } // Verde | Amarillo | Rojo | null si IsFinished (no aplica)
+}
+
+public sealed class ImagingFrequencyOutput
+{
+    [JsonProperty("rows")]
+    public List<ImagingFrequencyRow> Rows { get; set; } = [];
 }
 
 public sealed class StructureClause
