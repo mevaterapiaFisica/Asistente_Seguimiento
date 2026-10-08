@@ -882,4 +882,130 @@ public sealed class AriaQuery
                     .OrderByDescending(p => p.CreationDate)
                     .FirstOrDefault();
     }
+
+    private static double[]? AsDoubles(byte[]? b) =>
+        b is { Length: > 0 } && b.Length % 8 == 0
+            ? Enumerable.Range(0, b.Length / 8).Select(i => BitConverter.ToDouble(b, i * 8)).ToArray()
+            : null;
+
+    /// <summary>
+    /// Corrimientos (Vrt/Lng/Lat, cm) del matcheo online 2D de placas kV (Lat Der + Post) por set de imágenes.
+    /// Fuente: SpatialRegistration "Online2DPaired" (DRR) + "Frame of Reference Identity" (ImagePI) con el mismo StatusDate;
+    /// shift = t - isoImagen + isoDRR (mm), signo invertido (convención Varian IEC). Ver ARIA_SCHEMA_NOTES.md.
+    /// </summary>
+    public List<CouchShiftRow> GetCouchShifts(IReadOnlyList<string> patientIds)
+    {
+        var ids = patientIds.Select(id => (id ?? "").Trim()).Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        using var ctx = CreateContext();
+
+        var srs = QueryInBatches(ids, chunk => ctx.SpatialRegistrations
+            .Where(r => (r.RegSubType == "Online2DPaired" || r.RegTypeCodeMeaning == "Frame of Reference Identity")
+                        && r.SpatialRegistrationImages.Any(x => chunk.Contains(x.Image.Patient.PatientId)))
+            .Select(r => new
+            {
+                r.SpatialRegistrationSer, r.RegSubType, r.RegTypeCodeMeaning, r.StatusDate, r.Transformation,
+                Images = r.SpatialRegistrationImages.Select(x => new
+                    { x.ImageSer, x.Image.ImageType, x.Image.Patient.PatientId }),
+            }).ToList(), 100);
+
+        var imageSers = srs.SelectMany(r => r.Images).Where(x => x.ImageSer != null)
+            .Select(x => x.ImageSer!.Value).Distinct().ToList();
+        var imgInfo = QueryInBatches(imageSers, chunk => ctx.Images
+            .Where(i => chunk.Contains(i.ImageSer))
+            .Select(i => new
+            {
+                i.ImageSer, i.ImageId, i.CreationDate, i.FractionNumber,
+                Slice = i.ImageSlice.Select(x => new
+                {
+                    x.Slouse.CouchVrt, x.Slouse.CouchLng, x.Slouse.CouchLat,
+                    IsoX = x.Slouse.SliceRT.IsoCenterPositionX, IsoY = x.Slouse.SliceRT.IsoCenterPositionY,
+                    IsoZ = x.Slouse.SliceRT.IsoCenterPositionZ,
+                }).FirstOrDefault(),
+            }).ToList()).ToDictionary(i => i.ImageSer);
+
+        var treatments = QueryInBatches(ids, chunk => ctx.RadiationHstries
+            .Where(h => chunk.Contains(h.TreatmentRecord.Patient.PatientId)
+                        && h.TreatmentDeliveryType == "TREATMENT" && h.ExternalFieldCommonHstry != null)
+            .Select(h => new
+            {
+                h.TreatmentRecord.Patient.PatientId, h.FractionNumber, h.TreatmentStartTime,
+                h.ExternalFieldCommonHstry.CouchVrt, h.ExternalFieldCommonHstry.CouchLng,
+                h.ExternalFieldCommonHstry.CouchLat,
+            }).ToList(), 100);
+
+        // Online (DRR) + Identity (ImagePI) se guardan juntos (mismo StatusDate): ahí está el vínculo DRR→set de placas.
+        var sets = new Dictionary<(string Pid, string Key), (DateTime Sd, double[] T, long[] Drr, long[] Pi, int Ser, int N)>();
+        var identities = srs.Where(r => r.RegTypeCodeMeaning == "Frame of Reference Identity").ToList();
+        foreach (var online in srs.Where(r => r.RegSubType == "Online2DPaired"))
+        {
+            var pid = online.Images.First().PatientId;
+            // mismo StatusDate salvo ~ms de diferencia entre las dos filas del mismo guardado
+            var identity = identities
+                .Where(r => r.Images.First().PatientId == pid && Math.Abs((r.StatusDate - online.StatusDate).TotalSeconds) < 1)
+                .OrderBy(r => Math.Abs((r.StatusDate - online.StatusDate).Ticks)).FirstOrDefault();
+            var t = AsDoubles(online?.Transformation);
+            if (identity == null || t is not { Length: 12 }) continue;
+            var pi = identity.Images.Where(x => x.ImageType == "ImagePI" && x.ImageSer != null)
+                .Select(x => x.ImageSer!.Value).OrderBy(x => x).ToArray();
+            var drr = online.Images.Where(x => x.ImageType == "ImageDRR" && x.ImageSer != null)
+                .Select(x => x.ImageSer!.Value).ToArray();
+            if (pi.Length == 0 || drr.Length == 0) continue;
+            var key = (pid, string.Join(",", pi));
+            var n = sets.TryGetValue(key, out var prev) ? prev.N + 1 : 1;
+            // varias versiones por re-matcheo: queda la última
+            if (!sets.TryGetValue(key, out prev) || online.StatusDate > prev.Sd)
+                sets[key] = (online.StatusDate, t, drr, pi, (int)online.SpatialRegistrationSer, n);
+            else sets[key] = prev with { N = n };
+        }
+
+        var rows = new List<CouchShiftRow>();
+        foreach (var (key, v) in sets)
+        {
+            var pis = v.Pi.Where(imgInfo.ContainsKey).Select(x => imgInfo[x]).OrderBy(x => x.CreationDate).ToList();
+            var drrIso = v.Drr.Where(imgInfo.ContainsKey).Select(x => imgInfo[x].Slice).FirstOrDefault(x => x?.IsoX != null);
+            var piSlice = pis.Select(x => x.Slice).FirstOrDefault(x => x?.IsoX != null);
+            if (pis.Count == 0 || drrIso == null || piSlice == null) continue;
+
+            rows.Add(new CouchShiftRow
+            {
+                PatientId = key.Pid,
+                Fraction = pis[0].FractionNumber,
+                AcquisitionDateTime = pis[0].CreationDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                ImagePair = string.Join(" - ", pis.Select(x => x.ImageId)),
+                VrtCm = Math.Round(-(v.T[10] - piSlice.IsoY!.Value + drrIso.IsoY!.Value) / 10, 2),
+                LngCm = Math.Round(-(v.T[11] - piSlice.IsoZ!.Value + drrIso.IsoZ!.Value) / 10, 2),
+                LatCm = Math.Round(-(v.T[9] - piSlice.IsoX!.Value + drrIso.IsoX!.Value) / 10, 2),
+                ImageCouch = new CouchPos(piSlice.CouchVrt, piSlice.CouchLng, piSlice.CouchLat),
+                SpatialRegistrationSer = v.Ser,
+                Versions = v.N,
+            });
+        }
+
+        // Aplicado = la camilla cambió entre estas placas y lo siguiente (próximo set del mismo día, o el tratamiento).
+        foreach (var g in rows.GroupBy(r => (r.PatientId, r.Fraction)))
+        {
+            var day = g.OrderBy(r => r.AcquisitionDateTime).ToList();
+            for (var k = 0; k < day.Count; k++)
+            {
+                var r = day[k];
+                var acq = DateTime.Parse(r.AcquisitionDateTime);
+                var after = k + 1 < day.Count
+                    ? day[k + 1].ImageCouch
+                    : treatments.Where(t => t.PatientId == r.PatientId && t.FractionNumber == r.Fraction
+                                            && t.TreatmentStartTime > acq)
+                        .OrderBy(t => t.TreatmentStartTime).Select(t => new CouchPos(t.CouchVrt, t.CouchLng, t.CouchLat))
+                        .FirstOrDefault();
+                r.CouchAfter = after;
+                if (after?.Vrt != null && r.ImageCouch.Vrt != null && after.Lng != null && r.ImageCouch.Lng != null
+                    && after.Lat != null && r.ImageCouch.Lat != null)
+                    r.Applied = Math.Abs(after.Vrt.Value - r.ImageCouch.Vrt.Value) > 0.05
+                                || Math.Abs(after.Lng.Value - r.ImageCouch.Lng.Value) > 0.05
+                                || Math.Abs(after.Lat.Value - r.ImageCouch.Lat.Value) > 0.05;
+            }
+        }
+
+        _log.Info($"CouchShifts: {rows.Count} sets de placas en {ids.Count} pacientes");
+        return rows.OrderBy(r => r.PatientId).ThenBy(r => r.AcquisitionDateTime).ToList();
+    }
 }

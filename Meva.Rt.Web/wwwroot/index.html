@@ -321,6 +321,21 @@
         <div id="buscar-planes-table-wrap" class="table-wrap table-wrap-scroll"></div>
       </section>
 
+      <!-- ── Física · Corrimientos (matcheo online de placas) ───────────── -->
+      <section id="tab-corrimientos" class="tab-panel">
+        <div class="filter-bar filter-bar-stacked">
+          <div class="filter-row">
+            <label class="filter-label">CSV de Buscar planes (columna HC):
+              <input type="file" id="csFile" accept=".csv,text/csv" multiple />
+            </label>
+            <button id="csRunBtn" class="tab-button active" type="button" disabled>Calcular</button>
+            <button id="csExportCsv" class="ghost-button" type="button" disabled>Exportar CSV</button>
+            <span id="csStatus" class="filter-label"></span>
+          </div>
+        </div>
+        <div id="corrimientos-table-wrap" class="table-wrap table-wrap-scroll"></div>
+      </section>
+
       <!-- ── Física · Frecuencia de Imágenes ──────────────────────────── -->
       <section id="tab-frecuencia-imagenes" class="tab-panel">
         <div class="filter-bar filter-bar-stacked" id="fiActionBar">

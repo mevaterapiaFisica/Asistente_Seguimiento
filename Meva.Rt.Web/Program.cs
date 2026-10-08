@@ -906,6 +906,86 @@ app.MapGet("/api/imaging-frequency/results", async () =>
     return Results.Content(json, "application/json");
 });
 
+// ─── Corrimientos (matcheo online de placas) ───────────────────────────────────
+// Misma mecánica que Buscar planes; la lista de HC la manda el front (leída del CSV de Buscar planes).
+app.MapPost("/api/couch-shifts/run", async Task<IResult> (
+        CouchShiftsRequest req, AriaJobState jobState, CancellationToken cancellationToken) =>
+{
+    var runnerExe = Environment.GetEnvironmentVariable("MEVA_ARIA_RUNNER_EXE");
+    if (string.IsNullOrWhiteSpace(runnerExe) || !File.Exists(runnerExe))
+        return TypedResults.Problem("AriaRunner no configurado (MEVA_ARIA_RUNNER_EXE).", statusCode: 500);
+
+    var ids = (req.PatientIds ?? []).Select(i => i?.Trim() ?? "").Where(i => i.Length > 0).Distinct().ToList();
+    if (ids.Count == 0)
+        return TypedResults.BadRequest(new { error = "Falta la lista de pacientes (HC)." });
+
+    if (jobState.IsRunning)
+        return TypedResults.Conflict(new { error = "Ya hay una consulta ARIA en curso. Usar /api/couch-shifts/status para ver el progreso." });
+
+    if (!jobState.TryStart(0, snapshotsDirectory))
+        return TypedResults.Conflict(new { error = "Consulta ya iniciada (race condition)." });
+
+    var inputPath = Path.Combine(snapshotsDirectory, "couchshifts_input_tmp.json");
+    await File.WriteAllTextAsync(inputPath,
+        JsonSerializer.Serialize(new { couchShifts = true, patientIds = ids }), cancellationToken);
+
+    var runnerDir = Path.GetDirectoryName(runnerExe)!;
+    var psi = new ProcessStartInfo(runnerExe)
+    {
+        Arguments = $"--input=\"{inputPath}\" --output-dir=\"{snapshotsDirectory}\"",
+        WorkingDirectory = runnerDir,
+        RedirectStandardOutput = false,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true
+    };
+
+    var proc = Process.Start(psi);
+    if (proc == null)
+    {
+        jobState.Complete(false, 0, "No se pudo iniciar AriaRunner.exe.");
+        return TypedResults.Problem("No se pudo iniciar AriaRunner.exe.", statusCode: 500);
+    }
+
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                jobState.Complete(false, 0, $"AriaRunner salio con codigo {proc.ExitCode}. {stderr.Trim()}");
+                return;
+            }
+            jobState.Complete(true, 0, null);
+        }
+        catch (Exception ex) { jobState.Complete(false, 0, ex.Message); }
+        finally { proc.Dispose(); }
+    });
+
+    return TypedResults.Accepted("/api/couch-shifts/status", new { status = "started" });
+});
+
+app.MapGet("/api/couch-shifts/status", (AriaJobState jobState) => Results.Ok(new
+{
+    isRunning = jobState.IsRunning,
+    lastRunSucceeded = jobState.LastRunSucceeded,
+    lastError = jobState.LastError,
+    completedAt = jobState.CompletedAt
+}));
+
+app.MapGet("/api/couch-shifts/results", async () =>
+{
+    var resultFile = Directory.GetFiles(snapshotsDirectory, "couch_shifts_*.json")
+        .OrderByDescending(f => f).FirstOrDefault();
+    if (resultFile == null)
+        return Results.NotFound(new { error = "No hay resultados todavía." });
+
+    var json = await File.ReadAllTextAsync(resultFile);
+    return Results.Content(json, "application/json");
+});
+
 app.MapGet("/api/imaging-frequency/exclusions", async (ImagingMonitoringExclusionStore store, CancellationToken ct) =>
     Results.Ok(await store.LoadAllAsync(ct)));
 
@@ -1726,4 +1806,5 @@ record CreateReservationRequest(
     string MachineDisplayName, string ReservedDate, string ReservedTime,
     string? Observations, string Username, string Password);
 record DeleteReservationRequest(string Username, string Password);
+record CouchShiftsRequest(List<string>? PatientIds);
 record TbiMailEditRequest(string PatientName, DateOnly? TomographyDate, DateOnly? TreatmentStartDate, string? MachineDisplayName, string? RegisteredBy, int? DailyDoseCGy, int? TotalDoseCGy, string? Observations);

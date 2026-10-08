@@ -449,6 +449,7 @@ const NAV_GROUPS = {
     { id: 'pedidos',  label: 'Pedidos' },
     { id: 'qa-especifico', label: 'QA Paciente Específico' },
     { id: 'buscar-planes', label: 'Buscar planes' },
+    { id: 'corrimientos', label: 'Corrimientos' },
     { id: 'frecuencia-imagenes', label: 'Frecuencia de Imágenes' },
   ]},
   analisis: { tabs: [
@@ -518,6 +519,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'pedidos') loadPedidosTab();
   if (targetTab === 'qa-especifico') loadQaEspecificoTab();
   if (targetTab === 'buscar-planes') loadBuscarPlanesTab();
+  if (targetTab === 'corrimientos') loadCorrimientosTab();
   if (targetTab === 'frecuencia-imagenes') loadFrecuenciaImagenesTab();
   return true;
 }
@@ -5591,6 +5593,146 @@ tr:nth-child(even) td{background:#fafaf7}
   a.download = `buscar_planes_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.html`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ─── Corrimientos (matcheo online de placas; lista de HC desde el CSV de Buscar planes) ───
+
+let _csWired = false;
+let _csPatients = new Map(); // HC -> { lastName, firstName } (nombres solo si el CSV los trae)
+let _csRows = [];
+
+function loadCorrimientosTab() {
+  if (_csWired) return;
+  _csWired = true;
+  document.getElementById('csFile').addEventListener('change', _csOnFiles);
+  document.getElementById('csRunBtn').addEventListener('click', runCorrimientos);
+  document.getElementById('csExportCsv').addEventListener('click', _exportCorrimientosCsv);
+}
+
+// Parser CSV mínimo (comillas, "" escapadas, , o ;). Devuelve filas de celdas.
+function _parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const delim = (text.split('\n')[0].match(/;/g) ?? []).length > (text.split('\n')[0].match(/,/g) ?? []).length ? ';' : ',';
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = ''; rows.push(row); row = [];
+    } else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
+}
+
+async function _csOnFiles(e) {
+  _csPatients = new Map();
+  for (const f of e.target.files) {
+    const rows = _parseCsv(await f.text());
+    if (rows.length === 0) continue;
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const col = name => head.indexOf(name);
+    const hcIdx = Math.max(col('hc'), 0);
+    for (const r of rows.slice(1)) {
+      const hc = (r[hcIdx] ?? '').trim();
+      if (!hc || _csPatients.has(hc)) continue;
+      _csPatients.set(hc, {
+        lastName: col('apellido') >= 0 ? (r[col('apellido')] ?? '').trim() : '',
+        firstName: col('nombre') >= 0 ? (r[col('nombre')] ?? '').trim() : '',
+      });
+    }
+  }
+  document.getElementById('csStatus').textContent = `${_csPatients.size} paciente(s) en el CSV`;
+  document.getElementById('csRunBtn').disabled = _csPatients.size === 0;
+}
+
+async function runCorrimientos() {
+  const btn = document.getElementById('csRunBtn');
+  const statusEl = document.getElementById('csStatus');
+  btn.disabled = true;
+  document.getElementById('csExportCsv').disabled = true;
+  document.getElementById('corrimientos-table-wrap').innerHTML = '';
+  statusEl.textContent = 'Iniciando consulta ARIA...';
+  try {
+    const resp = await fetch('/api/couch-shifts/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patientIds: [..._csPatients.keys()] }),
+    });
+    if (resp.status === 202 || resp.status === 409) {
+      await _pollCorrimientosStatus(statusEl);
+    } else {
+      const r = await resp.json().catch(() => ({}));
+      statusEl.textContent = r.error ?? `Error ${resp.status}`;
+    }
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = _csPatients.size === 0;
+  }
+}
+
+async function _pollCorrimientosStatus(statusEl) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const st = await fetch('/api/couch-shifts/status').then(r => r.json());
+      if (st.isRunning) { statusEl.textContent = 'Consultando ARIA...'; continue; }
+      if (st.lastRunSucceeded) {
+        const data = await fetch('/api/couch-shifts/results').then(r => r.json());
+        _csRows = data.rows ?? [];
+        _renderCorrimientos();
+        statusEl.textContent = `${_csRows.length} set(s) de placas en ${new Set(_csRows.map(r => r.patientId)).size} paciente(s)`;
+      } else {
+        statusEl.textContent = `Error ARIA: ${st.lastError ?? 'desconocido'}`;
+      }
+      break;
+    } catch (e) {
+      statusEl.textContent = `Error estado: ${e.message}`;
+      break;
+    }
+  }
+}
+
+const _CS_HEADERS = ['HC', 'Apellido', 'Nombre', 'Fx', 'Fecha/hora', 'Par de imágenes',
+  'Vrt (cm)', 'Lng (cm)', 'Lat (cm)', 'Aplicado'];
+
+function _csRowCells(r) {
+  const p = _csPatients.get(r.patientId);
+  return [r.patientId, p?.lastName, p?.firstName, r.fraction, r.acquisitionDateTime, r.imagePair,
+    r.vrtCm, r.lngCm, r.latCm, r.applied == null ? '' : (r.applied ? 'Sí' : 'No')];
+}
+
+function _renderCorrimientos() {
+  const wrap = document.getElementById('corrimientos-table-wrap');
+  document.getElementById('csExportCsv').disabled = _csRows.length === 0;
+  if (_csRows.length === 0) {
+    wrap.innerHTML = '<p class="detail-placeholder">Sin matcheos online para esos pacientes.</p>';
+    return;
+  }
+  wrap.innerHTML = `<table class="spec-table">
+    <thead><tr>${_CS_HEADERS.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${_csRows.map(r => `<tr>${_csRowCells(r).map(c => `<td>${esc(c ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function _exportCorrimientosCsv() {
+  if (_csRows.length === 0) return;
+  const lines = [_CS_HEADERS.map(_csvField).join(',')];
+  for (const r of _csRows) lines.push(_csRowCells(r).map(_csvField).join(','));
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `corrimientos_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Frecuencia de Imágenes (MEVA-Central Equipo 1/3/4, IMRT/VMAT/3DC) ─────────

@@ -12,6 +12,37 @@ public sealed class RunnerInput
 
     [JsonProperty("imagingFrequency")]
     public bool ImagingFrequency { get; set; }
+
+    /// <summary>Exporta corrimientos (Vrt/Lng/Lat) del matcheo online de placas para PatientIds.</summary>
+    [JsonProperty("couchShifts")]
+    public bool CouchShifts { get; set; }
+}
+
+public sealed record CouchPos(
+    [property: JsonProperty("vrt")] double? Vrt,
+    [property: JsonProperty("lng")] double? Lng,
+    [property: JsonProperty("lat")] double? Lat);
+
+public sealed class CouchShiftRow
+{
+    [JsonProperty("patientId")] public string PatientId { get; set; } = string.Empty;
+    [JsonProperty("fraction")] public int? Fraction { get; set; }
+    [JsonProperty("acquisitionDateTime")] public string AcquisitionDateTime { get; set; } = string.Empty;
+    [JsonProperty("imagePair")] public string ImagePair { get; set; } = string.Empty; // orden de adquisición, ej. "Lat Der - Post"
+    [JsonProperty("vrtCm")] public double VrtCm { get; set; }
+    [JsonProperty("lngCm")] public double LngCm { get; set; }
+    [JsonProperty("latCm")] public double LatCm { get; set; }
+    [JsonProperty("imageCouch")] public CouchPos ImageCouch { get; set; } = new(null, null, null); // camilla al adquirir (valores crudos ARIA)
+    [JsonProperty("couchAfter")] public CouchPos? CouchAfter { get; set; } // camilla del siguiente set del día, o del tratamiento
+    [JsonProperty("applied")] public bool? Applied { get; set; } // la camilla cambió tras estas placas; null = sin datos
+    [JsonProperty("spatialRegistrationSer")] public int SpatialRegistrationSer { get; set; }
+    [JsonProperty("versions")] public int Versions { get; set; } // re-matcheos del mismo set (se exporta el último)
+}
+
+public sealed class CouchShiftsOutput
+{
+    [JsonProperty("rows")]
+    public List<CouchShiftRow> Rows { get; set; } = [];
 }
 
 public sealed class ImagingFrequencyRow

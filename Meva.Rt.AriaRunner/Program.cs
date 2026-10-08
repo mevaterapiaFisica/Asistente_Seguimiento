@@ -53,7 +53,7 @@ class Program
             return 1;
         }
 
-        if (!input.ImagingFrequency && input.Search == null && input.PatientIds.Count == 0)
+        if (!input.ImagingFrequency && !input.CouchShifts && input.Search == null && input.PatientIds.Count == 0)
         {
             log.Warn("La lista de patientIds está vacía y no hay criterio de búsqueda. Sin trabajo que hacer.");
             return 0;
@@ -63,6 +63,7 @@ class Program
         // el importador del dashboard.
         var resultsPath = Path.Combine(outputDir, input switch
         {
+            { CouchShifts: true } => $"couch_shifts_{timestamp}.json",
             { ImagingFrequency: true } => $"imaging_frequency_{timestamp}.json",
             { Search: not null } => $"plansearch_results_{timestamp}.json",
             _ => $"aria_results_{timestamp}.json",
@@ -108,6 +109,15 @@ class Program
         {
             log.Error("Falló el test de conexión. Revisá ARIA_VARIAN_PASSWORD y conectividad a ARIAMEVADB-SVR.");
             return 1;
+        }
+
+        if (input.CouchShifts)
+        {
+            File.WriteAllText(resultsPath,
+                JsonConvert.SerializeObject(new CouchShiftsOutput { Rows = query.GetCouchShifts(input.PatientIds) }, Formatting.Indented),
+                System.Text.Encoding.UTF8);
+            log.Info($"Resultados: {resultsPath}");
+            return 0;
         }
 
         if (input.ImagingFrequency)
