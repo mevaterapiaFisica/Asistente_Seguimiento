@@ -5600,16 +5600,16 @@ tr:nth-child(even) td{background:#fafaf7}
 let _csWired = false;
 let _csPatients = new Map(); // HC -> { lastName, firstName } (nombres solo si el CSV los trae)
 let _csRows = [];
+let _csFromCsv = false; // true si _csPatients viene de un CSV cargado (y no de una búsqueda por filtros)
 let _csPlanKeys = null; // Set 'HC|curso|plan' que limita los sets de placas a esos planes; null = sin filtro
 
 function loadCorrimientosTab() {
   if (_csWired) return;
   _csWired = true;
   document.getElementById('csFile').addEventListener('change', _csOnFiles);
-  document.getElementById('csRunBtn').addEventListener('click', runCorrimientos);
-  document.getElementById('csSearchBtn').addEventListener('click', runCorrimientosSearch);
+  document.getElementById('csSearchBtn').addEventListener('click', runCorrimientosBuscar);
   document.querySelectorAll('#csFilters .filter-input').forEach(i =>
-    i.addEventListener('keydown', e => { if (e.key === 'Enter') runCorrimientosSearch(); }));
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') runCorrimientosBuscar(); }));
   document.getElementById('csExportCsv').addEventListener('click', _exportCorrimientosCsv);
 }
 
@@ -5664,18 +5664,25 @@ async function _csOnFiles(e) {
       });
     }
   }
-  document.getElementById('csStatus').textContent = `${_csPatients.size} paciente(s) en el CSV`;
-  document.getElementById('csRunBtn').disabled = _csPatients.size === 0;
+  _csFromCsv = _csPatients.size > 0;
+  if (_csFromCsv) document.querySelectorAll('#csFilters .filter-input').forEach(i => { i.value = ''; });
+  document.getElementById('csStatus').textContent = `${_csPatients.size} paciente(s) en el CSV — apretá Buscar`;
 }
 
-// Búsqueda por filtros (mismos Apellido/HC/Curso/Plan de Buscar planes): resuelve los pacientes con
-// /api/plan-search y calcula sus corrimientos, limitados a los planes encontrados (ver _csMatchesPlan).
-async function runCorrimientosSearch() {
+// Buscar: con filtros (mismos Apellido/HC/Curso/Plan de Buscar planes) resuelve los pacientes con
+// /api/plan-search; sin filtros usa el CSV cargado. Los corrimientos se limitan a los planes encontrados
+// (ver _csMatchesPlan).
+async function runCorrimientosBuscar() {
   const statusEl = document.getElementById('csStatus');
   const searchBtn = document.getElementById('csSearchBtn');
   const val = id => document.getElementById(id).value.trim() || null;
   const criteria = { apellido: val('csApellido'), hc: val('csHc'), curso: val('csCurso'), plan: val('csPlan') };
-  if (!Object.values(criteria).some(Boolean)) { statusEl.textContent = 'Completá al menos un filtro.'; return; }
+  if (!Object.values(criteria).some(Boolean)) {
+    if (_csFromCsv) await runCorrimientos();
+    else statusEl.textContent = 'Completá algún filtro o cargá un CSV.';
+    return;
+  }
+  _csFromCsv = false;
   searchBtn.disabled = true;
   statusEl.textContent = 'Buscando pacientes en ARIA...';
   try {
@@ -5708,7 +5715,7 @@ async function runCorrimientosSearch() {
 }
 
 async function runCorrimientos() {
-  const btn = document.getElementById('csRunBtn');
+  const btn = document.getElementById('csSearchBtn');
   const statusEl = document.getElementById('csStatus');
   btn.disabled = true;
   document.getElementById('csExportCsv').disabled = true;
@@ -5729,7 +5736,7 @@ async function runCorrimientos() {
   } catch (e) {
     statusEl.textContent = `Error: ${e.message}`;
   } finally {
-    btn.disabled = _csPatients.size === 0;
+    btn.disabled = false;
   }
 }
 
