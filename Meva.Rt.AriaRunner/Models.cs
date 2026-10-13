@@ -26,6 +26,8 @@ public sealed record CouchPos(
 public sealed class CouchShiftRow
 {
     [JsonProperty("patientId")] public string PatientId { get; set; } = string.Empty;
+    [JsonProperty("courseId")] public string? CourseId { get; set; } // plan al que pertenece el set (vía DRR de referencia); null = no vinculado
+    [JsonProperty("planId")] public string? PlanId { get; set; }
     [JsonProperty("fraction")] public int? Fraction { get; set; }
     [JsonProperty("acquisitionDateTime")] public string AcquisitionDateTime { get; set; } = string.Empty;
     [JsonProperty("imagePair")] public string ImagePair { get; set; } = string.Empty; // orden de adquisición, ej. "Lat Der - Post"
@@ -55,6 +57,12 @@ public sealed class ImagingFrequencyRow
 
     [JsonProperty("firstName")]
     public string? FirstName { get; set; }
+
+    [JsonProperty("courseId")]
+    public string? CourseId { get; set; }
+
+    [JsonProperty("planId")]
+    public string? PlanId { get; set; }
 
     [JsonProperty("machineAriaId")]
     public string? MachineAriaId { get; set; } // máquina planificada del plan

@@ -5600,13 +5600,25 @@ tr:nth-child(even) td{background:#fafaf7}
 let _csWired = false;
 let _csPatients = new Map(); // HC -> { lastName, firstName } (nombres solo si el CSV los trae)
 let _csRows = [];
+let _csPlanKeys = null; // Set 'HC|curso|plan' que limita los sets de placas a esos planes; null = sin filtro
 
 function loadCorrimientosTab() {
   if (_csWired) return;
   _csWired = true;
   document.getElementById('csFile').addEventListener('change', _csOnFiles);
   document.getElementById('csRunBtn').addEventListener('click', runCorrimientos);
+  document.getElementById('csSearchBtn').addEventListener('click', runCorrimientosSearch);
+  document.querySelectorAll('#csFilters .filter-input').forEach(i =>
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') runCorrimientosSearch(); }));
   document.getElementById('csExportCsv').addEventListener('click', _exportCorrimientosCsv);
+}
+
+const _csPlanKey = (hc, curso, plan) => `${hc}|${(curso ?? '').trim()}|${(plan ?? '').trim()}`;
+
+// Un set de placas se vincula al plan por su DRR de referencia; si no hay vínculo (planId null) se conserva.
+function _csMatchesPlan(r) {
+  if (!_csPlanKeys || !r.planId) return true;
+  return r.courseId.split(' | ').some(c => r.planId.split(' | ').some(p => _csPlanKeys.has(_csPlanKey(r.patientId, c, p))));
 }
 
 // Parser CSV mínimo (comillas, "" escapadas, , o ;). Devuelve filas de celdas.
@@ -5633,14 +5645,18 @@ function _parseCsv(text) {
 
 async function _csOnFiles(e) {
   _csPatients = new Map();
+  _csPlanKeys = new Set();
   for (const f of e.target.files) {
     const rows = _parseCsv(await f.text());
     if (rows.length === 0) continue;
     const head = rows[0].map(h => h.trim().toLowerCase());
     const col = name => head.indexOf(name);
     const hcIdx = Math.max(col('hc'), 0);
+    const planCols = col('curso') >= 0 && col('plan') >= 0;
+    if (!planCols) _csPlanKeys = null; // sin curso/plan en el CSV no se puede filtrar por plan
     for (const r of rows.slice(1)) {
       const hc = (r[hcIdx] ?? '').trim();
+      if (hc && planCols && _csPlanKeys) _csPlanKeys.add(_csPlanKey(hc, r[col('curso')], r[col('plan')]));
       if (!hc || _csPatients.has(hc)) continue;
       _csPatients.set(hc, {
         lastName: col('apellido') >= 0 ? (r[col('apellido')] ?? '').trim() : '',
@@ -5650,6 +5666,45 @@ async function _csOnFiles(e) {
   }
   document.getElementById('csStatus').textContent = `${_csPatients.size} paciente(s) en el CSV`;
   document.getElementById('csRunBtn').disabled = _csPatients.size === 0;
+}
+
+// Búsqueda por filtros (mismos Apellido/HC/Curso/Plan de Buscar planes): resuelve los pacientes con
+// /api/plan-search y calcula sus corrimientos, limitados a los planes encontrados (ver _csMatchesPlan).
+async function runCorrimientosSearch() {
+  const statusEl = document.getElementById('csStatus');
+  const searchBtn = document.getElementById('csSearchBtn');
+  const val = id => document.getElementById(id).value.trim() || null;
+  const criteria = { apellido: val('csApellido'), hc: val('csHc'), curso: val('csCurso'), plan: val('csPlan') };
+  if (!Object.values(criteria).some(Boolean)) { statusEl.textContent = 'Completá al menos un filtro.'; return; }
+  searchBtn.disabled = true;
+  statusEl.textContent = 'Buscando pacientes en ARIA...';
+  try {
+    const resp = await fetch('/api/plan-search/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(criteria),
+    });
+    if (resp.status !== 202) {
+      const r = await resp.json().catch(() => ({}));
+      statusEl.textContent = r.error ?? `Error ${resp.status}`;
+      return;
+    }
+    let st;
+    do {
+      await new Promise(r => setTimeout(r, 3000));
+      st = await fetch('/api/plan-search/status').then(r => r.json());
+    } while (st.isRunning);
+    if (!st.lastRunSucceeded) { statusEl.textContent = `Error ARIA: ${st.lastError ?? 'desconocido'}`; return; }
+    const found = (await fetch('/api/plan-search/results').then(r => r.json())).results ?? [];
+    _csPatients = new Map(found.map(r => [r.patientId, { lastName: r.lastName ?? '', firstName: r.firstName ?? '' }]));
+    _csPlanKeys = new Set(found.map(r => _csPlanKey(r.patientId, r.courseId, r.planId)));
+    if (_csPatients.size === 0) { statusEl.textContent = 'Sin planes para ese filtro.'; return; }
+    await runCorrimientos();
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+  } finally {
+    searchBtn.disabled = false;
+  }
 }
 
 async function runCorrimientos() {
@@ -5686,7 +5741,7 @@ async function _pollCorrimientosStatus(statusEl) {
       if (st.isRunning) { statusEl.textContent = 'Consultando ARIA...'; continue; }
       if (st.lastRunSucceeded) {
         const data = await fetch('/api/couch-shifts/results').then(r => r.json());
-        _csRows = data.rows ?? [];
+        _csRows = (data.rows ?? []).filter(_csMatchesPlan);
         _renderCorrimientos();
         statusEl.textContent = `${_csRows.length} set(s) de placas en ${new Set(_csRows.map(r => r.patientId)).size} paciente(s)`;
       } else {
@@ -5700,12 +5755,12 @@ async function _pollCorrimientosStatus(statusEl) {
   }
 }
 
-const _CS_HEADERS = ['HC', 'Apellido', 'Nombre', 'Fx', 'Fecha/hora', 'Par de imágenes',
+const _CS_HEADERS = ['HC', 'Apellido', 'Nombre', 'Curso', 'Plan', 'Fx', 'Fecha/hora', 'Par de imágenes',
   'Vrt (cm)', 'Lng (cm)', 'Lat (cm)', 'Aplicado'];
 
 function _csRowCells(r) {
   const p = _csPatients.get(r.patientId);
-  return [r.patientId, p?.lastName, p?.firstName, r.fraction, r.acquisitionDateTime, r.imagePair,
+  return [r.patientId, p?.lastName, p?.firstName, r.courseId, r.planId, r.fraction, r.acquisitionDateTime, r.imagePair,
     r.vrtCm, r.lngCm, r.latCm, r.applied == null ? '' : (r.applied ? 'Sí' : 'No')];
 }
 
@@ -5713,7 +5768,7 @@ function _renderCorrimientos() {
   const wrap = document.getElementById('corrimientos-table-wrap');
   document.getElementById('csExportCsv').disabled = _csRows.length === 0;
   if (_csRows.length === 0) {
-    wrap.innerHTML = '<p class="detail-placeholder">Sin matcheos online para esos pacientes.</p>';
+    wrap.innerHTML = '<p class="detail-placeholder">Sin matcheos online para esos pacientes/planes.</p>';
     return;
   }
   wrap.innerHTML = `<table class="spec-table">
@@ -5828,6 +5883,8 @@ const _FI_COLUMNS = [
   { key: 'patientId', label: 'HC' },
   { key: 'lastName', label: 'Apellido' },
   { key: 'firstName', label: 'Nombre' },
+  { key: 'courseId', label: 'Curso' },
+  { key: 'planId', label: 'Plan' },
   { key: 'machineAriaId', label: 'Equipo' },
   { key: 'irradiationModality', label: 'Modalidad' },
   { key: 'beamType', label: 'Haz' },
@@ -5917,6 +5974,7 @@ function _renderFrecuenciaImagenes() {
 
     return `<tr class="${rowClass}">
       <td>${esc(r.patientId)}</td><td>${esc(r.lastName ?? '')}</td><td>${esc(r.firstName ?? '')}</td>
+      <td>${esc(r.courseId ?? '')}</td><td>${esc(r.planId ?? '')}</td>
       <td>${esc(r.machineAriaId ?? '')}</td><td>${esc(r.irradiationModality ?? '')}</td><td>${esc(r.beamType ?? '')}</td>
       <td>${esc(r.lastValidImageDate ?? '—')}</td><td>${esc(r.lastValidImageType ?? '')}</td>
       <td>${r.businessDaysSinceLastImage ?? '—'}</td>

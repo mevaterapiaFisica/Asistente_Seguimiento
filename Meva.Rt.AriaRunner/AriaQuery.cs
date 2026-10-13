@@ -445,6 +445,16 @@ public sealed class AriaQuery
                .ToList());
         var imagesByPatientSer = portalImages.ToLookup(i => i.PatientSer!.Value);
 
+        // ImagePI (Portal Image) mezcla MV (EPID) y kV (OBI): se distinguen por SliceRT.Energy —
+        // MV en keV (6000 = 6X), kV en kVp (75, 105). Confirmado contra ARIA real (Scirica 1-119946-0).
+        var portalImageSers = portalImages.Where(i => i.ImageType == "ImagePI").Select(i => i.ImageSer).ToList();
+        var energyByImageSer = QueryInBatches(portalImageSers, chunk =>
+            ctx.Images
+               .Where(i => chunk.Contains(i.ImageSer))
+               .Select(i => new { i.ImageSer, Energy = i.ImageSlice.Select(x => x.Slouse.SliceRT.Energy).FirstOrDefault() })
+               .ToList())
+            .ToDictionary(x => x.ImageSer, x => x.Energy);
+
         // El cruce fecha/máquina/fracción de las imágenes usa el historial del RTPlan "elegido"
         // ÚNICAMENTE (no todo el curso). Se probó ampliarlo a nivel curso completo (para cubrir
         // replanes) y a nivel paciente (para el mismo motivo) — ambos resultaron demasiado amplios:
@@ -473,7 +483,7 @@ public sealed class AriaQuery
             if (daysSinceLastTreatment > StaleWindowBusinessDays) continue;
 
             var (lastValidDate, lastValidType) = FindLastValidImage(
-                planTreatmentRecords, plannedMachineId, imagesByPatientSer[patientSer]);
+                planTreatmentRecords, plannedMachineId, imagesByPatientSer[patientSer], energyByImageSer);
 
             // Todo paciente (salvo electrones/ExacTrac) debe arrancar con placa. Si ya entregó
             // fracciones y nunca tuvo una imagen válida, no es un caso a monitorear acá — es
@@ -506,6 +516,8 @@ public sealed class AriaQuery
                 PatientId = plan.Course?.Patient?.PatientId?.Trim() ?? string.Empty,
                 LastName = plan.Course?.Patient?.LastName?.Trim(),
                 FirstName = plan.Course?.Patient?.FirstName?.Trim(),
+                CourseId = plan.Course?.CourseId?.Trim(),
+                PlanId = plan.PlanSetupId?.Trim(),
                 MachineAriaId = plannedMachineId,
                 IrradiationModality = modality,
                 BeamType = beamType,
@@ -531,7 +543,8 @@ public sealed class AriaQuery
     // cruce día/máquina/fracción usa SOLO el historial del RTPlan elegido (ver comentario arriba
     // sobre por qué no ampliarlo a curso completo ni a paciente).
     private static (DateTime? Date, string? Type) FindLastValidImage(
-        List<TreatmentRecord> treatmentRecords, string plannedMachineId, IEnumerable<Image> patientPortalImages)
+        List<TreatmentRecord> treatmentRecords, string plannedMachineId, IEnumerable<Image> patientPortalImages,
+        Dictionary<long, int?> energyByImageSer)
     {
         DateTime? lastDate = null;
         string? lastType = null;
@@ -583,7 +596,9 @@ public sealed class AriaQuery
             if (lastDate == null || effectiveDate > lastDate)
             {
                 lastDate = effectiveDate;
-                lastType = isCbct ? "CBCT" : "kV";
+                // ImagePI: Energy < 1000 = kVp (OBI); si no (o sin dato), MV (EPID).
+                lastType = isCbct ? "CBCT"
+                    : energyByImageSer.TryGetValue(img.ImageSer, out var energy) && energy < 1000 ? "kV" : "MV";
             }
         }
 
@@ -959,6 +974,18 @@ public sealed class AriaQuery
             else sets[key] = prev with { N = n };
         }
 
+        // Plan de cada set: el DRR (imagen de referencia) es RefImageSer de los campos del plan.
+        var drrSers = sets.Values.SelectMany(v => v.Drr).Distinct().ToList();
+        var drrPlanSers = QueryInBatches(drrSers, chunk => ctx.Radiations
+            .Where(r => r.RefImageSer != null && chunk.Contains(r.RefImageSer.Value))
+            .Select(r => new { RefImageSer = r.RefImageSer!.Value, r.PlanSetupSer }).Distinct().ToList())
+            .ToLookup(r => r.RefImageSer, r => r.PlanSetupSer);
+        var planSers = drrPlanSers.SelectMany(g => g).Distinct().ToList();
+        var plans = QueryInBatches(planSers, chunk => ctx.PlanSetups
+            .Where(p => chunk.Contains(p.PlanSetupSer))
+            .Select(p => new { p.PlanSetupSer, p.PlanSetupId, p.Course.CourseId }).ToList()).ToDictionary(p => p.PlanSetupSer);
+        _log.Info($"CouchShifts: DRR={drrSers.Count}, planes vinculados={planSers.Count}");
+
         var rows = new List<CouchShiftRow>();
         foreach (var (key, v) in sets)
         {
@@ -967,9 +994,12 @@ public sealed class AriaQuery
             var piSlice = pis.Select(x => x.Slice).FirstOrDefault(x => x?.IsoX != null);
             if (pis.Count == 0 || drrIso == null || piSlice == null) continue;
 
+            var linked = v.Drr.SelectMany(d => drrPlanSers[d]).Distinct().Select(x => plans[x]).ToList();
             rows.Add(new CouchShiftRow
             {
                 PatientId = key.Pid,
+                CourseId = linked.Count == 0 ? null : string.Join(" | ", linked.Select(x => x.CourseId).Distinct()),
+                PlanId = linked.Count == 0 ? null : string.Join(" | ", linked.Select(x => x.PlanSetupId).Distinct()),
                 Fraction = pis[0].FractionNumber,
                 AcquisitionDateTime = pis[0].CreationDate.ToString("yyyy-MM-dd HH:mm:ss"),
                 ImagePair = string.Join(" - ", pis.Select(x => x.ImageId)),

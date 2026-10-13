@@ -44,7 +44,7 @@ otros datos del paciente).
   por escaneo) comparten el mismo instante exacto, no es la fecha real de adquisición. La fecha
   real está en `Series.CreationDate` (confirmado: un valor distinto por día real de tratamiento).
 
-- **`ImageType=="ImagePI"`** (Portal Image, kV) sí tiene `Image.CreationDate` confiable —
+- **`ImageType=="ImagePI"`** (Portal Image = EPID, siempre MV; el kV del OBI NO viene como ImagePI) sí tiene `Image.CreationDate` confiable —
   confirmado contra el gráfico de tratamiento de ARIA de varios pacientes, coincide exacto.
 
 - **`Series.AcquisitionType=="PredictedPortal"`** = imagen sintética de predicción de dosis de
@@ -114,3 +114,5 @@ Modo `couchShifts` de AriaRunner (`{"couchShifts":true,"patientIds":[...]}` → 
 - `applied`: la camilla cambió entre el set y el siguiente set del día / el tratamiento
   (`ExternalFieldCommonHstry.CouchVrt/Lng/Lat`; `CouchCorrection*` vienen NULL).
 - Rtn no exportado (matriz trae ±0.1° pero la pantalla mostró 0.0, sin validar).
+- Plan del set: `SliceRT.PlanSetupSer` e `Image`→plan vienen **vacíos**; el vínculo real es DRR → `Radiation.RefImageSer`
+  (campos del plan) → `Radiation.PlanSetupSer` → `PlanSetup` (`PlanSetupId`, `Course.CourseId`). Exportado como `courseId`/`planId`.

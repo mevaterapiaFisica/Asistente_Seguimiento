@@ -323,7 +323,18 @@
 
       <!-- ── Física · Corrimientos (matcheo online de placas) ───────────── -->
       <section id="tab-corrimientos" class="tab-panel">
-        <div class="filter-bar filter-bar-stacked">
+        <div class="filter-bar filter-bar-stacked" id="csFilters">
+          <div class="filter-row">
+            <label class="filter-label">Apellido:</label>
+            <input id="csApellido" type="text" class="filter-input" />
+            <label class="filter-label">HC:</label>
+            <input id="csHc" type="text" class="filter-input" />
+            <label class="filter-label">Curso:</label>
+            <input id="csCurso" type="text" class="filter-input" />
+            <label class="filter-label">Plan:</label>
+            <input id="csPlan" type="text" class="filter-input" />
+            <button id="csSearchBtn" class="tab-button active" type="button">Buscar</button>
+          </div>
           <div class="filter-row">
             <label class="filter-label">CSV de Buscar planes (columna HC):
               <input type="file" id="csFile" accept=".csv,text/csv" multiple />
