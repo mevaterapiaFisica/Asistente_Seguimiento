@@ -435,6 +435,7 @@ const NAV_GROUPS = {
     { id: 'tbi', label: 'TBI' },
     { id: 'expectantes', label: 'Conductas Expectantes' },
     { id: 'pacientes',  label: 'Buscar' },
+    { id: 'frecuencia-imagenes', label: 'Frecuencia de Imágenes' },
   ]},
   agendas: { tabs: [
     { id: 'agenda',        label: 'Equipos' },
@@ -450,7 +451,6 @@ const NAV_GROUPS = {
     { id: 'qa-especifico', label: 'QA Paciente Específico' },
     { id: 'buscar-planes', label: 'Buscar planes' },
     { id: 'corrimientos', label: 'Corrimientos' },
-    { id: 'frecuencia-imagenes', label: 'Frecuencia de Imágenes' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },

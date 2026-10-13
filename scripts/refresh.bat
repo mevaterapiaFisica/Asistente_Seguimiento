@@ -18,6 +18,7 @@ REM    5. Scrapear agenda equipos proximos 15 dias habiles
 REM    6. Scrapear agenda tomografos proximos 15 dias habiles
 REM    7. Importar mails de TBI (fecha tomo/inicio/equipo)
 REM    8. Importar dosis TBI desde SitraMed (dosis diaria/total)
+REM    9. Disparar reporte frecuencia de imagenes (AriaRunner en background, no espera)
 REM
 REM  CONFIGURACION REQUERIDA (editar esta seccion):
 REM ============================================================
@@ -39,11 +40,11 @@ REM ============================================================
 echo [%date% %time%] === Iniciando actualizacion Meva RT ===
 
 REM ── 1. Scraping SitraMed sin ARIA → snapshot + pacientes.json ─
-echo [%date% %time%] 1/8 Scrapeando SitraMed (sin ARIA)...
+echo [%date% %time%] 1/9 Scrapeando SitraMed (sin ARIA)...
 curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/home/refresh-no-aria"
 
 REM ── 2. Consultar ARIA ────────────────────────────────────────
-echo [%date% %time%] 2/8 Consultando ARIA (ECL-FISICA2\varian @ ARIAMEVADB-SVR)...
+echo [%date% %time%] 2/9 Consultando ARIA (ECL-FISICA2\varian @ ARIAMEVADB-SVR)...
 "%RUNNER_EXE%" --input="%DATA_DIR%\pacientes.json" --output-dir="%DATA_DIR%"
 if %ERRORLEVEL% NEQ 0 (
     echo [%date% %time%] ERROR en paso 2: AriaRunner termino con codigo %ERRORLEVEL%
@@ -51,28 +52,34 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM ── 3. Importar resultados ARIA ──────────────────────────────
-echo [%date% %time%] 3/8 Importando resultados ARIA...
+echo [%date% %time%] 3/9 Importando resultados ARIA...
 curl -s --max-time 120 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/aria/import-results"
 
 REM ── 4. Aplicar datos ARIA al snapshot (sin re-scrapear) ─────
-echo [%date% %time%] 4/8 Aplicando datos ARIA al snapshot...
+echo [%date% %time%] 4/9 Aplicando datos ARIA al snapshot...
 curl -s --max-time 120 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/home/apply-aria"
 
 REM ── 5. Agenda equipos ────────────────────────────────────────
-echo [%date% %time%] 5/8 Scrapeando agenda equipos...
+echo [%date% %time%] 5/9 Scrapeando agenda equipos...
 curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/agenda/scrape-upcoming?days=%UPCOMING_DAYS%"
 
 REM ── 6. Agenda tomografos ─────────────────────────────────────
-echo [%date% %time%] 6/8 Scrapeando agenda tomografos...
+echo [%date% %time%] 6/9 Scrapeando agenda tomografos...
 curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/tomograph-agenda/scrape-upcoming?days=%UPCOMING_DAYS%"
 
 REM ── 7. Mails TBI ──────────────────────────────────────────────
-echo [%date% %time%] 7/8 Importando mails de TBI...
+echo [%date% %time%] 7/9 Importando mails de TBI...
 curl -s --max-time 300 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/tbi-mail/refresh"
 
 REM ── 8. Dosis TBI (SitraMed) ───────────────────────────────────
-echo [%date% %time%] 8/8 Importando dosis TBI desde SitraMed...
+echo [%date% %time%] 8/9 Importando dosis TBI desde SitraMed...
 curl -s --max-time 1800 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/tbi-dose/refresh"
+
+REM ── 9. Frecuencia de imagenes (ARIA) ───────────────────────────────
+REM Async: devuelve 202 y corre AriaRunner en background (no espera). Va ultimo: comparte AriaJobState
+REM con run-query (409 si ARIA ocupado); requiere MEVA_ARIA_RUNNER_EXE en el servicio (500 si falta).
+echo [%date% %time%] 9/9 Disparando frecuencia de imagenes...
+curl -s --max-time 60 -o NUL -w "  HTTP %%{http_code}\n" -X POST "%MEVA_URL%/api/imaging-frequency/run"
 
 echo [%date% %time%] === Actualizacion completada ===
 exit /b 0
