@@ -91,12 +91,36 @@ builder.Services.AddSingleton<TbiMailClient>();
 
 var app = builder.Build();
 
+// ─── Puerto "viewer" (solo lectura, solo Frecuencia de imágenes) ────────────────
+// Segundo puerto para PCs que solo deben ver esa pestaña: acá NADA fuera de la whitelist existe
+// (404), así que no hay forma de llegar al dash ni a la API de escritura aunque conozcan las URLs.
+// El acceso por PC se controla con el firewall de Windows sobre este puerto (ver install-service.ps1).
+// MEVA_VIEWER_PORT=0 lo desactiva.
+var viewerPort = int.TryParse(Environment.GetEnvironmentVariable("MEVA_VIEWER_PORT"), out var vp) ? vp : 5063;
+if (viewerPort > 0)
+{
+    // Urls.Add reemplaza (no suma a) lo configurado por ASPNETCORE_URLS: se re-agregan primero.
+    foreach (var u in (builder.WebHost.GetSetting(WebHostDefaults.ServerUrlsKey) ?? "http://localhost:5000").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        app.Urls.Add(u);
+    app.Urls.Add($"http://0.0.0.0:{viewerPort}");
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Connection.LocalPort != viewerPort) { await next(); return; }
+        var path = ctx.Request.Path.Value ?? "";
+        if (path == "/") { ctx.Response.Redirect("/frecuencia.html"); return; }
+        var allowed = HttpMethods.IsGet(ctx.Request.Method)
+            && path is "/frecuencia.html" or "/styles.css" or "/LogoMeva.png" or "/api/imaging-frequency/viewer";
+        if (!allowed) { ctx.Response.StatusCode = StatusCodes.Status404NotFound; return; }
+        await next();
+    });
+}
+
 app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
     {
-        if (ctx.File.Name == "index.html")
+        if (ctx.File.Name is "index.html" or "frecuencia.html")
             ctx.Context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
     }
 });
@@ -894,6 +918,30 @@ app.MapGet("/api/imaging-frequency/status", (AriaJobState jobState) => Results.O
     lastError = jobState.LastError,
     completedAt = jobState.CompletedAt
 }));
+
+// Versión para el puerto viewer: sin no-monitoreados ni finalizados (el viewer no tiene los checks
+// para mostrarlos) y con los nombres de equipo — así el cliente no necesita /api/configuration.
+app.MapGet("/api/imaging-frequency/viewer", async (
+    RtConfigurationHolder holder, ImagingMonitoringExclusionStore store, CancellationToken ct) =>
+{
+    var resultFile = Directory.GetFiles(snapshotsDirectory, "imaging_frequency_*.json")
+        .OrderByDescending(f => f).FirstOrDefault();
+    if (resultFile == null)
+        return Results.NotFound(new { error = "No hay resultados todavía." });
+
+    var excluded = (await store.LoadAllAsync(ct)).Select(e => e.PatientId).ToHashSet();
+    var rows = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(resultFile, ct))?["rows"]?.AsArray()
+        .Where(r => r?["isFinished"]?.GetValue<bool>() != true
+                    && !excluded.Contains(r?["patientId"]?.GetValue<string>() ?? ""))
+        .Select(r => r!.DeepClone()).ToList() ?? [];
+
+    return Results.Ok(new
+    {
+        updatedAt = File.GetLastWriteTime(resultFile),
+        machines = holder.Configuration.Machines.Select(m => new { m.AriaName, m.DisplayName }),
+        rows,
+    });
+});
 
 app.MapGet("/api/imaging-frequency/results", async () =>
 {

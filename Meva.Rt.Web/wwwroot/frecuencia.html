@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frecuencia de Imágenes</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-content">
+        <h1>Frecuencia de Imágenes</h1>
+        <span id="fiUpdated" class="filter-label"></span>
+      </div>
+      <div class="hero-logo">
+        <img src="LogoMeva.png" alt="Mevaterapia" class="logo-institucional">
+      </div>
+    </header>
+
+    <!-- Vista de solo lectura: se sirve por el puerto "viewer" (Program.cs), sin dash ni API de escritura. -->
+    <div class="filter-bar filter-bar-stacked">
+      <div class="filter-row">
+        <span class="filter-label">Equipo:</span>
+        <div id="fiMachineFilterPills" class="pill-row"></div>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">Semáforo:</span>
+        <div id="fiSemaforoFilterPills" class="pill-row"></div>
+      </div>
+    </div>
+    <div id="fiTable" class="table-wrap table-wrap-scroll"></div>
+  </div>
+
+  <script>
+    const ROW_CLASS = { Verde: 'fi-row-verde', Amarillo: 'fi-row-amarillo', Rojo: 'fi-row-rojo' };
+    const SEMAFOROS = ['Rojo', 'Amarillo', 'Verde'];
+    const COLUMNS = [
+      ['patientId', 'HC'], ['lastName', 'Apellido'], ['firstName', 'Nombre'], ['courseId', 'Curso'],
+      ['planId', 'Plan'], ['machineAriaId', 'Equipo'], ['irradiationModality', 'Modalidad'], ['beamType', 'Haz'],
+      ['lastValidImageDate', 'Última imagen'], ['lastValidImageType', 'Tipo'],
+      ['businessDaysSinceLastImage', 'Días s/placa'], ['applicationsSinceLastImage', 'Aplic. s/placa'],
+    ];
+
+    const EMPTY = { lastValidImageDate: '—', businessDaysSinceLastImage: '—', applicationsSinceLastImage: 0 };
+    let rows = [], nameByAria = new Map();
+    const machines = new Set();            // vacío = todos
+    const semaforos = new Set(['Rojo', 'Amarillo']);
+    let sortKey = 'businessDaysSinceLastImage', sortDir = 'desc';
+
+    const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function pill(label, active, onClick) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pill-btn' + (active ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function render() {
+      const mRow = document.getElementById('fiMachineFilterPills');
+      mRow.innerHTML = '';
+      mRow.appendChild(pill('Todos', machines.size === 0, () => { machines.clear(); render(); }));
+      [...new Set(rows.map(r => r.machineAriaId).filter(Boolean))].sort().forEach(m =>
+        mRow.appendChild(pill(nameByAria.get(m) || m, machines.has(m), () => {
+          machines.has(m) ? machines.delete(m) : machines.add(m); render();
+        })));
+
+      const sRow = document.getElementById('fiSemaforoFilterPills');
+      sRow.innerHTML = '';
+      sRow.appendChild(pill('Todos', SEMAFOROS.every(o => semaforos.has(o)), () => { SEMAFOROS.forEach(o => semaforos.add(o)); render(); }));
+      SEMAFOROS.forEach(o => sRow.appendChild(pill(o, semaforos.has(o), () => {
+        semaforos.has(o) ? semaforos.delete(o) : semaforos.add(o); render();
+      })));
+
+      const shown = rows.filter(r =>
+        (machines.size === 0 || machines.has(r.machineAriaId)) && (!r.semaforo || semaforos.has(r.semaforo)));
+      const wrap = document.getElementById('fiTable');
+      if (!shown.length) { wrap.innerHTML = '<p class="detail-placeholder">Sin pacientes para mostrar.</p>'; return; }
+
+      shown.sort((a, b) => {
+        let av = a[sortKey], bv = b[sortKey];
+        if (av == null) av = typeof bv === 'number' ? -Infinity : '';
+        if (bv == null) bv = typeof av === 'number' ? -Infinity : '';
+        if (typeof av === 'string') av = av.toLowerCase();
+        if (typeof bv === 'string') bv = bv.toLowerCase();
+        const c = av < bv ? -1 : av > bv ? 1 : 0;
+        return sortDir === 'asc' ? c : -c;
+      });
+
+      wrap.innerHTML = `<table class="spec-table"><thead><tr>${COLUMNS.map(([k, l]) =>
+        `<th class="fi-sortable" data-key="${k}">${l}${sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+        <tbody>${shown.map(r => `<tr class="${ROW_CLASS[r.semaforo] ?? ''}">${COLUMNS.map(([k]) =>
+          `<td>${esc(r[k] ?? EMPTY[k] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      wrap.querySelectorAll('.fi-sortable').forEach(th => th.addEventListener('click', () => {
+        const k = th.dataset.key;
+        if (sortKey === k) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortKey = k; sortDir = k === 'businessDaysSinceLastImage' ? 'desc' : 'asc'; }
+        render();
+      }));
+    }
+
+    // ?equipo=Equipo3 (AriaName o nombre visible) deja ese equipo preseleccionado — un link por equipo.
+    const want = new URLSearchParams(location.search).get('equipo')?.toLowerCase();
+    let first = true;
+
+    async function load() {
+      try {
+        const d = await fetch('/api/imaging-frequency/viewer').then(r => r.ok ? r.json() : Promise.reject());
+        rows = d.rows ?? [];
+        nameByAria = new Map((d.machines ?? []).map(m => [m.ariaName, m.displayName]));
+        document.getElementById('fiUpdated').textContent = 'Datos de: ' + new Date(d.updatedAt).toLocaleString('es-AR');
+        if (first && want) {
+          const m = d.machines.find(m => m.ariaName.toLowerCase() === want || m.displayName.toLowerCase() === want);
+          if (m) machines.add(m.ariaName);
+        }
+        first = false;
+      } catch { rows = []; }
+      render();
+    }
+
+    load();
+    setInterval(load, 5 * 60 * 1000);
+  </script>
+</body>
+</html>

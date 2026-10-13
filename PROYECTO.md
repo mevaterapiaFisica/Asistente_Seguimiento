@@ -584,6 +584,7 @@ Polling cada 3 minutos a `GET /api/status`. Si `appVersion` cambió: banner azul
 | `MEVA_ARIA_MAP_PATH` | `config/mapEquiposAriaSitra.txt` | Mapa máquinas ARIA↔Sitra |
 | `MEVA_ARIA_MOCK_JSON` | `data/aria_plans_mock.json` | Planes mock ARIA |
 | `MEVA_ARIA_RUNNER_EXE` | — | Path a AriaRunner.exe (opcional para run-query automático) |
+| `MEVA_VIEWER_PORT` | `5063` | Puerto de solo lectura (solo `/frecuencia.html` + `/api/imaging-frequency/viewer`, resto 404). `0` lo desactiva. Abrir puerto en firewall: `scripts/viewer-firewall.ps1` |
 | `MEVA_TBI_MAIL_USER` | — | Usuario Gmail (IMAP) para ingesta de mails TBI |
 | `MEVA_TBI_MAIL_APP_PASSWORD` | — | App password Gmail |
 | `MEVA_TBI_MAIL_FOLDER` | `INBOX` | Carpeta IMAP a buscar |
