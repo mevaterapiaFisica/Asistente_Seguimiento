@@ -43,3 +43,6 @@ appsettings.Development.json
 # ── OS ───────────────────────────────────────────────────────────────────────
 Thumbs.db
 .DS_Store
+
+# Capturas/insumos de trabajo (pueden contener datos de pacientes)
+Insumos/
