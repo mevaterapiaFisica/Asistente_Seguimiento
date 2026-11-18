@@ -20,9 +20,47 @@ public sealed class AgendaExtractionResult
     public IReadOnlyList<string> ScrapingErrors { get; init; } = [];
 }
 
+/// <summary>Una combinación centro×etapa con problema. Kind: "error" (falló el scrape) o "empty" (0 pacientes, tenía antes).</summary>
+public sealed class ScrapeIssue
+{
+    public string Center { get; set; } = string.Empty;
+    public string Stage { get; set; } = string.Empty;
+    public string Kind { get; set; } = "error";
+    public string Message { get; set; } = string.Empty;
+    public int PreviousCount { get; set; }
+}
+
+public sealed class FollowUpExtractionResult
+{
+    public IReadOnlyList<ProcessPatientSnapshot> Patients { get; init; } = [];
+    /// <summary>Combinaciones centro×etapa intentadas (0 si se usó el fallback local).</summary>
+    public int TotalCombos { get; init; }
+    /// <summary>Combinaciones que fallaron (timeout, estructura cambiada, canario, etc.).</summary>
+    public IReadOnlyList<ScrapeIssue> Errors { get; init; } = [];
+    /// <summary>Combinaciones que terminaron bien pero sin pacientes.</summary>
+    public IReadOnlyList<ScrapeIssue> EmptyCombos { get; init; } = [];
+}
+
+/// <summary>Estado del último scrape de seguimiento; se persiste dentro de dashboard_bootstrap y llega al front.</summary>
+public sealed class ScrapeHealth
+{
+    /// <summary>"ok" | "degraded" (faltan combinaciones, se conservaron las anteriores) | "broken" (se descartó el scrape).</summary>
+    public string Status { get; set; } = "ok";
+    public DateTime CheckedAtUtc { get; set; }
+    public DateTime? LastOkUtc { get; set; }
+    public int TotalCombos { get; set; }
+    public int FailedCombos { get; set; }
+    public int Patients { get; set; }
+    public int PreviousPatients { get; set; }
+    public bool KeptPreviousSnapshot { get; set; }
+    public int StalePatients { get; set; }
+    public string Summary { get; set; } = string.Empty;
+    public List<ScrapeIssue> Issues { get; set; } = new();
+}
+
 public interface IFollowUpExtractor
 {
-    Task<IReadOnlyList<ProcessPatientSnapshot>> ExtractAsync(CancellationToken cancellationToken);
+    Task<FollowUpExtractionResult> ExtractAsync(CancellationToken cancellationToken);
 }
 
 public interface IAriaPlanResolver
@@ -94,6 +132,7 @@ public sealed class DashboardBootstrapData
     public List<MachineAppointmentSnapshot> AgendaItems { get; set; } = new();
     public List<ProcessPatientSnapshot> FollowUpPatients { get; set; } = new();
     public List<AriaPlanSnapshot> AriaPlans { get; set; } = new();
+    public ScrapeHealth? FollowUpHealth { get; set; }
 }
 
 public sealed class BootstrapService
@@ -109,6 +148,7 @@ public sealed class BootstrapService
     private readonly IWeeklyStatsStore _weeklyStatsStore;
     private readonly BusinessDayCalculator _bdCalc;
     private readonly IPatientProcessEventStore _eventStore;
+    private readonly ScrapeAlertService _alertService;
 
     public BootstrapService(
         IAgendaExtractor agendaExtractor,
@@ -121,7 +161,8 @@ public sealed class BootstrapService
         IStageTransitionStore transitionStore,
         IWeeklyStatsStore weeklyStatsStore,
         BusinessDayCalculator bdCalc,
-        IPatientProcessEventStore eventStore)
+        IPatientProcessEventStore eventStore,
+        ScrapeAlertService alertService)
     {
         _agendaExtractor = agendaExtractor;
         _followUpExtractor = followUpExtractor;
@@ -134,6 +175,7 @@ public sealed class BootstrapService
         _weeklyStatsStore = weeklyStatsStore;
         _bdCalc = bdCalc;
         _eventStore = eventStore;
+        _alertService = alertService;
     }
 
     public async Task<DashboardBootstrapData> BuildAsync(CancellationToken cancellationToken, bool skipAria = false)
@@ -143,7 +185,8 @@ public sealed class BootstrapService
         var followUpTask = _followUpExtractor.ExtractAsync(cancellationToken);
         await Task.WhenAll(agendaTask, followUpTask);
         var agenda = agendaTask.Result;
-        var followUp = followUpTask.Result;
+        var followUpExtraction = followUpTask.Result;
+        var followUp = followUpExtraction.Patients;
 
         var longWaitThreshold = _configurationProvider.Configuration.LongWaitThresholdDays;
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -355,19 +398,14 @@ public sealed class BootstrapService
         };
 
         var previousBootstrap = await _snapshotStore.TryLoadAsync<DashboardBootstrapData>("dashboard_bootstrap", cancellationToken);
+
+        // Guard de salud del scrape de seguimiento: el scraper puede fallar sin tirar excepción
+        // (timeouts por combinación, cambios en SitraMed, red saturada). Ver ApplyFollowUpHealth.
+        var followUpHealth = ApplyFollowUpHealth(data, followUpExtraction, previousBootstrap, stageByCode);
+        await _alertService.NotifyAsync(followUpHealth, cancellationToken);  // 1 mail/día, nunca tira excepción
+
         if (previousBootstrap is not null)
         {
-            // Guard: scrape de seguimiento puede volver vacío por falla silenciosa de red/timeout
-            // (ver PlaywrightSitraMedClient.DownloadFollowUpPagesAsync) sin tirar excepción.
-            // Si el snapshot previo tenía pacientes y este refresh trajo 0, descartar el resultado
-            // vacío en vez de pisar el dashboard — mejor data vieja que data vacía.
-            if (data.FollowUpPatients.Count == 0 && previousBootstrap.FollowUpPatients.Count > 0)
-            {
-                Console.Error.WriteLine("[BuildAsync] Seguimiento devolvió 0 pacientes con snapshot previo no vacío — se descarta el resultado y se mantiene el anterior.");
-                data.FollowUpPatients = previousBootstrap.FollowUpPatients;
-                data.StageSummary = previousBootstrap.StageSummary;
-            }
-
             // Preservar TomographyDate y ResponsibleDoctor del snapshot previo si el refresh no los encontró.
             var previousTomoDate = previousBootstrap.FollowUpPatients
                 .Where(p => p.TomographyDate.HasValue && !string.IsNullOrEmpty(p.PatientId))
@@ -520,6 +558,122 @@ public sealed class BootstrapService
         }
 
         return exactFound;
+    }
+
+    // Umbrales del guard de salud (documentados en SITRAMED_SCRAPING.md, "Salud del scrape").
+    internal const double BrokenFailedRatio = 0.5;   // >= 50% de combinaciones con error => scrape roto
+    internal const double BrokenDropRatio = 0.4;     // total cae >= 40% vs snapshot previo => scrape roto
+    internal const int MinPreviousForDrop = 20;      // con menos pacientes previos la caída % no es significativa
+
+    /// <summary>
+    /// Evalúa el scrape de seguimiento y protege el dashboard:
+    /// - "broken": se descarta el scrape y se conserva todo el snapshot previo (marcado IsStale).
+    /// - "degraded": se conservan solo los pacientes previos de las combinaciones que fallaron (IsStale).
+    /// - "ok": sin cambios.
+    /// Las combinaciones vacías (0 pacientes, tenían antes) solo se informan: pueden ser legítimas
+    /// (los pacientes avanzaron de etapa) y arrastrarlos duplicaría pacientes.
+    /// El resultado queda en data.FollowUpHealth.
+    /// </summary>
+    public static ScrapeHealth ApplyFollowUpHealth(
+        DashboardBootstrapData data,
+        FollowUpExtractionResult extraction,
+        DashboardBootstrapData? previous,
+        Dictionary<string, ProcessStageDefinition> stageByCode)
+    {
+        static string Key(string center, string stage) => $"{center.Trim()}|{stage.Trim()}";
+
+        var now = DateTime.UtcNow;
+        var previousPatients = previous?.FollowUpPatients ?? [];
+        var previousCount = previousPatients.Count;
+        var currentCount = data.FollowUpPatients.Count;
+        var previousByCombo = previousPatients.ToLookup(p => Key(p.CenterName, p.StageCode), StringComparer.OrdinalIgnoreCase);
+
+        var issues = new List<ScrapeIssue>();
+        foreach (var e in extraction.Errors)
+        {
+            e.PreviousCount = previousByCombo[Key(e.Center, e.Stage)].Count();
+            issues.Add(e);
+        }
+        foreach (var e in extraction.EmptyCombos)
+        {
+            var n = previousByCombo[Key(e.Center, e.Stage)].Count();
+            if (n == 0) continue;
+            issues.Add(new ScrapeIssue
+            {
+                Center = e.Center, Stage = e.Stage, Kind = "empty", PreviousCount = n,
+                Message = $"0 pacientes (antes {n})"
+            });
+        }
+
+        var failedRatio = extraction.TotalCombos > 0 ? (double)extraction.Errors.Count / extraction.TotalCombos : 0;
+        var dropRatio = previousCount >= MinPreviousForDrop ? 1.0 - (double)currentCount / previousCount : 0;
+        var broken = (currentCount == 0 && previousCount > 0)
+                     || failedRatio >= BrokenFailedRatio
+                     || dropRatio >= BrokenDropRatio;
+
+        var keptPrevious = false;
+        if (broken && previous is not null)
+        {
+            foreach (var p in previousPatients) p.IsStale = true;
+            data.FollowUpPatients = previousPatients;
+            data.StageSummary = previous.StageSummary;
+            keptPrevious = true;
+        }
+        else if (!broken && extraction.Errors.Count > 0)
+        {
+            var currentIds = data.FollowUpPatients
+                .Where(p => !string.IsNullOrEmpty(p.PatientId))
+                .Select(p => p.PatientId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var carried = new List<ProcessPatientSnapshot>();
+            foreach (var e in extraction.Errors)
+                foreach (var p in previousByCombo[Key(e.Center, e.Stage)])
+                {
+                    if (!string.IsNullOrEmpty(p.PatientId) && currentIds.Contains(p.PatientId)) continue;
+                    p.IsStale = true;
+                    carried.Add(p);
+                }
+            if (carried.Count > 0)
+            {
+                data.FollowUpPatients.AddRange(carried);
+                data.StageSummary = ComputeStageSummary(data.FollowUpPatients, stageByCode);
+            }
+        }
+
+        var status = broken ? "broken" : extraction.Errors.Count > 0 ? "degraded" : "ok";
+        var health = new ScrapeHealth
+        {
+            Status = status,
+            CheckedAtUtc = now,
+            LastOkUtc = status == "ok" ? now : previous?.FollowUpHealth?.LastOkUtc ?? previous?.GeneratedAtUtc,
+            TotalCombos = extraction.TotalCombos,
+            FailedCombos = extraction.Errors.Count,
+            Patients = currentCount,
+            PreviousPatients = previousCount,
+            KeptPreviousSnapshot = keptPrevious,
+            StalePatients = data.FollowUpPatients.Count(p => p.IsStale),
+            Issues = issues
+        };
+        health.Summary = status switch
+        {
+            "broken" => $"Scrape de seguimiento descartado (errores {health.FailedCombos}/{health.TotalCombos}, pacientes {currentCount} vs {previousCount} antes)"
+                        + (keptPrevious ? "; se conservan los datos anteriores." : "."),
+            "degraded" => $"Seguimiento incompleto: fallaron {health.FailedCombos} de {health.TotalCombos} búsquedas; se conservan {health.StalePatients} pacientes del snapshot anterior.",
+            _ => string.Empty
+        };
+
+        if (status != "ok")
+        {
+            Console.Error.WriteLine($"[BuildAsync] {health.Summary}");
+            var errorIssues = issues.Where(i => i.Kind == "error").ToList();
+            foreach (var i in errorIssues.Take(10))
+                Console.Error.WriteLine($"[BuildAsync]   {i.Center}/{i.Stage}: {i.Message}");
+            if (errorIssues.Count > 10)
+                Console.Error.WriteLine($"[BuildAsync]   ... y {errorIssues.Count - 10} errores más (ver dashboard_bootstrap.json → followUpHealth.issues)");
+        }
+
+        data.FollowUpHealth = health;
+        return health;
     }
 
     public static List<StageSummaryItem> ComputeStageSummary(

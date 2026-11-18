@@ -60,6 +60,8 @@ public sealed class ProcessPatientSnapshot
     public string? ExpectantUser { get; set; }
     public List<string> PatientPhones { get; set; } = new();
     public DateOnly? PvAppointmentDate { get; set; }
+    /// <summary>True si el dato viene de un snapshot anterior porque el scrape de su combinación centro×etapa falló.</summary>
+    public bool IsStale { get; set; }
 }
 
 public sealed class MachineAppointmentSnapshot
@@ -348,4 +350,24 @@ public sealed class ImagingMonitoringExclusion
     public string? PatientName { get; set; }
     public string? Reason { get; set; } // ExacTrac | Electrones | otro texto libre
     public DateTime CreatedAtUtc { get; set; }
+}
+
+public sealed class QaEquipoMensualItem
+{
+    public string Id { get; set; } = string.Empty;
+    public string Mes { get; set; } = string.Empty; // yyyy-MM
+    public string Centro { get; set; } = string.Empty;
+    public string Equipo { get; set; } = string.Empty;
+    public string Estado { get; set; } = "Sin empezar"; // Sin empezar | En proceso | Finalizado
+    public List<string> Responsables { get; set; } = [];
+    public string? FechaPropuesta { get; set; }  // yyyy-MM-dd
+    public bool HayPreventivo { get; set; }
+    public string? FechaPreventivo { get; set; } // yyyy-MM-dd
+    public string Comentarios { get; set; } = string.Empty;
+}
+
+public sealed class FisicoItem
+{
+    public string Nombre { get; set; } = string.Empty;
+    public List<string> Centros { get; set; } = []; // vacio = todos
 }

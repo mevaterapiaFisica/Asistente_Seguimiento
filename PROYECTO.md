@@ -182,6 +182,7 @@ Archivos clave en `data/`:
 - `stage_transitions.json` — transiciones de etapa registradas
 - `pedidos.json` — pestaña Pedidos (Física): CRUD manual + auto-generado
 - `qa_especifico.json` — pestaña QA Paciente Específico (Física): CRUD manual + auto-generado por plan ARIA
+- `qa_equipos_mensuales.json` / `fisicos.json` — pestaña QA Equipos mensuales (Física). Una fila por equipo y mes (se siembran solas; retención n-2..n+1). `fisicos.json` se siembra la 1ª vez y se edita a mano: `[{"Nombre":"Carla","Centros":["MEVA-Central"]}]` (Centros vacío = todos los centros; define los responsables sugeridos).
 - `feriados.txt` — una fecha por línea en formato `YYYY-MM-DD`
 
 ---
@@ -228,6 +229,7 @@ Archivos clave en `data/`:
 | Endpoint | Descripción |
 |---|---|
 | `GET/POST/PUT/DELETE /api/pedidos` | CRUD de pedidos (Física). `POST .../{id}/complete` marca completado. |
+| `GET /api/qa-equipos`, `PUT /api/qa-equipos/{id}` | QA Equipos mensuales (Física). GET devuelve `{today, items (meses n-2..n+1), fisicos}` y siembra filas faltantes (máquinas + tomógrafos + IORT en MEVA-Central). PUT edita estado/responsables/fechas/preventivo/comentarios. |
 | `GET/POST/PUT/DELETE /api/qa-especifico` | CRUD de QA paciente-específico (Física). `POST .../{id}/pin` togglea fijado. `POST` es idempotente por (`PatientId`,`PlanId`) para items `Origin=Auto`: si ya existe uno no-excluido, devuelve ese en vez de duplicar. |
 
 ### Derivación

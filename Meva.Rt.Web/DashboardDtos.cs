@@ -32,6 +32,7 @@ public static class HomeResponseMapper
             Centers = data.Centers,
             Stages = configurationModel.Stages.OrderBy(x => x.SortOrder).ToList(),
             StageSummary = data.StageSummary,
+            FollowUpHealth = data.FollowUpHealth,
             Patients = data.FollowUpPatients,
             Agenda = data.AgendaItems,
             Equipments = equipments,
@@ -64,6 +65,7 @@ public sealed class HomeResponse
     public List<RtCenter> Centers { get; set; } = new();
     public List<ProcessStageDefinition> Stages { get; set; } = new();
     public List<StageSummaryItem> StageSummary { get; set; } = new();
+    public ScrapeHealth? FollowUpHealth { get; set; }
     public List<ProcessPatientSnapshot> Patients { get; set; } = new();
     public List<MachineAppointmentSnapshot> Agenda { get; set; } = new();
     public List<EquipmentSummaryItem> Equipments { get; set; } = new();

@@ -225,7 +225,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
         _bdCalc = bdCalc;
     }
 
-    public async Task<IReadOnlyList<ProcessPatientSnapshot>> ExtractAsync(CancellationToken cancellationToken)
+    public async Task<FollowUpExtractionResult> ExtractAsync(CancellationToken cancellationToken)
     {
         var cfg = _configurationProvider.Configuration;
         var client = new PlaywrightSitraMedClient(_options);
@@ -233,18 +233,38 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
 
         if (remotePages.Count > 0)
         {
-            return ParseRemoteSnapshots(remotePages);
+            var patients = ParseRemoteSnapshots(remotePages);
+            var withPatients = patients
+                .Select(p => $"{p.CenterName.Trim()}|{p.StageCode.Trim()}")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return new FollowUpExtractionResult
+            {
+                Patients = patients,
+                TotalCombos = remotePages.Count,
+                Errors = remotePages
+                    .Where(s => s.HasScrapingError)
+                    .Select(s => new ScrapeIssue
+                    {
+                        Center = s.CenterName, Stage = s.StageCode, Kind = "error",
+                        Message = string.IsNullOrWhiteSpace(s.ScrapingError) ? "Error de scraping" : s.ScrapingError
+                    })
+                    .ToList(),
+                EmptyCombos = remotePages
+                    .Where(s => !s.HasScrapingError && !withPatients.Contains($"{s.CenterName.Trim()}|{s.StageCode.Trim()}"))
+                    .Select(s => new ScrapeIssue { Center = s.CenterName, Stage = s.StageCode, Kind = "empty" })
+                    .ToList()
+            };
         }
 
         if (!_options.UseLocalExamplesFallback)
         {
-            return Array.Empty<ProcessPatientSnapshot>();
+            return new FollowUpExtractionResult();
         }
 
         var examplesDirectory = ResolveExamplesDirectory();
         if (examplesDirectory == null || !Directory.Exists(examplesDirectory))
         {
-            return Array.Empty<ProcessPatientSnapshot>();
+            return new FollowUpExtractionResult();
         }
 
         var localSources = Directory.GetFiles(examplesDirectory, "*.html", SearchOption.TopDirectoryOnly)
@@ -255,7 +275,7 @@ public sealed class SitraMedFollowUpExtractor : IFollowUpExtractor
             })
             .ToList();
 
-        return ParseSnapshots(localSources);
+        return new FollowUpExtractionResult { Patients = ParseSnapshots(localSources) };
     }
 
     private IReadOnlyList<ProcessPatientSnapshot> ParseRemoteSnapshots(IReadOnlyList<FollowUpHtmlSnapshot> snapshots)

@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <title>MevaDash</title>
-  <link rel="stylesheet" href="styles.css?v=20260917b">
+  <link rel="stylesheet" href="styles.css?v=20261105a">
 </head>
 <body>
   <div id="feriados-alert-banner" class="alert-banner alert-banner--warn" style="display:none"></div>
+  <div id="scrape-health-banner" class="alert-banner" style="display:none"></div>
   <div id="auto-update-banner" class="alert-banner alert-banner--info" style="display:none"></div>
   <div class="page">
     <header class="hero">
@@ -252,6 +253,16 @@
           <button id="qaDeleteBtn" class="ghost-button" type="button" disabled>Eliminar</button>
         </div>
         <div id="qa-especifico-table-wrap" class="table-wrap"></div>
+      </section>
+
+      <!-- ── Física · QA Equipos mensuales ────────────────────────────── -->
+      <section id="tab-qa-equipos" class="tab-panel">
+        <div class="filter-bar">
+          <span class="filter-label">Centro:</span>
+          <div id="qaeq-center-pills" class="pill-row"></div>
+          <button id="qaeq-next-btn" class="ghost-button" type="button" style="margin-left:auto">Ver próximo mes</button>
+        </div>
+        <div id="qaeq-wrap"></div>
       </section>
 
       <!-- ── Física · Buscar planes ───────────────────────────────────── -->

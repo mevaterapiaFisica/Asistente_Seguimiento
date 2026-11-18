@@ -43,6 +43,9 @@
 }
 .alert-banner--warn { background: var(--warn-bg-soft); color: var(--orange); border-color: var(--warn-border); }
 .alert-banner--info { background: var(--info-bg); color: var(--accent); border-color: var(--info-border); }
+.alert-banner--danger { background: var(--danger-bg-strong); color: #b71c1c; border-color: var(--danger-border); }
+#scrape-health-banner details { font-weight: 400; margin-top: 4px; }
+#scrape-health-banner summary { cursor: pointer; font-weight: 600; }
 
 #auto-update-banner { align-items: center; gap: 10px; }
 #auto-update-banner span { flex: 1; }
@@ -1409,3 +1412,21 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .del-confirm-warn { margin: 0 0 16px; font-size: 13px; color: var(--red); }
 .del-confirm-btn { background: var(--red) !important; border-color: var(--red) !important; }
 .del-confirm-btn:hover:not(:disabled) { filter: brightness(0.9); }
+
+/* ── QA Equipos mensuales ── */
+.qaeq-title { margin: 18px 0 8px; font-size: 15px; color: var(--ink); }
+.qaeq-table { table-layout: fixed; width: 100%; }
+#qaeq-wrap .table-wrap { max-width: 1400px; }
+.qaeq-table td { vertical-align: middle; }
+.qaeq-resp { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px; min-height: 34px; }
+.qaeq-table tr.qaeq-group td { background: var(--panel); font-weight: 700; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.qaeq-eq { font-weight: 700; }
+.qaeq-estado { font-weight: 600; border-radius: 999px; }
+.qaeq-st-new { background: var(--neutral-bg); border-color: var(--neutral-border); }
+.qaeq-st-wip { background: var(--warn-bg); border-color: var(--warn-border); }
+.qaeq-st-done { background: var(--ok-bg); border-color: var(--ok-border); }
+.qaeq-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid; margin: 0; padding: 0 12px; font-size: 13px; }
+.qaeq-chip button { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 0; font-size: 14px; line-height: 1; }
+.qaeq-chip button:hover { color: var(--red); }
+.qaeq-add { width: 56px; }
+.qaeq-coment { width: 100%; line-height: 1.4; resize: none; overflow: hidden; font-family: inherit; }

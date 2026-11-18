@@ -39,12 +39,26 @@ public sealed class PlaywrightSitraMedClient
         var combos = centers
             .SelectMany(c => stages.Where(s => s.Enabled).Select(s => (center: c, stage: s)))
             .ToList();
+        if (combos.Count == 0)
+            return Array.Empty<FollowUpHtmlSnapshot>();
 
         await using var session = await CreateLoggedPageAsync(cancellationToken);
+        var centerGuids = await ReadFollowUpCenterGuidsAsync(session.Page);
+
+        FollowUpHtmlSnapshot Failed((RtCenter center, ProcessStageDefinition stage) combo, string error) => new()
+        {
+            CenterId = combo.center.Id,
+            CenterName = combo.center.Name,
+            StageCode = combo.stage.Code,
+            StageMicroStatus = combo.stage.SitraMicroStatus,
+            Html = string.Empty,
+            HasScrapingError = true,
+            ScrapingError = error
+        };
 
         // Todas las páginas comparten el mismo contexto (cookies de sesión) — un solo login.
         var sem = new SemaphoreSlim(MaxParallelPages);
-        var tasks = combos.Select(async combo =>
+        async Task<FollowUpHtmlSnapshot> RunCombo((RtCenter center, ProcessStageDefinition stage) combo)
         {
             await sem.WaitAsync(cancellationToken);
             var page = await session.Context.NewPageAsync();
@@ -52,7 +66,9 @@ public sealed class PlaywrightSitraMedClient
             page.SetDefaultNavigationTimeout(_options.TimeoutSeconds * 1000);
             try
             {
-                var download = await DownloadFollowUpAsync(page, combo.center, combo.stage, cancellationToken);
+                if (!centerGuids.TryGetValue(combo.center.Name.Trim(), out var centerGuid))
+                    throw new InvalidOperationException($"Centro '{combo.center.Name}' no está en el dropdown de seguimientos.");
+                var download = await DownloadFollowUpAsync(page, combo.center, combo.stage, centerGuid, cancellationToken);
                 return new FollowUpHtmlSnapshot
                 {
                     CenterId = combo.center.Id,
@@ -66,24 +82,30 @@ public sealed class PlaywrightSitraMedClient
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Console.Error.WriteLine($"[SitraMed] Seguimiento falló {combo.center.Name}/{combo.stage.Code}: {ex.Message}");
-                return new FollowUpHtmlSnapshot
-                {
-                    CenterId = combo.center.Id,
-                    CenterName = combo.center.Name,
-                    StageCode = combo.stage.Code,
-                    StageMicroStatus = combo.stage.SitraMicroStatus,
-                    Html = string.Empty,
-                    HasScrapingError = true
-                };
+                return Failed(combo, ex.Message);
             }
             finally
             {
                 await page.CloseAsync();
                 sem.Release();
             }
-        });
+        }
 
-        return await Task.WhenAll(tasks);
+        // Canario: la primera combinación corre sola (con 1 reintento). Si falla, SitraMed cambió el
+        // form/query o no hay red: abortar en segundos en vez de esperar 126 timeouts de 30 s.
+        var canary = await RunCombo(combos[0]);
+        if (canary.HasScrapingError)
+            canary = await RunCombo(combos[0]);
+        if (canary.HasScrapingError)
+        {
+            Console.Error.WriteLine($"[SitraMed] Canario de seguimiento falló ({canary.ScrapingError}) — se aborta el scrape completo.");
+            return combos
+                .Select((c, i) => i == 0 ? canary : Failed(c, $"Abortado: canario falló ({canary.ScrapingError})"))
+                .ToList();
+        }
+
+        var rest = await Task.WhenAll(combos.Skip(1).Select(RunCombo));
+        return rest.Prepend(canary).ToList();
     }
 
     public async Task<IReadOnlyDictionary<DateOnly, IReadOnlyList<AgendaHtmlSnapshot>>> DownloadAgendaPagesForDatesAsync(
@@ -332,7 +354,10 @@ public sealed class PlaywrightSitraMedClient
         }
 
         await using var page = await CreateLoggedPageAsync(cancellationToken);
-        var download = await DownloadFollowUpAsync(page.Page, center, stage, cancellationToken);
+        var centerGuids = await ReadFollowUpCenterGuidsAsync(page.Page);
+        if (!centerGuids.TryGetValue(center.Name.Trim(), out var centerGuid))
+            return new ScrapingTestResult { Success = false, Message = $"Centro '{center.Name}' no está en el dropdown de seguimientos." };
+        var download = await DownloadFollowUpAsync(page.Page, center, stage, centerGuid, cancellationToken);
         var title = await page.Page.TitleAsync();
         var finalUrl = page.Page.Url;
 
@@ -685,95 +710,51 @@ public sealed class PlaywrightSitraMedClient
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private async Task<FollowUpDownloadResult> DownloadFollowUpAsync(IPage page, RtCenter center, ProcessStageDefinition stage, CancellationToken cancellationToken)
+    private async Task<FollowUpDownloadResult> DownloadFollowUpAsync(
+        IPage page, RtCenter center, ProcessStageDefinition stage, string centerGuid, CancellationToken cancellationToken)
     {
-        await page.GotoAsync(FollowUpUrl, new PageGotoOptions
-        {
-            WaitUntil = WaitUntilState.NetworkIdle
-        });
-
         string? diagnosticDirectory = null;
+        var url = BuildFollowUpUrl(centerGuid, stage.SitraMicroStatus);
+        string? selectedCenterValue = null;
+        string? selectedMicroStatusValue = null;
 
-        await SelectFirstByLabelAsync(page, new[]
+        // Post-condición: el form debe reflejar centro y fase pedidos; si no, un reintento y luego error.
+        for (var attempt = 1; ; attempt++)
         {
-            "#filters_attention_center_id",
-            "select[name='filters[attention_center_id]']"
-        }, center.Name);
+            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+            await WaitForFollowUpResultAsync(page, cancellationToken);
+            await ValidateFollowUpTableAsync(page);
 
-        // Intenta seleccionar por value; si falla, intenta por label visible.
-        var microStatusSelectors = new[]
-        {
-            "#filters_micro_status",
-            "select[name='filters[micro_status]']"
-        };
-        var microStatusSelected = await SelectFirstSafeAsync(page, microStatusSelectors, stage.SitraMicroStatus, byValue: true);
-        if (!microStatusSelected)
-        {
-            await SelectFirstByLabelAsync(page, microStatusSelectors, stage.DisplayName);
+            selectedCenterValue = await GetSelectedOptionValueAsync(page, new[] { "#filters_attention_center_id" });
+            selectedMicroStatusValue = await GetSelectedOptionValueAsync(page, new[] { "#filters_micro_status" });
+            if (selectedCenterValue == centerGuid && selectedMicroStatusValue == stage.SitraMicroStatus) break;
+            if (attempt >= 2)
+                throw new InvalidOperationException(
+                    $"Filtros no coinciden (centro={selectedCenterValue}, fase={selectedMicroStatusValue}).");
         }
 
-        // Capturar HTML DESPUÉS de los filtros pero ANTES del botón, para que la
-        // comparación en WaitForFollowUpSearchEffectAsync refleje realmente el efecto de la búsqueda.
-        var htmlBeforeSearch = await page.ContentAsync();
+        var domRows = await TryExtractFollowUpDomAsync(page, center, stage, cancellationToken);
+        var htmlAfterSearch = await SafeGetContentAsync(page);
 
         if (_options.EnableDiagnostics)
         {
             diagnosticDirectory = EnsureDiagnosticsDirectory("followup", center.Name, stage.Code);
             await page.ScreenshotAsync(new PageScreenshotOptions
             {
-                Path = Path.Combine(diagnosticDirectory, "01_before_search.png"),
-                FullPage = true
-            });
-            await File.WriteAllTextAsync(Path.Combine(diagnosticDirectory, "01_before_search.html"), await page.ContentAsync(), cancellationToken);
-        }
-
-        var selectedCenterValue = await GetSelectedOptionValueAsync(page, new[]
-        {
-            "#filters_attention_center_id",
-            "select[name='filters[attention_center_id]']"
-        });
-        var selectedMicroStatusValue = await GetSelectedOptionValueAsync(page, new[]
-        {
-            "#filters_micro_status",
-            "select[name='filters[micro_status]']"
-        });
-
-        var searchAction = await TriggerFollowUpSearchAsync(page);
-
-        // Dar tiempo a que la navegación/AJAX dispare antes de esperar NetworkIdle.
-        // Sin este delay, WaitForLoadStateAsync puede retornar inmediatamente (si la red
-        // estaba idle en el momento del click) y ContentAsync falla cuando la nav arranca.
-        await page.WaitForTimeoutAsync(400);
-        try
-        {
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
-                new PageWaitForLoadStateOptions { Timeout = _options.TimeoutSeconds * 1000 });
-        }
-        catch (TimeoutException) { }
-
-        await WaitForFollowUpSearchEffectAsync(page, htmlBeforeSearch, cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var domRows = await TryExtractFollowUpDomAsync(page, center, stage, cancellationToken);
-        var htmlAfterSearch = await SafeGetContentAsync(page);
-
-        if (diagnosticDirectory != null)
-        {
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
                 Path = Path.Combine(diagnosticDirectory, "02_after_search.png"),
                 FullPage = true
             });
-            await File.WriteAllTextAsync(Path.Combine(diagnosticDirectory, "02_after_search.html"), htmlAfterSearch, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(diagnosticDirectory, "02_after_search.html"), htmlAfterSearch ?? string.Empty, cancellationToken);
             var metadata = JsonSerializer.Serialize(new
             {
                 TimestampUtc = DateTime.UtcNow,
                 Center = center.Name,
                 StageCode = stage.Code,
                 StageMicroStatus = stage.SitraMicroStatus,
-                SearchAction = searchAction,
+                SearchUrl = url,
                 SelectedCenterValue = selectedCenterValue,
                 SelectedMicroStatusValue = selectedMicroStatusValue,
+                DomRows = domRows.Count,
                 FinalUrl = page.Url,
                 PageTitle = await page.TitleAsync()
             }, new JsonSerializerOptions { WriteIndented = true });
@@ -783,7 +764,7 @@ public sealed class PlaywrightSitraMedClient
         return new FollowUpDownloadResult
         {
             Html = htmlAfterSearch ?? string.Empty,
-            SearchAction = searchAction,
+            SearchAction = url,
             CenterValueSelected = selectedCenterValue,
             MicroStatusValueSelected = selectedMicroStatusValue,
             DiagnosticDirectory = diagnosticDirectory,
@@ -1492,32 +1473,6 @@ public sealed class PlaywrightSitraMedClient
         }
     }
 
-    private static async Task<bool> SelectFirstSafeAsync(IPage page, IEnumerable<string> selectors, string value, bool byValue)
-    {
-        foreach (var selector in selectors)
-        {
-            var locator = page.Locator(selector);
-            if (await locator.CountAsync() == 0)
-            {
-                continue;
-            }
-
-            try
-            {
-                var opt = byValue
-                    ? new SelectOptionValue { Value = value }
-                    : new SelectOptionValue { Label = value };
-                await locator.First.SelectOptionAsync(opt);
-                return true;
-            }
-            catch
-            {
-            }
-        }
-
-        return false;
-    }
-
     private static async Task<bool> SelectFirstByLabelAsync(IPage page, IEnumerable<string> selectors, string label)
     {
         foreach (var selector in selectors)
@@ -1559,158 +1514,74 @@ public sealed class PlaywrightSitraMedClient
         }
     }
 
-    private static async Task<string> TriggerFollowUpSearchAsync(IPage page)
+    // ponytail: SitraMed pasó /follow_up_search a LiveView: el resultado llega por websocket
+    // detrás de un spinner (.loader-container), no en el HTML de la navegación. Esperar "tabla con
+    // filas" o "sin loader + LiveView conectado, estable" (resultado vacío: no hay tabla ni mensaje).
+    // Si el loader no termina (p.ej. faltan claves en el query) es un error, no "0 pacientes".
+    private async Task WaitForFollowUpResultAsync(IPage page, CancellationToken cancellationToken)
     {
-        // 1) Esperar a que al menos un botón de búsqueda esté presente en el DOM.
-        var candidateSelectors = new[]
-        {
-            "button:has-text('Buscar seguimientos')",
-            "button:has-text('Buscar Seguimiento')",
-            "button.button.is-primary[type='submit']",
-            "button.button.is-info[type='submit']",
-            "button.button.is-link[type='submit']",
-            "button.button.is-secondary[type='submit']",
-            "button.button[type='submit']",
-            "button[type='submit']",
-            "input[type='submit']",
-            "button:has-text('Buscar')",
-            "#patient_search_button",
-            "a:has-text('Buscar seguimientos')",
-            "a:has-text('Buscar')"
-        };
+        var deadline = Environment.TickCount64 + _options.TimeoutSeconds * 1000L;
+        var quiet = 0;
 
-        foreach (var sel in candidateSelectors)
-        {
-            try
-            {
-                await page.Locator(sel).First.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = 2000
-                });
-                break;
-            }
-            catch { }
-        }
-
-        // 2) Intentar click real; si falla por interactividad, dispatch event.
-        var clicked = await ClickFirstSafeAsync(page, candidateSelectors);
-        if (clicked.Success)
-        {
-            return clicked.Selector;
-        }
-
-        // 3) Fallback final: submit del formulario contenedor.
-        await page.EvaluateAsync(
-            """
-            () => {
-              const select = document.querySelector("#filters_micro_status") || document.querySelector("select[name='filters[micro_status]']");
-              const form = select?.closest("form") ?? document.querySelector("form");
-              if (form) {
-                if (typeof form.requestSubmit === "function") {
-                  form.requestSubmit();
-                } else {
-                  form.submit();
-                }
-              }
-            }
-            """);
-        return "js_form_submit";
-    }
-
-    private static async Task<(bool Success, string Selector)> ClickFirstSafeAsync(IPage page, IEnumerable<string> selectors)
-    {
-        foreach (var selector in selectors)
-        {
-            var locator = page.Locator(selector);
-            if (await locator.CountAsync() == 0)
-            {
-                continue;
-            }
-
-            try
-            {
-                await locator.First.ClickAsync(new LocatorClickOptions { Timeout = 3000 });
-                return (true, selector);
-            }
-            catch
-            {
-                try
-                {
-                    await locator.First.DispatchEventAsync("click");
-                    return (true, selector);
-                }
-                catch
-                {
-                }
-            }
-        }
-
-        return (false, string.Empty);
-    }
-
-    private async Task WaitForFollowUpSearchEffectAsync(IPage page, string htmlBeforeSearch, CancellationToken cancellationToken)
-    {
-        var maxMs = _options.TimeoutSeconds * 1000;
-        var started = Environment.TickCount64;
-
-        while (Environment.TickCount64 - started < maxMs)
+        while (Environment.TickCount64 < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            // Esperar a que el DOM esté disponible antes de leerlo.
             try
             {
-                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded,
-                    new PageWaitForLoadStateOptions { Timeout = 5000 });
-            }
-            catch { }
+                var loaders = await page.Locator(".loader-container").CountAsync();
+                var rows = await page.Locator("#follow-up-tables > tbody > tr").CountAsync();
+                var connected = await page.Locator(".phx-connected").CountAsync();
 
-            // Tabla de resultados — varios IDs/clases posibles en distintos tenants de SitraMed.
-            var rowsCount = await page.Locator(
-                "#follow-up-tables tbody tr, " +
-                "table.follow-up-search tbody tr, " +
-                "#follow_up_tables tbody tr, " +
-                "table.table tbody tr").CountAsync();
-            if (rowsCount > 0)
-            {
-                return;
+                if (loaders == 0 && rows > 0) return;
+                quiet = loaders == 0 && connected > 0 ? quiet + 1 : 0;
+                if (quiet >= 3) return;
             }
-
-            // Mensaje de cero resultados — distintas redacciones.
-            var noResultsCount = await page.Locator(
-                "text=No se encontraron, " +
-                "text=sin resultados, " +
-                "text=no hay pacientes, " +
-                "text=No hay").CountAsync();
-            if (noResultsCount > 0)
-            {
-                return;
-            }
-
-            // Si el HTML cambió respecto al baseline post-filtros, algo sucedió.
-            // ContentAsync puede fallar si la página está navegando; en ese caso
-            // reintentamos en el próximo tick.
-            var currentHtml = await SafeGetContentAsync(page);
-            if (currentHtml != null && !string.Equals(currentHtml, htmlBeforeSearch, StringComparison.Ordinal))
-            {
-                // Esperar NetworkIdle para que el contenido se estabilice.
-                try
-                {
-                    await page.WaitForLoadStateAsync(LoadState.NetworkIdle,
-                        new PageWaitForLoadStateOptions { Timeout = 8000 });
-                }
-                catch { }
-                return;
-            }
+            catch (PlaywrightException) { quiet = 0; }
 
             await page.WaitForTimeoutAsync(250);
         }
 
-        // Timeout expirado sin detectar cambio en el HTML. Continúa con el HTML actual
-        // en lugar de lanzar — el extractor downstream manejará HTML vacío o parcial.
-        Console.Error.WriteLine("[SitraMed] WaitForFollowUpSearchEffect: timeout, continuando con HTML actual.");
+        throw new TimeoutException("El loader de seguimientos no terminó (¿cambió el query o el form?).");
     }
+
+    // Si hay tabla, debe tener las columnas que el parser necesita; si SitraMed la cambia, mejor
+    // un error explícito que filas mal mapeadas (o 0 filas) sin aviso.
+    private static async Task ValidateFollowUpTableAsync(IPage page)
+    {
+        var problem = await page.EvaluateAsync<string?>(
+            """
+            () => {
+                const t = document.querySelector('#follow-up-tables');
+                if (!t) return null;
+                const heads = [...t.querySelectorAll(':scope > thead th')].map(h => h.innerText.trim());
+                for (const h of ['Nombre y Apellido', 'Nro. HC'])
+                    if (!heads.includes(h)) return `falta la columna "${h}"`;
+                const tr = t.querySelector(':scope > tbody > tr');
+                if (tr && tr.querySelectorAll(':scope > td').length < 20) return 'las filas tienen menos de 20 celdas';
+                return null;
+            }
+            """);
+        if (problem != null)
+            throw new InvalidOperationException($"La tabla de seguimientos cambió de estructura: {problem}.");
+    }
+
+    // ponytail: una sola lectura por corrida del dropdown de centros -> nombre => GUID.
+    private static async Task<Dictionary<string, string>> ReadFollowUpCenterGuidsAsync(IPage page)
+    {
+        await page.GotoAsync(FollowUpUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.Locator("#filters_attention_center_id").First.WaitForAsync(
+            new LocatorWaitForOptions { State = WaitForSelectorState.Attached });
+        var pairs = await page.EvaluateAsync<string[][]>(
+            "() => [...document.querySelectorAll('#filters_attention_center_id option')]" +
+            ".filter(o => o.value).map(o => [o.text.trim(), o.value])");
+        return pairs.ToDictionary(x => x[0], x => x[1], StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string BuildFollowUpUrl(string centerGuid, string microStatus) =>
+        $"{FollowUpUrl}?filters[attention_center_id]={Uri.EscapeDataString(centerGuid)}" +
+        $"&filters[micro_status]={Uri.EscapeDataString(microStatus)}" +
+        "&filters[mode]=search&filters[report_type]=by_status" +
+        "&filters[from_date]=&filters[until_date]=&filters[medical_history_id]=&filters[treatment_type]=";
 
     private static async Task<string?> SafeGetContentAsync(IPage page)
     {
@@ -1977,6 +1848,7 @@ public sealed class FollowUpHtmlSnapshot
     public string Html { get; set; } = string.Empty;
     public List<FollowUpPatientDomRow>? DomRows { get; set; }
     public bool HasScrapingError { get; set; }
+    public string? ScrapingError { get; set; }
 }
 
 public sealed class FollowUpPatientDomRow

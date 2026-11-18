@@ -16,6 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 var snapshotsDirectory = Environment.GetEnvironmentVariable("MEVA_DATA_DIR")
     ?? Path.Combine(builder.Environment.ContentRootPath, "data");
+Console.SetError(new FileTeeWriter(Console.Error, Path.Combine(snapshotsDirectory, "logs")));
 var configurationHolder = new RtConfigurationHolder(snapshotsDirectory);
 
 var sitraMedOptions = new SitraMedRuntimeOptions
@@ -52,6 +53,16 @@ var tbiMailOptions = new TbiMailOptions
     DiagnosticsPath = Path.Combine(snapshotsDirectory, "tbi_mail_unparsed.txt")
 };
 
+var alertMailOptions = new AlertMailOptions
+{
+    // Por defecto envía desde la casilla TBI (mismas credenciales); MEVA_ALERT_MAIL_* permite otra cuenta.
+    User = Environment.GetEnvironmentVariable("MEVA_ALERT_MAIL_USER") ?? tbiMailOptions.User,
+    AppPassword = Environment.GetEnvironmentVariable("MEVA_ALERT_MAIL_APP_PASSWORD") ?? tbiMailOptions.AppPassword,
+    To = Environment.GetEnvironmentVariable("MEVA_ALERT_MAIL_TO") ?? "pablo.aberbuj@mevaterapia.com.ar",
+    SmtpHost = Environment.GetEnvironmentVariable("MEVA_ALERT_SMTP_HOST") ?? "smtp.gmail.com",
+    SmtpPort = int.TryParse(Environment.GetEnvironmentVariable("MEVA_ALERT_SMTP_PORT"), out var alertSmtpPort) ? alertSmtpPort : 465
+};
+
 // Business day calculator — looks for feriados.txt next to the data directory
 var feriadosPath = Environment.GetEnvironmentVariable("MEVA_FERIADOS_PATH")
     ?? Path.Combine(builder.Environment.ContentRootPath, "data", "feriados.txt");
@@ -83,11 +94,15 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, businessDayCalc));
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new QaEquiposMensualesStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new ImagingMonitoringExclusionStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiMailStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiDoseStore(snapshotsDirectory));
 builder.Services.AddSingleton(tbiMailOptions);
 builder.Services.AddSingleton<TbiMailClient>();
+builder.Services.AddSingleton(alertMailOptions);
+builder.Services.AddSingleton<IAlertMailSender, AlertMailClient>();
+builder.Services.AddSingleton<ScrapeAlertService>();
 
 var app = builder.Build();
 
@@ -330,6 +345,25 @@ app.MapPost("/api/scraping/test-tomograph", async Task<IResult> (
     catch (Exception ex)
     {
         return TypedResults.Ok(new ScrapingTestResult { Success = false, Message = ex.Message });
+    }
+});
+
+// Envía un mail de prueba (ignora el límite diario) para validar credenciales SMTP/destinatario.
+app.MapPost("/api/scraping/test-alert-mail", async Task<IResult> (
+        IAlertMailSender sender,
+        AlertMailOptions options,
+        CancellationToken cancellationToken) =>
+{
+    if (!sender.IsConfigured)
+        return TypedResults.BadRequest(new { error = "Faltan credenciales: MEVA_TBI_MAIL_USER/MEVA_TBI_MAIL_APP_PASSWORD (o MEVA_ALERT_MAIL_*)." });
+    try
+    {
+        await sender.SendAsync("[MevaRT] Prueba de alerta", "Mail de prueba del sistema de alertas de scraping de Meva RT.", cancellationToken);
+        return TypedResults.Ok(new { sent = true, to = options.To, from = options.User, smtp = $"{options.SmtpHost}:{options.SmtpPort}" });
+    }
+    catch (Exception ex)
+    {
+        return TypedResults.Ok(new { sent = false, error = ex.Message });
     }
 });
 
@@ -1517,6 +1551,35 @@ app.MapDelete("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, Ca
 {
     await pedidoStore.DeleteByIdAsync(id, ct);
     return TypedResults.NoContent();
+});
+
+// ─── QA Equipos mensuales ──────────────────────────────────────────────────
+
+// Devuelve filas de n-2..n+1 (siembra una por equipo si faltan); el front filtra por mes.
+app.MapGet("/api/qa-equipos", async (QaEquiposMensualesStore store, RtConfigurationHolder holder, CancellationToken ct) =>
+{
+    var today = DateTime.Today;
+    var cfg = holder.Configuration;
+    // Equipo = DisplayName sin prefijo "Centro - "
+    static string Short(string display, string centro) =>
+        display.StartsWith(centro + " - ", StringComparison.OrdinalIgnoreCase) ? display[(centro.Length + 3)..] : display;
+    var equipos = cfg.Machines.Select(m => (m.CenterName, Short(m.DisplayName, m.CenterName)))
+        .Concat(cfg.Tomographs.Select(t => (t.CenterName, Short(t.DisplayName, t.CenterName))))
+        .Append((cfg.Centers.FirstOrDefault(c => c.Name.Equals("MEVA-Central", StringComparison.OrdinalIgnoreCase))?.Name ?? "MEVA-Central", "IORT"))
+        .ToList();
+    var meses = Enumerable.Range(-2, 4).Select(i => today.AddMonths(i).ToString("yyyy-MM")).ToList();
+    return TypedResults.Ok(new
+    {
+        today = today.ToString("yyyy-MM"),
+        items = await store.GetMonthsAsync(meses, equipos, today, ct),
+        fisicos = await store.LoadFisicosAsync(ct),
+    });
+});
+
+app.MapPut("/api/qa-equipos/{id}", async (string id, QaEquipoMensualItem req, QaEquiposMensualesStore store, CancellationToken ct) =>
+{
+    var updated = await store.UpdateAsync(id, req, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
 });
 
 // ─── QA Paciente Específico ────────────────────────────────────────────────

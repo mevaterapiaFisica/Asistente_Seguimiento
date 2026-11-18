@@ -93,21 +93,74 @@ Si tras el submit la URL sigue siendo `/session/new`, lanza `InvalidOperationExc
 https://sitramed.mevaterapia.com.ar/follow_up_search
 ```
 
-Para cada combinación `(centro, etapa)`:
-1. Navega a la URL
-2. Selecciona centro en `#filters_attention_center_id`
-3. Selecciona micro-status por **value** (`stage.SitraMicroStatus`); si falla, por label visible
-4. Hace click en el botón "Buscar seguimientos" (prueba 13 selectores en cascada)
-5. Fallback si click falla: `form.requestSubmit()` vía JS
+**Desde 2026-11 el form es Phoenix LiveView** y el resultado carga de forma asíncrona (websocket) detrás
+de un spinner `.loader-container`. El scraper ya no llena el form: navega directo a la URL de búsqueda.
+
+Una vez por corrida (`ReadFollowUpCenterGuidsAsync`) se lee el dropdown `#filters_attention_center_id`
+→ diccionario nombre-de-centro → GUID. Después, para cada `(centro, etapa)` (`BuildFollowUpUrl`):
+
+```
+/follow_up_search?filters[attention_center_id]=<GUID>&filters[micro_status]=<SitraMicroStatus>
+ &filters[mode]=search&filters[report_type]=by_status
+ &filters[from_date]=&filters[until_date]=&filters[medical_history_id]=&filters[treatment_type]=
+```
+
+**Todas las claves son obligatorias.** Sin `report_type`, o sin las 4 claves vacías, el LiveView no
+termina y el loader queda para siempre (probado). El `micro_status=` suelto que agrega el sitio no hace falta.
 
 ### Espera del resultado
 
-`WaitForFollowUpSearchEffectAsync` — bucle activo mientras no se detecte:
-- Filas en `#follow-up-tables tbody tr` (o variantes)
-- Mensaje de cero resultados ("No se encontraron", "sin resultados", "no hay pacientes")
-- Cambio en el HTML respecto al baseline pre-búsqueda
+`WaitForFollowUpResultAsync` (poll 250 ms):
+- Termina si no hay `.loader-container` y hay filas en `#follow-up-tables > tbody > tr`.
+- Resultado vacío (no hay tabla ni mensaje): termina tras 3 chequeos seguidos sin loader y con `.phx-connected`.
+- Si pasa `MEVA_SITRAMED_TIMEOUT_SECONDS` (default 30s) sin terminar → `TimeoutException` → `HasScrapingError`
+  (antes seguía con HTML vacío = "0 pacientes" silencioso).
 
-Timeout configurable via `MEVA_SITRAMED_TIMEOUT_SECONDS` (default 30s). Al timeout, continúa en lugar de lanzar — el extractor downstream maneja HTML vacío.
+Post-condición (`DownloadFollowUpAsync`): tras cargar se relee `#filters_attention_center_id` y
+`#filters_micro_status`; si no coinciden con lo pedido se reintenta una vez y luego se lanza error.
+
+> **Bug 2026-11-05 (scraping de seguimiento devolvía 0 filas en todo):** la versión vieja seleccionaba
+> centro/fase, hacía click y esperaba con `text=No hay` (que siempre matchea el "No hay resultados" del buscador
+> de pacientes) o "el HTML cambió" (el spinner ya lo cambia). Capturaba la página con el spinner (~54 KB, sin tabla)
+> y caía al fallback regex con 0 filas, sin error.
+
+### Salud del scrape (cómo se evita fallar en silencio)
+
+El scrape de seguimiento nunca debe pisar datos sanos con datos vacíos o parciales sin avisar. Capas:
+
+1. **Canario** (`DownloadFollowUpPagesAsync`): la primera combinación corre sola, con 1 reintento. Si falla
+   (form/query cambiado, red caída) se aborta todo en segundos y cada combinación queda `HasScrapingError`.
+2. **Validación de estructura** (`ValidateFollowUpTableAsync`): si hay tabla, debe tener las columnas
+   "Nombre y Apellido" y "Nro. HC" y filas de ≥20 celdas; si no, error explícito en esa combinación.
+3. **Errores con mensaje**: `FollowUpHtmlSnapshot.ScrapingError` → `FollowUpExtractionResult.Errors/EmptyCombos`.
+4. **`BootstrapService.ApplyFollowUpHealth`** decide el estado (queda en `dashboard_bootstrap.json` → `FollowUpHealth`,
+   llega al front en `/api/home` como `followUpHealth`):
+   - `broken`: ≥50 % de combinaciones con error, **o** 0 pacientes con previo > 0, **o** el total cae ≥40 % vs el
+     snapshot previo (si el previo tenía ≥20). Se descarta el scrape y se conserva todo el snapshot previo (`IsStale=true`).
+   - `degraded`: hay combinaciones con error pero menos del umbral. Se conservan solo los pacientes previos de esas
+     combinaciones (`IsStale=true`, sin duplicar pacientes que ya aparecen en otra etapa).
+   - `ok`: sin errores. Las combinaciones vacías que antes tenían pacientes se listan como info (`kind: "empty"`) pero
+     **no** cambian el estado ni arrastran pacientes: pueden ser legítimas (avanzaron de etapa).
+   - Umbrales en constantes `BrokenFailedRatio`, `BrokenDropRatio`, `MinPreviousForDrop` (Contracts.cs).
+5. **Banner** en el dashboard (`#scrape-health-banner`, `renderScrapeHealth` en app.js): naranja = degraded, rojo = broken,
+   con detalle por combinación y la fecha del último scrape correcto.
+6. **Log a archivo**: `Program.cs` duplica `Console.Error` en `MEVA_DATA_DIR/logs/meva_yyyyMMdd.log` (`FileTeeWriter`,
+   14 días de retención). Todos los `[SitraMed]` / `[BuildAsync]` quedan ahí aunque corra como servicio.
+
+7. **Mail de alerta** (`ScrapeAlertService`, llamado desde `BuildAsync` tras `ApplyFollowUpHealth`): si el estado es
+   `degraded` o `broken` envía un mail a `pablo.aberbuj@mevaterapia.com.ar` con resumen, último OK y errores agrupados.
+   **Máximo uno por día calendario** (hora local), persistido en `MEVA_DATA_DIR/alert_mail_state.json`; si sigue roto
+   al día siguiente llega otro recordatorio. El estado solo se marca como enviado si el SMTP respondió OK (si falla,
+   reintenta en el próximo refresh); un fallo de mail nunca rompe el refresh. Si faltan credenciales queda un
+   `[Alert] ... NO se pudo enviar mail` en el log.
+   - SMTP: `AlertMailClient` (Infrastructure.Mail). Por defecto envía **desde la casilla TBI** (`MEVA_TBI_MAIL_USER` /
+     `MEVA_TBI_MAIL_APP_PASSWORD`, ya en el registro del servicio) vía `smtp.gmail.com:465`.
+   - Overrides opcionales: `MEVA_ALERT_MAIL_TO`, `MEVA_ALERT_MAIL_USER`, `MEVA_ALERT_MAIL_APP_PASSWORD`,
+     `MEVA_ALERT_SMTP_HOST`, `MEVA_ALERT_SMTP_PORT`.
+   - `POST /api/scraping/test-alert-mail` manda un mail de prueba (ignora el límite diario) para validar credenciales.
+
+> Nota: `generatedAtUtc` se actualiza aunque el scrape esté `broken` (se conserva data vieja con hora nueva). La fuente
+> de verdad de frescura es `followUpHealth.lastOkUtc`.
 
 ### Datos extraídos por fila de follow-up (DOM parsing)
 
@@ -428,14 +481,13 @@ BootstrapService.BuildAsync()
   └─ SitraMedFollowUpExtractor.ExtractAsync()
        └─ PlaywrightSitraMedClient.DownloadFollowUpPagesAsync(centers, stages)
             ├─ CreateLoggedPageAsync()  ← 1 login
+            ├─ ReadFollowUpCenterGuidsAsync()  ← 1 lectura del dropdown (nombre → GUID)
             ├─ SemaphoreSlim(2) + Task.WhenAll sobre N combinaciones centro×etapa
             │    cada tarea:
             │    ├─ DownloadFollowUpAsync()
-            │    │    ├─ GotoAsync(follow_up_search)
-            │    │    ├─ SelectFirstByLabelAsync(centro)
-            │    │    ├─ SelectFirstSafeAsync(micro_status, byValue)
-            │    │    ├─ TriggerFollowUpSearchAsync()
-            │    │    ├─ WaitForFollowUpSearchEffectAsync()
+            │    │    ├─ GotoAsync(BuildFollowUpUrl(guid, micro_status))
+            │    │    ├─ WaitForFollowUpResultAsync()  (loader/filas, timeout = error)
+            │    │    ├─ post-condición: centro/fase del form == lo pedido (1 reintento)
             │    │    └─ TryExtractFollowUpDomAsync()  → List<FollowUpPatientDomRow>
             │    └─ devuelve FollowUpHtmlSnapshot { Html, DomRows }
             └─ retorna IReadOnlyList<FollowUpHtmlSnapshot>

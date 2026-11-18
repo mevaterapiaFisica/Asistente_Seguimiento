@@ -451,6 +451,7 @@ const NAV_GROUPS = {
     { id: 'qa-especifico', label: 'QA Paciente Específico' },
     { id: 'buscar-planes', label: 'Buscar planes' },
     { id: 'corrimientos', label: 'Corrimientos' },
+    { id: 'qa-equipos', label: 'QA Equipos mensuales' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -520,6 +521,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'qa-especifico') loadQaEspecificoTab();
   if (targetTab === 'buscar-planes') loadBuscarPlanesTab();
   if (targetTab === 'corrimientos') loadCorrimientosTab();
+  if (targetTab === 'qa-equipos') loadQaEquiposTab();
   if (targetTab === 'frecuencia-imagenes') loadFrecuenciaImagenesTab();
   return true;
 }
@@ -690,8 +692,31 @@ async function loadHome() {
   renderHome(await resp.json());
 }
 
+// Banner de salud del scrape de seguimiento (ok = oculto; degraded = naranja; broken = rojo).
+function renderScrapeHealth(h) {
+  const b = document.getElementById('scrape-health-banner');
+  if (!b) return;
+  if (!h || h.status === 'ok') { b.style.display = 'none'; return; }
+  const broken = h.status === 'broken';
+  const fmt = iso => iso ? new Date(iso).toLocaleString() : 'desconocido';
+  const errs = (h.issues ?? []).filter(i => i.kind === 'error');
+  const empties = (h.issues ?? []).filter(i => i.kind === 'empty');
+  const li = i => `<li>${esc(i.center)} / ${esc(i.stage)}: ${esc(i.message)}</li>`;
+  const list = (arr, max = 15) => arr.slice(0, max).map(li).join('') +
+    (arr.length > max ? `<li>… y ${arr.length - max} más</li>` : '');
+  b.className = `alert-banner ${broken ? 'alert-banner--danger' : 'alert-banner--warn'}`;
+  b.innerHTML =
+    `<div>${broken ? '⛔' : '⚠'} ${esc(h.summary)} Último scrape correcto: ${esc(fmt(h.lastOkUtc))}.</div>` +
+    (errs.length || empties.length
+      ? `<details><summary>Detalle (${errs.length} con error, ${empties.length} vacías que antes tenían pacientes)</summary>` +
+        `<ul>${list(errs)}${list(empties)}</ul></details>`
+      : '');
+  b.style.display = 'block';
+}
+
 function renderHome(data) {
   state.homeData = data;
+  renderScrapeHealth(data.followUpHealth);
   document.getElementById('generatedAt').textContent =
     new Date(data.generatedAtUtc).toLocaleString();
   buildFollowUpFilters(data);
@@ -3736,7 +3761,7 @@ ${atendidos.length ? `<h2>Pacientes ya atendidos al momento del calculo</h2>
 }).join('')}</tbody></table>` : ''}
 <h2>Tabla de derivaciones</h2>
 <table><thead><tr><th>Paciente</th><th>HC</th><th>Tecnica</th><th>Turno(s) / Etapa</th><th>Destino</th><th>Observaciones</th></tr></thead>
-<tbody>${tableRows||'<tr><td colspan="6" style="color:#999;text-align:center">Sin pacientes</td></tr>'}</tbody></table>
+<tbody>${tableRows||'<tr><td colspan="5" style="color:#999;text-align:center">Sin pacientes</td></tr>'}</tbody></table>
 <h2>Carga por equipo destino</h2>
 <table style="width:auto"><thead><tr><th>Equipo destino</th><th>Pacientes derivados</th></tr></thead>
 <tbody>${summaryRows}</tbody></table>
@@ -4911,6 +4936,7 @@ async function computeAutoPedidos() {
   for (const p of candidates) {
     if (_pedidoIsPastDate(_pedidoInicioFecha(p))) continue;
     if (state.pedidos.dismissedIds.has(p.patientId)) continue;
+    if (state.pedidos.items.some(i => i.origin === 'Auto' && i.type === 'Paciente' && i.completed && i.patientId === p.patientId)) continue;
     const existing = _findExistingPedidoForPatient(p);
     if (existing) {
       const info = _pedidoInicioInfo(p);
@@ -5147,9 +5173,17 @@ function _wirePedidosActionBar() {
     const id = state.pedidos.selectedId;
     if (!id) return;
     if (!confirm('¿Eliminar este pedido?')) return;
-    _dismissIfAutoPedido(state.pedidos.items.find(p => p.id === id));
-    await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
-    state.pedidos.items = state.pedidos.items.filter(p => p.id !== id);
+    const item = state.pedidos.items.find(p => p.id === id);
+    _dismissIfAutoPedido(item);
+    // Auto de paciente: se marca completado (no se borra) para que el descarte persista en server
+    // y no se recree desde otro navegador/origen (localStorage es por origen).
+    if (item?.origin === 'Auto' && item.type === 'Paciente') {
+      const resp = await fetch(`/api/pedidos/${id}/complete`, { method: 'POST' });
+      if (resp.ok) item.completed = true;
+    } else {
+      await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
+      state.pedidos.items = state.pedidos.items.filter(p => p.id !== id);
+    }
     state.pedidos.selectedId = null;
     renderPedidos();
   });
@@ -6156,7 +6190,7 @@ function renderQaEspecifico() {
       <th>Etapa de seguimiento</th>
       <th>Observaciones</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes pendientes de QA</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="5" class="muted-italic" style="text-align:center;padding:1rem">Sin pacientes pendientes de QA</td></tr>'}</tbody>
   </table>`;
 
   wrap.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -7855,6 +7889,123 @@ wireTabs();
 wireActions();
 loadAvailableDates();
 loadAvailableTomographDates();
+// ─── QA Equipos mensuales (Física) ─────────────────────────────────────────────
+
+const QAEQ_ESTADOS = ['Sin empezar', 'En proceso', 'Finalizado'];
+const QAEQ_ESTADO_CLS = { 'Sin empezar': 'qaeq-st-new', 'En proceso': 'qaeq-st-wip', 'Finalizado': 'qaeq-st-done' };
+const _qaeq = { loaded: false, today: '', items: [], fisicos: [], centers: new Set(['MEVA-Central', 'RT MEDRANO']), showNext: false, wired: false };
+
+function _qaeqMes(offset) {
+  const [y, m] = _qaeq.today.split('-').map(Number);
+  const d = new Date(y, m - 1 + offset, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function _qaeqMesLabel(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+async function loadQaEquiposTab() {
+  if (!_qaeq.wired) {
+    _qaeq.wired = true;
+    document.getElementById('qaeq-next-btn').addEventListener('click', () => { _qaeq.showNext = !_qaeq.showNext; renderQaEquipos(); });
+    const wrap = document.getElementById('qaeq-wrap');
+    wrap.addEventListener('change', _qaeqOnChange);
+    wrap.addEventListener('input', e => { if (e.target.matches('.qaeq-coment')) _qaeqGrow(e.target); });
+    wrap.addEventListener('click', e => {
+      const x = e.target.closest('[data-rm]');
+      if (x) _qaeqSave(x.dataset.id, it => { it.responsables = it.responsables.filter(r => r !== x.dataset.rm); }, true);
+    });
+  }
+  try {
+    const resp = await fetch('/api/qa-equipos');
+    if (resp.ok) {
+      const d = await resp.json();
+      Object.assign(_qaeq, { today: d.today, items: d.items, fisicos: d.fisicos, loaded: true });
+    }
+  } catch {}
+  if (_qaeq.loaded) renderQaEquipos();
+}
+
+function _qaeqSave(id, mutate, rerender) {
+  const it = _qaeq.items.find(x => x.id === id);
+  if (!it) return;
+  mutate(it);
+  if (rerender) renderQaEquipos();
+  fetch(`/api/qa-equipos/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it)
+  }).catch(() => {});
+}
+
+function _qaeqOnChange(e) {
+  const el = e.target;
+  const id = el.dataset.id, f = el.dataset.f;
+  if (!id || !f) return;
+  if (f === 'estado') _qaeqSave(id, it => { it.estado = el.value; }, true);
+  else if (f === 'resp') { if (el.value) _qaeqSave(id, it => { if (!it.responsables.includes(el.value)) it.responsables.push(el.value); }, true); }
+  else if (f === 'prev') _qaeqSave(id, it => { it.hayPreventivo = el.checked; }, true);
+  else if (f === 'coment') _qaeqSave(id, it => { it.comentarios = el.value; });
+}
+
+function _qaeqGrow(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; }
+
+// color estable por nombre (hue por hash)
+function _qaeqChipStyle(name) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `background:hsl(${h} 70% 90%);border-color:hsl(${h} 45% 65%);color:hsl(${h} 60% 26%)`;
+}
+
+function _qaeqRows(rows) {
+  if (!rows.length) return '<tr><td colspan="5" class="muted-italic" style="text-align:center;padding:1rem">Sin tareas</td></tr>';
+  const centros = [...new Set(rows.map(r => r.centro))].sort();
+  return centros.map(c => {
+    const head = `<tr class="qaeq-group"><td colspan="5">${esc(c)}</td></tr>`;
+    return head + rows.filter(r => r.centro === c).map(r => {
+      const sugeridos = _qaeq.fisicos.filter(f => !f.centros?.length || f.centros.some(x => x.toLowerCase() === c.toLowerCase())).map(f => f.nombre);
+      const otros = _qaeq.fisicos.map(f => f.nombre).filter(n => !sugeridos.includes(n));
+      const opt = n => `<option value="${esc(n)}">${esc(n)}</option>`;
+      const chips = r.responsables.map(n => `<span class="fi-tag qaeq-chip" style="${_qaeqChipStyle(n)}">${esc(n)}<button type="button" data-id="${r.id}" data-rm="${esc(n)}" title="Quitar">×</button></span>`).join('');
+      const addSel = `<select class="filter-select qaeq-add" data-id="${r.id}" data-f="resp"><option value="">+</option>`
+        + sugeridos.filter(n => !r.responsables.includes(n)).map(opt).join('')
+        + (otros.length ? `<optgroup label="Otros">${otros.filter(n => !r.responsables.includes(n)).map(opt).join('')}</optgroup>` : '')
+        + '</select>';
+      return `<tr>
+        <td class="qaeq-eq">${esc(r.equipo)}</td>
+        <td><select class="filter-select qaeq-estado ${QAEQ_ESTADO_CLS[r.estado] ?? ''}" data-id="${r.id}" data-f="estado">${QAEQ_ESTADOS.map(s => `<option${s === r.estado ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
+        <td><div class="qaeq-resp">${chips}${addSel}</div></td>
+        <td style="text-align:center"><input type="checkbox" data-id="${r.id}" data-f="prev"${r.hayPreventivo ? ' checked' : ''}></td>
+        <td><textarea class="filter-input qaeq-coment" rows="2" data-id="${r.id}" data-f="coment">${esc(r.comentarios)}</textarea></td>
+      </tr>`;
+    }).join('');
+  }).join('');
+}
+
+function _qaeqTable(title, rows) {
+  return `<h3 class="qaeq-title">${esc(title)} <span class="badge-count">${rows.length}</span></h3>
+    <div class="table-wrap"><table class="spec-table qaeq-table"><colgroup><col style="width:140px"><col style="width:150px"><col style="width:370px"><col style="width:110px"><col></colgroup><thead><tr>
+      <th>Equipo</th><th>Estado</th><th>Responsable</th><th style="text-align:center">Hay preventivo</th><th>Comentarios</th>
+    </tr></thead><tbody>${_qaeqRows(rows)}</tbody></table></div>`;
+}
+
+function renderQaEquipos() {
+  const pills = document.getElementById('qaeq-center-pills');
+  const sel = _qaeq.centers;
+  pills.innerHTML = '';
+  [...new Set(_qaeq.items.map(i => i.centro))].sort().forEach(c =>
+    pills.appendChild(makePill(c, sel.has(c), () => { if (sel.has(c)) sel.delete(c); else sel.add(c); renderQaEquipos(); })));
+  document.getElementById('qaeq-next-btn').textContent = _qaeq.showNext ? 'Ocultar próximo mes' : 'Ver próximo mes';
+  const inMes = (mes, onlyPending) => _qaeq.items.filter(i => i.mes === mes && sel.has(i.centro) && (!onlyPending || i.estado !== 'Finalizado'));
+  const cur = _qaeqMes(0), prev = _qaeqMes(-1), next = _qaeqMes(1);
+  let html = _qaeq.showNext ? _qaeqTable(`Próximo mes: ${_qaeqMesLabel(next)}`, inMes(next)) : '';
+  html += _qaeqTable(_qaeqMesLabel(cur), inMes(cur))
+    + _qaeqTable(`Pendientes de ${_qaeqMesLabel(prev)}`, inMes(prev, true));
+  document.getElementById('qaeq-wrap').innerHTML = html;
+  document.querySelectorAll('#qaeq-wrap .qaeq-coment').forEach(_qaeqGrow);
+}
+
 loadHome();
 loadTendenciasData();
 checkFeriadosAlert();
