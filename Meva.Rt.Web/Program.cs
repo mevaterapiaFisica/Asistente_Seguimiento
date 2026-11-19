@@ -95,6 +95,7 @@ builder.Services.AddSingleton(_ => new TurnReservationStore(snapshotsDirectory, 
 builder.Services.AddSingleton(_ => new PedidoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEspecificoStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new QaEquiposMensualesStore(snapshotsDirectory));
+builder.Services.AddSingleton(_ => new QaFueraToleranciaStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new ImagingMonitoringExclusionStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiMailStore(snapshotsDirectory));
 builder.Services.AddSingleton(_ => new TbiDoseStore(snapshotsDirectory));
@@ -1555,18 +1556,23 @@ app.MapDelete("/api/pedidos/{id}", async (string id, PedidoStore pedidoStore, Ca
 
 // ─── QA Equipos mensuales ──────────────────────────────────────────────────
 
+// Equipos de cada centro: máquinas + tomógrafos + IORT (MEVA-Central). Equipo = DisplayName sin prefijo "Centro - ".
+// Compartido por QA Equipos mensuales y QA fuera de tolerancia.
+static List<(string Centro, string Equipo)> BuildQaEquipos(RtSystemConfiguration cfg)
+{
+    static string Short(string display, string centro) =>
+        display.StartsWith(centro + " - ", StringComparison.OrdinalIgnoreCase) ? display[(centro.Length + 3)..] : display;
+    return cfg.Machines.Select(m => (m.CenterName, Short(m.DisplayName, m.CenterName)))
+        .Concat(cfg.Tomographs.Select(t => (t.CenterName, Short(t.DisplayName, t.CenterName))))
+        .Append((cfg.Centers.FirstOrDefault(c => c.Name.Equals("MEVA-Central", StringComparison.OrdinalIgnoreCase))?.Name ?? "MEVA-Central", "IORT"))
+        .ToList();
+}
+
 // Devuelve filas de n-2..n+1 (siembra una por equipo si faltan); el front filtra por mes.
 app.MapGet("/api/qa-equipos", async (QaEquiposMensualesStore store, RtConfigurationHolder holder, CancellationToken ct) =>
 {
     var today = DateTime.Today;
-    var cfg = holder.Configuration;
-    // Equipo = DisplayName sin prefijo "Centro - "
-    static string Short(string display, string centro) =>
-        display.StartsWith(centro + " - ", StringComparison.OrdinalIgnoreCase) ? display[(centro.Length + 3)..] : display;
-    var equipos = cfg.Machines.Select(m => (m.CenterName, Short(m.DisplayName, m.CenterName)))
-        .Concat(cfg.Tomographs.Select(t => (t.CenterName, Short(t.DisplayName, t.CenterName))))
-        .Append((cfg.Centers.FirstOrDefault(c => c.Name.Equals("MEVA-Central", StringComparison.OrdinalIgnoreCase))?.Name ?? "MEVA-Central", "IORT"))
-        .ToList();
+    var equipos = BuildQaEquipos(holder.Configuration);
     var meses = Enumerable.Range(-2, 4).Select(i => today.AddMonths(i).ToString("yyyy-MM")).ToList();
     return TypedResults.Ok(new
     {
@@ -1580,6 +1586,31 @@ app.MapPut("/api/qa-equipos/{id}", async (string id, QaEquipoMensualItem req, Qa
 {
     var updated = await store.UpdateAsync(id, req, ct);
     return updated is null ? Results.NotFound() : Results.Ok(updated);
+});
+
+// ─── QA fuera de tolerancia ────────────────────────────────────────────────
+
+app.MapGet("/api/qa-tolerancia", async (QaFueraToleranciaStore store, QaEquiposMensualesStore fisicosStore, RtConfigurationHolder holder, CancellationToken ct) =>
+    TypedResults.Ok(new
+    {
+        items = await store.LoadAllAsync(ct),
+        equipos = BuildQaEquipos(holder.Configuration).Select(e => new { centro = e.Centro, equipo = e.Equipo }),
+        fisicos = await fisicosStore.LoadFisicosAsync(ct),
+    }));
+
+app.MapPost("/api/qa-tolerancia", async (QaFueraToleranciaItem req, QaFueraToleranciaStore store, CancellationToken ct) =>
+    Results.Ok(await store.CreateAsync(req, ct)));
+
+app.MapPut("/api/qa-tolerancia/{id}", async (string id, QaFueraToleranciaItem req, QaFueraToleranciaStore store, CancellationToken ct) =>
+{
+    var updated = await store.UpdateAsync(id, req, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+});
+
+app.MapDelete("/api/qa-tolerancia/{id}", async (string id, QaFueraToleranciaStore store, CancellationToken ct) =>
+{
+    await store.DeleteAsync(id, ct);
+    return TypedResults.NoContent();
 });
 
 // ─── QA Paciente Específico ────────────────────────────────────────────────

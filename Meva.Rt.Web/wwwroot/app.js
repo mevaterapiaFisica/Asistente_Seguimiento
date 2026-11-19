@@ -452,6 +452,7 @@ const NAV_GROUPS = {
     { id: 'buscar-planes', label: 'Buscar planes' },
     { id: 'corrimientos', label: 'Corrimientos' },
     { id: 'qa-equipos', label: 'QA Equipos mensuales' },
+    { id: 'qa-tol', label: 'QA fuera de tolerancia' },
   ]},
   analisis: { tabs: [
     { id: 'alertas',    label: 'Alertas' },
@@ -522,6 +523,7 @@ async function activateTab(targetTab) {
   if (targetTab === 'buscar-planes') loadBuscarPlanesTab();
   if (targetTab === 'corrimientos') loadCorrimientosTab();
   if (targetTab === 'qa-equipos') loadQaEquiposTab();
+  if (targetTab === 'qa-tol') loadQaTolTab();
   if (targetTab === 'frecuencia-imagenes') loadFrecuenciaImagenesTab();
   return true;
 }
@@ -7958,24 +7960,29 @@ function _qaeqChipStyle(name) {
   return `background:hsl(${h} 70% 90%);border-color:hsl(${h} 45% 65%);color:hsl(${h} 60% 26%)`;
 }
 
+// Chips de responsables + select "+" (sugeridos por centro primero). Compartido con QA fuera de tolerancia.
+function _qaeqRespHtml(id, responsables, centro) {
+  const sug = f => !f.centros?.length || f.centros.some(x => x.toLowerCase() === (centro ?? '').toLowerCase());
+  const sugeridos = _qaeq.fisicos.filter(sug).map(f => f.nombre).filter(n => !responsables.includes(n));
+  const otros = _qaeq.fisicos.filter(f => !sug(f)).map(f => f.nombre).filter(n => !responsables.includes(n));
+  const opt = n => `<option value="${esc(n)}">${esc(n)}</option>`;
+  const chips = responsables.map(n => `<span class="fi-tag qaeq-chip" style="${_qaeqChipStyle(n)}">${esc(n)}<button type="button" data-id="${id}" data-rm="${esc(n)}" title="Quitar">×</button></span>`).join('');
+  return `<div class="qaeq-resp">${chips}<select class="filter-select qaeq-add" data-id="${id}" data-f="resp"><option value="">+</option>`
+    + sugeridos.map(opt).join('')
+    + (otros.length ? `<optgroup label="Otros">${otros.map(opt).join('')}</optgroup>` : '')
+    + '</select></div>';
+}
+
 function _qaeqRows(rows) {
   if (!rows.length) return '<tr><td colspan="5" class="muted-italic" style="text-align:center;padding:1rem">Sin tareas</td></tr>';
   const centros = [...new Set(rows.map(r => r.centro))].sort();
   return centros.map(c => {
     const head = `<tr class="qaeq-group"><td colspan="5">${esc(c)}</td></tr>`;
     return head + rows.filter(r => r.centro === c).map(r => {
-      const sugeridos = _qaeq.fisicos.filter(f => !f.centros?.length || f.centros.some(x => x.toLowerCase() === c.toLowerCase())).map(f => f.nombre);
-      const otros = _qaeq.fisicos.map(f => f.nombre).filter(n => !sugeridos.includes(n));
-      const opt = n => `<option value="${esc(n)}">${esc(n)}</option>`;
-      const chips = r.responsables.map(n => `<span class="fi-tag qaeq-chip" style="${_qaeqChipStyle(n)}">${esc(n)}<button type="button" data-id="${r.id}" data-rm="${esc(n)}" title="Quitar">×</button></span>`).join('');
-      const addSel = `<select class="filter-select qaeq-add" data-id="${r.id}" data-f="resp"><option value="">+</option>`
-        + sugeridos.filter(n => !r.responsables.includes(n)).map(opt).join('')
-        + (otros.length ? `<optgroup label="Otros">${otros.filter(n => !r.responsables.includes(n)).map(opt).join('')}</optgroup>` : '')
-        + '</select>';
       return `<tr>
         <td class="qaeq-eq">${esc(r.equipo)}</td>
         <td><select class="filter-select qaeq-estado ${QAEQ_ESTADO_CLS[r.estado] ?? ''}" data-id="${r.id}" data-f="estado">${QAEQ_ESTADOS.map(s => `<option${s === r.estado ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
-        <td><div class="qaeq-resp">${chips}${addSel}</div></td>
+        <td>${_qaeqRespHtml(r.id, r.responsables, c)}</td>
         <td style="text-align:center"><input type="checkbox" data-id="${r.id}" data-f="prev"${r.hayPreventivo ? ' checked' : ''}></td>
         <td><textarea class="filter-input qaeq-coment" rows="2" data-id="${r.id}" data-f="coment">${esc(r.comentarios)}</textarea></td>
       </tr>`;
@@ -8004,6 +8011,171 @@ function renderQaEquipos() {
     + _qaeqTable(`Pendientes de ${_qaeqMesLabel(prev)}`, inMes(prev, true));
   document.getElementById('qaeq-wrap').innerHTML = html;
   document.querySelectorAll('#qaeq-wrap .qaeq-coment').forEach(_qaeqGrow);
+}
+
+// ─── QA fuera de tolerancia (Física) ───────────────────────────────────────────
+
+const QATOL_STATUS = ['Pendiente', 'En revisión', 'Resuelto'];
+const QATOL_STATUS_CLS = { 'Pendiente': 'qaeq-st-new', 'En revisión': 'qaeq-st-wip', 'Resuelto': 'qaeq-st-done' };
+const _qatol = {
+  loaded: false, items: [], equipos: [], wired: false, pinId: null,
+  centers: new Set(['MEVA-Central', 'RT MEDRANO']), statuses: new Set(), equipo: '', q: '',
+  sort: { col: 'fecha', dir: 'desc' },
+};
+
+async function loadQaTolTab() {
+  if (!_qatol.wired) {
+    _qatol.wired = true;
+    document.getElementById('qatol-new-btn').addEventListener('click', _qatolNew);
+    document.getElementById('qatol-search').addEventListener('input', e => { _qatol.q = e.target.value; _qatol.pinId = null; renderQaTol(); });
+    document.getElementById('qatol-equipo-sel').addEventListener('change', e => { _qatol.equipo = e.target.value; _qatol.pinId = null; renderQaTol(); });
+    const wrap = document.getElementById('qatol-wrap');
+    wrap.addEventListener('change', _qatolOnChange);
+    wrap.addEventListener('input', e => { if (e.target.matches('textarea')) _qaeqGrow(e.target); });
+    wrap.addEventListener('click', e => {
+      const th = e.target.closest('.spec-th-sort');
+      if (th) {
+        const sort = _qatol.sort;
+        if (sort.col === th.dataset.col) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+        else { sort.col = th.dataset.col; sort.dir = 'asc'; }
+        _qatol.pinId = null; renderQaTol(); return;
+      }
+      const rm = e.target.closest('[data-rm]');
+      if (rm) { _qatolSave(rm.dataset.id, it => { it.responsables = it.responsables.filter(r => r !== rm.dataset.rm); }, true); return; }
+      const del = e.target.closest('[data-del]');
+      if (del && confirm('¿Eliminar este control fuera de tolerancia?')) {
+        _qatol.items = _qatol.items.filter(x => x.id !== del.dataset.del);
+        renderQaTol();
+        fetch(`/api/qa-tolerancia/${del.dataset.del}`, { method: 'DELETE' }).catch(() => {});
+      }
+    });
+  }
+  try {
+    const resp = await fetch('/api/qa-tolerancia');
+    if (resp.ok) {
+      const d = await resp.json();
+      Object.assign(_qatol, { items: d.items, equipos: d.equipos, loaded: true });
+      _qaeq.fisicos = d.fisicos; // misma lista que QA Equipos mensuales
+    }
+  } catch {}
+  if (_qatol.loaded) renderQaTol();
+}
+
+function _qatolSave(id, mutate, rerender) {
+  const it = _qatol.items.find(x => x.id === id);
+  if (!it) return;
+  mutate(it);
+  if (rerender) renderQaTol();
+  fetch(`/api/qa-tolerancia/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it)
+  }).catch(() => {});
+}
+
+function _qatolOnChange(e) {
+  const el = e.target;
+  const id = el.dataset.id, f = el.dataset.f;
+  if (!id || !f) return;
+  if (f === 'equipo') _qatolSave(id, it => { [it.centro, it.equipo] = el.value.split('|'); }, true);
+  else if (f === 'status') _qatolSave(id, it => { it.status = el.value; }, true);
+  else if (f === 'resp') { if (el.value) _qatolSave(id, it => { if (!it.responsables.includes(el.value)) it.responsables.push(el.value); }, true); }
+  else if (f === 'fecha') _qatolSave(id, it => { it.fechaDeteccion = el.value || null; });
+  else if (f === 'control') _qatolSave(id, it => { it.control = el.value; });
+  else if (f === 'coment') _qatolSave(id, it => { it.comentarios = el.value; });
+}
+
+async function _qatolNew() {
+  const centro = [..._qatol.centers][0];
+  if (!centro) return;
+  try {
+    const resp = await fetch('/api/qa-tolerancia', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ centro, status: 'Pendiente', responsables: [] })
+    });
+    if (!resp.ok) return;
+    const it = await resp.json();
+    _qatol.items.push(it);
+    // que la fila nueva no quede oculta ni perdida por filtros/orden
+    Object.assign(_qatol, { statuses: new Set(), equipo: '', q: '', pinId: it.id });
+    document.getElementById('qatol-search').value = '';
+    renderQaTol();
+    document.querySelector(`#qatol-wrap [data-id="${it.id}"][data-f="control"]`)?.focus();
+  } catch {}
+}
+
+function _qatolVisibleItems() {
+  const q = _qatol.q.trim().toLowerCase();
+  const { sort } = _qatol;
+  const key = it => ({
+    equipo: `${it.centro} ${it.equipo}`, control: it.control, fecha: it.fechaDeteccion ?? '',
+    resp: it.responsables.join(', '), status: String(QATOL_STATUS.indexOf(it.status)), coment: it.comentarios,
+  }[sort.col] ?? '').toLowerCase();
+  const mult = sort.dir === 'asc' ? 1 : -1;
+  return _qatol.items
+    .filter(it => _qatol.centers.has(it.centro)
+      && (!_qatol.statuses.size || _qatol.statuses.has(it.status))
+      && (!_qatol.equipo || `${it.centro}|${it.equipo}` === _qatol.equipo)
+      && (!q || it.control.toLowerCase().includes(q) || it.comentarios.toLowerCase().includes(q)))
+    .sort((a, b) => {
+      if (a.id === _qatol.pinId) return -1;
+      if (b.id === _qatol.pinId) return 1;
+      const ka = key(a), kb = key(b);
+      if (!ka !== !kb) return ka ? -1 : 1; // vacíos siempre al final
+      return mult * ka.localeCompare(kb, 'es', { numeric: true });
+    });
+}
+
+function _qatolRow(it, opciones) {
+  const val = `${it.centro}|${it.equipo}`;
+  const opts = [...opciones];
+  if (it.equipo && !opts.some(o => `${o.centro}|${o.equipo}` === val)) opts.push({ centro: it.centro, equipo: it.equipo });
+  const equipoSel = `<select class="filter-select" data-id="${it.id}" data-f="equipo">`
+    + (it.equipo ? '' : '<option value="">— elegir —</option>')
+    + opts.map(o => `<option value="${esc(o.centro)}|${esc(o.equipo)}"${`${o.centro}|${o.equipo}` === val ? ' selected' : ''}>${esc(o.centro)} · ${esc(o.equipo)}</option>`).join('')
+    + '</select>';
+  return `<tr>
+    <td>${equipoSel}</td>
+    <td><textarea class="filter-input qaeq-coment" rows="1" data-id="${it.id}" data-f="control">${esc(it.control)}</textarea></td>
+    <td><input type="date" class="filter-input" data-id="${it.id}" data-f="fecha" value="${it.fechaDeteccion ?? ''}"></td>
+    <td>${_qaeqRespHtml(it.id, it.responsables, it.centro)}</td>
+    <td><select class="filter-select qaeq-estado ${QATOL_STATUS_CLS[it.status] ?? ''}" data-id="${it.id}" data-f="status">${QATOL_STATUS.map(s => `<option${s === it.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
+    <td><textarea class="filter-input qaeq-coment" rows="1" data-id="${it.id}" data-f="coment">${esc(it.comentarios)}</textarea></td>
+    <td><button type="button" class="qatol-del" data-del="${it.id}" title="Eliminar">✕</button></td>
+  </tr>`;
+}
+
+function renderQaTol() {
+  const t = _qatol;
+  const optLabel = o => `${esc(o.centro)} · ${esc(o.equipo)}`;
+  // pills de centro
+  const cp = document.getElementById('qatol-center-pills');
+  cp.innerHTML = '';
+  [...new Set(t.equipos.map(e => e.centro))].sort().forEach(c =>
+    cp.appendChild(makePill(c, t.centers.has(c), () => { if (t.centers.has(c)) t.centers.delete(c); else t.centers.add(c); t.pinId = null; renderQaTol(); })));
+  // pills de status (vacío = todos)
+  const sp = document.getElementById('qatol-status-pills');
+  sp.innerHTML = '';
+  sp.appendChild(makePill('Todos', t.statuses.size === 0, () => { t.statuses.clear(); t.pinId = null; renderQaTol(); }));
+  QATOL_STATUS.forEach(s => sp.appendChild(makePill(s, t.statuses.has(s), () => {
+    if (t.statuses.has(s)) t.statuses.delete(s); else t.statuses.add(s); t.pinId = null; renderQaTol();
+  })));
+  // filtro de equipo + selector de equipo de cada fila: solo equipos de los centros filtrados
+  const opciones = t.equipos.filter(e => t.centers.has(e.centro));
+  if (t.equipo && !opciones.some(o => `${o.centro}|${o.equipo}` === t.equipo)) t.equipo = '';
+  document.getElementById('qatol-equipo-sel').innerHTML = '<option value="">Todos los equipos</option>'
+    + opciones.map(o => `<option value="${esc(o.centro)}|${esc(o.equipo)}"${`${o.centro}|${o.equipo}` === t.equipo ? ' selected' : ''}>${optLabel(o)}</option>`).join('');
+  document.getElementById('qatol-new-btn').disabled = t.centers.size === 0;
+
+  const th = (label, col) => {
+    const active = t.sort.col === col;
+    return `<th class="spec-th-sort${active ? ' active' : ''}" data-col="${col}">${label}${active ? (t.sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}</th>`;
+  };
+  const rows = _qatolVisibleItems();
+  document.getElementById('qatol-wrap').innerHTML = `<div class="table-wrap"><table class="spec-table qaeq-table qatol-table">
+    <colgroup><col style="width:240px"><col style="width:230px"><col style="width:140px"><col style="width:220px"><col style="width:125px"><col><col style="width:40px"></colgroup>
+    <thead><tr>${th('Equipo', 'equipo')}${th('Control fuera de tolerancia', 'control')}${th('Fecha de detección', 'fecha')}${th('Responsable', 'resp')}${th('Status', 'status')}${th('Comentario', 'coment')}<th></th></tr></thead>
+    <tbody>${rows.length ? rows.map(it => _qatolRow(it, opciones)).join('') : '<tr><td colspan="7" class="muted-italic" style="text-align:center;padding:1rem">Sin controles fuera de tolerancia</td></tr>'}</tbody>
+  </table></div>`;
+  document.querySelectorAll('#qatol-wrap textarea').forEach(_qaeqGrow);
 }
 
 loadHome();

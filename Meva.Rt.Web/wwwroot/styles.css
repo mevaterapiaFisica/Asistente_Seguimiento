@@ -1430,3 +1430,9 @@ details[open] .alertas-summary::before { transform: rotate(90deg); }
 .qaeq-chip button:hover { color: var(--red); }
 .qaeq-add { width: 56px; }
 .qaeq-coment { width: 100%; line-height: 1.4; resize: none; overflow: hidden; font-family: inherit; }
+
+/* ── QA fuera de tolerancia ── */
+#qatol-wrap .table-wrap { max-width: 1700px; }
+.qatol-table .filter-select { max-width: 100%; }
+.qatol-del { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 14px; }
+.qatol-del:hover { color: var(--red); }

@@ -371,3 +371,16 @@ public sealed class FisicoItem
     public string Nombre { get; set; } = string.Empty;
     public List<string> Centros { get; set; } = []; // vacio = todos
 }
+
+public sealed class QaFueraToleranciaItem
+{
+    public string Id { get; set; } = string.Empty;
+    public string Centro { get; set; } = string.Empty;
+    public string Equipo { get; set; } = string.Empty;
+    public string Control { get; set; } = string.Empty;
+    public string? FechaDeteccion { get; set; } // yyyy-MM-dd
+    public List<string> Responsables { get; set; } = [];
+    public string Status { get; set; } = "Pendiente"; // Pendiente | En revisión | Resuelto
+    public string Comentarios { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; }
+}
